@@ -13,24 +13,6 @@ const emptyStringToNull = (value: any) => {
   return value;
 };
 
-const parseCurrencyToNumber = (value: any): number | undefined => {
-  if (typeof value === "string") {
-    if (value.trim() === "") return undefined;
-
-    // Remove currency symbols and convert comma to dot
-    const cleanValue = value.replace(/[R$\s]/g, "").replace(",", ".");
-
-    const numericValue = parseFloat(cleanValue);
-    return isNaN(numericValue) ? undefined : numericValue;
-  }
-
-  if (typeof value === "number") {
-    return value;
-  }
-
-  return undefined;
-};
-
 const isValidDateString = (value: string): boolean => {
   const date = new Date(value);
   return !isNaN(date.getTime());
@@ -74,7 +56,16 @@ export const createFuelSchema = z.object({
   ),
 
   price_per_liter: z.preprocess(
-    parseCurrencyToNumber,
+    (val) => {
+      if (typeof val === "string") {
+        if (val.trim() === "") return undefined;
+        // Remove currency symbols and convert comma to dot
+        const cleanValue = val.replace(/[R$\s]/g, "").replace(",", ".");
+        const numericValue = parseFloat(cleanValue);
+        return isNaN(numericValue) ? undefined : numericValue;
+      }
+      return val;
+    },
     z
       .number({
         required_error: "O preço por litro é obrigatório.",
@@ -85,6 +76,11 @@ export const createFuelSchema = z.object({
       .min(0.01, "O preço por litro deve ser no mínimo R$ 0,01")
       .max(999.99, "O preço por litro não pode exceder R$ 999,99.")
   ),
+
+  total_amount: z
+    .number()
+    .positive("O valor total deve ser positivo.")
+    .optional(),
 
   notes: z.preprocess(
     emptyStringToNull,
