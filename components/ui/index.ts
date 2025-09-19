@@ -17,3 +17,6 @@ export { SwitchBusinessModal } from "./switch-business-modal";
 
 export { Avatar } from "./avatar";
 export { UserSettingsDrawer } from "./user-settings-drawer";
+
+export { ImagePickerBottomSheet } from "./image-picker-bottom-sheet";
+export { TotalAmountDisplay } from "./total-amount-display";

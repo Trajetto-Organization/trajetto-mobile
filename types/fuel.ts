@@ -1,6 +1,6 @@
-// Re-export types from hooks for backward compatibility
 export type { FuelType } from "../hooks/use-fuel-type-infinite-scroll";
 export type { Driver } from "../hooks/use-driver-infinite-scroll";
+
 export type { Branch } from "../hooks/use-branch-infinite-scroll";
 
 export interface FuelRecord {

@@ -214,6 +214,20 @@ class ApiClient {
     return this.request<T>(endpoint, { method: "DELETE", requiresAuth });
   }
 
+  // Special method for FormData (multipart/form-data)
+  async postFormData<T>(
+    endpoint: string,
+    formData: FormData,
+    requiresAuth = true
+  ): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "POST",
+      body: formData,
+      requiresAuth,
+      headers: {}, // Let browser set Content-Type for FormData
+    });
+  }
+
   // Special method for NDJSON streaming with automatic token refresh
   async getNDJSONResponse(
     endpoint: string,

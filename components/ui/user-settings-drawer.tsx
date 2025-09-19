@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { View, Text, TouchableOpacity, Linking } from "react-native";
 
 import {
@@ -25,7 +25,7 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
 
   // Snap points para o bottom sheet
-  const snapPoints = React.useMemo(() => ["70%"], []);
+  const snapPoints = useMemo(() => ["70%"], []);
 
   useEffect(() => {
     if (visible) {

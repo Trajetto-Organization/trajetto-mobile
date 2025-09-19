@@ -1,4 +1,3 @@
-import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Business } from "../hooks/use-business-infinite-scroll";
 
@@ -8,7 +7,6 @@ interface BusinessCardProps {
 }
 
 // Removed status functions since Business doesn't have status
-
 export const BusinessCard: React.FC<BusinessCardProps> = ({
   business,
   onPress,

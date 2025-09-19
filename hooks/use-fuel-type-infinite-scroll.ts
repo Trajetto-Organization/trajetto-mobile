@@ -111,7 +111,9 @@ export function useFuelTypeInfiniteScroll(search?: string) {
 
   // Get error message
   const errorMessage =
-    error instanceof Error ? error.message : "Erro ao carregar tipos de combustível";
+    error instanceof Error
+      ? error.message
+      : "Erro ao carregar tipos de combustível";
 
   return {
     fuelTypes,

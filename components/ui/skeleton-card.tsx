@@ -1,4 +1,4 @@
-import React from "react";
+import { useEffect } from "react";
 
 import { View, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -25,7 +25,7 @@ export const SkeletonCard: React.FC<SkeletonCardProps> = ({
 }) => {
   const shimmerTranslate = useSharedValue(-screenWidth);
 
-  React.useEffect(() => {
+  useEffect(() => {
     shimmerTranslate.value = withRepeat(
       withTiming(screenWidth, { duration: 1500 }),
       -1,

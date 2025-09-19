@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
 import { cn } from "../../utils/cn";

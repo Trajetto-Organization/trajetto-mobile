@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 import { View, Text, TouchableOpacity, Modal, FlatList } from "react-native";
 import { cn } from "../../utils/cn";

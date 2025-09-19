@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { Redirect } from "expo-router";
 
 import { useAuthStore } from "../store";

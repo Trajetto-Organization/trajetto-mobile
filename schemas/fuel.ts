@@ -22,9 +22,10 @@ export const createFuelSchema = z.object({
   current_mileage: z.preprocess(
     (val) => {
       if (typeof val === "string") {
-        if (val.trim() === "") return undefined;
+        if (val.trim() === "" || val === "0") return undefined;
         return parseFloat(val.replace(",", "."));
       }
+      if (typeof val === "number" && val === 0) return undefined;
       return val;
     },
     z
@@ -32,7 +33,7 @@ export const createFuelSchema = z.object({
         required_error: "A quilometragem atual do veículo é obrigatória.",
         invalid_type_error: "A quilometragem atual deve ser um número válido.",
       })
-      .nonnegative("A quilometragem atual deve ser um valor não negativo.")
+      .positive("A quilometragem atual deve ser um valor positivo.")
       .min(0.1, "A quilometragem atual deve ser maior que zero.")
       .max(9999999, "A quilometragem atual não pode exceder 9.999.999 km.")
   ),
@@ -40,9 +41,10 @@ export const createFuelSchema = z.object({
   liters_amount: z.preprocess(
     (val) => {
       if (typeof val === "string") {
-        if (val.trim() === "") return undefined;
+        if (val.trim() === "" || val === "0") return undefined;
         return parseFloat(val.replace(",", "."));
       }
+      if (typeof val === "number" && val === 0) return undefined;
       return val;
     },
     z
@@ -58,12 +60,18 @@ export const createFuelSchema = z.object({
   price_per_liter: z.preprocess(
     (val) => {
       if (typeof val === "string") {
-        if (val.trim() === "") return undefined;
+        if (val.trim() === "" || val === "0") return undefined;
+
         // Remove currency symbols and convert comma to dot
         const cleanValue = val.replace(/[R$\s]/g, "").replace(",", ".");
         const numericValue = parseFloat(cleanValue);
-        return isNaN(numericValue) ? undefined : numericValue;
+
+        return isNaN(numericValue) || numericValue === 0
+          ? undefined
+          : numericValue;
       }
+
+      if (typeof val === "number" && val === 0) return undefined;
       return val;
     },
     z

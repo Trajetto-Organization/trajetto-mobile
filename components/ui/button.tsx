@@ -1,5 +1,3 @@
-import React from "react";
-
 import { TouchableOpacity, Text, ActivityIndicator } from "react-native";
 import { cn } from "../../utils/cn";
 

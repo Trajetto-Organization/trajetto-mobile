@@ -40,7 +40,7 @@ export const useTwoFactorStore = create<TwoFactorState>()(
         const currentTime = Date.now();
         const elapsed = Math.floor((currentTime - state.lastResendTime) / 1000);
 
-        const remaining = Math.max(0, 15 - elapsed); // 15 segundos
+        const remaining = Math.max(0, 15 - elapsed); // 15 seconds
         return remaining;
       },
 
