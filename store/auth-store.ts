@@ -7,6 +7,7 @@ import {
   User,
   LoginResponse,
   TwoFactorRequiredResponse,
+  EmailVerificationResponse,
   TwoFactorVerificationResponse,
   RefreshTokenResponse,
   UserMeResponse,
@@ -51,7 +52,7 @@ export const useAuthStore = create<AuthStore>()(
 
         try {
           const response = await apiClient.post<
-            LoginResponse | TwoFactorRequiredResponse
+            LoginResponse | TwoFactorRequiredResponse | EmailVerificationResponse
           >(
             "/user/session",
             { email, password },
@@ -59,6 +60,19 @@ export const useAuthStore = create<AuthStore>()(
           );
 
           set({ isLoading: false });
+
+          // Check if email verification is required
+          if (
+            "emailVerification" in response &&
+            response.emailVerification
+          ) {
+            return {
+              success: false,
+              requiresEmailVerification: true,
+              email: email,
+              error: response.message,
+            };
+          }
 
           // Check if two-factor authentication is required
           if (

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, Image } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -73,11 +73,6 @@ export const FuelForm: React.FC<FuelFormProps> = ({
     [onTotalChange]
   );
 
-  // Effect to update total when liters or price change
-  useEffect(() => {
-    updateTotal(formattedLiters, formattedPrice);
-  }, [formattedLiters, formattedPrice, updateTotal]);
-
   return (
     <View className="flex-1 px-6 pt-6">
       {/* Selected Items Summary */}
@@ -92,7 +87,10 @@ export const FuelForm: React.FC<FuelFormProps> = ({
         <View className="space-y-3">
           <View className="flex-row">
             <Text className="text-sm text-gray-600">Filial:</Text>
-            <Text className="text-sm text-gray-900 flex-1 font-medium">
+            <Text
+              className="text-sm text-gray-900 
+              flex-1 font-medium"
+            >
               {" "}
               {stepData.branchName || "N/A"}
             </Text>
@@ -100,7 +98,10 @@ export const FuelForm: React.FC<FuelFormProps> = ({
 
           <View className="flex-row">
             <Text className="text-sm text-gray-600">Motorista:</Text>
-            <Text className="text-sm text-gray-900 flex-1 font-medium">
+            <Text
+              className="text-sm text-gray-900 
+              flex-1 font-medium"
+            >
               {" "}
               {stepData.driverName || "N/A"}
               {stepData.driverCnh && (
@@ -114,7 +115,10 @@ export const FuelForm: React.FC<FuelFormProps> = ({
 
           <View className="flex-row">
             <Text className="text-sm text-gray-600">Combustível:</Text>
-            <Text className="text-sm text-gray-900 flex-1 font-medium">
+            <Text
+              className="text-sm text-gray-900 
+              flex-1 font-medium"
+            >
               {" "}
               {stepData.fuelTypeName || "N/A"}
             </Text>
@@ -127,7 +131,10 @@ export const FuelForm: React.FC<FuelFormProps> = ({
         className="bg-blue-50 rounded-lg 
         p-4 mb-6 border border-blue-200"
       >
-        <Text className="font-bold text-blue-900 mb-3">
+        <Text
+          className="font-bold 
+          text-blue-900 mb-3"
+        >
           ℹ️ Informações importantes:
         </Text>
         <View className="space-y-2">
@@ -181,7 +188,10 @@ export const FuelForm: React.FC<FuelFormProps> = ({
           className="bg-gray-50 rounded-lg 
           p-4 mb-6 border border-gray-200"
         >
-          <Text className="text-sm text-gray-600 text-center">
+          <Text
+            className="text-sm 
+            text-gray-600 text-center"
+          >
             Carregando dados do veículo...
           </Text>
         </View>
@@ -248,6 +258,9 @@ export const FuelForm: React.FC<FuelFormProps> = ({
                 const numValue = parseFormattedValue(formatted);
                 onChange(numValue || undefined);
 
+                // Calculate total immediately
+                updateTotal(formatted, formattedPrice);
+
                 // Trigger validation
                 trigger("liters_amount");
               }}
@@ -274,6 +287,9 @@ export const FuelForm: React.FC<FuelFormProps> = ({
                 // Converts to number and sends to control
                 const numValue = parseFormattedValue(formatted);
                 onChange(numValue || undefined);
+
+                // Calculate total immediately
+                updateTotal(formattedLiters, formatted);
 
                 // Trigger validation
                 trigger("price_per_liter");

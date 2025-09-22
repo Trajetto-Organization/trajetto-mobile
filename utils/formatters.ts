@@ -1,136 +1,129 @@
 /**
- * Formats a number for mileage display
+ * Format mileage with thousands separator (Brazilian format)
  * Example: 123456 -> "123.456"
  */
 export const formatMileage = (value: string): string => {
-  // Remove everything that is not a digit
-  const numericValue = value.replace(/\D/g, "");
-  if (!numericValue) return "";
+  // Remove everything that is not a number
+  const numbers = value.replace(/\D/g, "");
 
-  // Adds thousands points
-  return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  // Add periods as thousands separators
+  return numbers.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
 
 /**
- * Formats a number to display liters
+ * Format liters input with Brazilian decimal format (natural approach)
  * Example: "45500" -> "45,500"
  */
 export const formatLiters = (value: string): string => {
-  // Removes everything that is not a digit, comma or period
-  let cleanValue = value.replace(/[^0-9.,]/g, "");
-  if (!cleanValue) return "";
+  // Removes invalid characters, keeps only numbers, commas and periods
+  let cleaned = value.replace(/[^\d,\.]/g, "");
 
-  // Replaces semicolon with comma
-  cleanValue = cleanValue.replace(".", ",");
+  // Replaces period with comma (Brazilian standard)
+  cleaned = cleaned.replace(".", ",");
 
-  // Guarantees only one comma
-  const parts = cleanValue.split(",");
+  // Allows only one comma
+  const parts = cleaned.split(",");
   if (parts.length > 2) {
-    cleanValue = parts[0] + "," + parts.slice(1).join("");
+    cleaned = parts[0] + "," + parts.slice(1).join("");
   }
 
-  // If it has more than 3 decimal places, it rounds intelligently
-  if (parts[1] && parts[1].length > 3) {
-    const integerPart = parts[0];
-    const decimalPart = parts[1];
-
-    // Takes only the first 4 digits to decide rounding
-    const first4Digits = decimalPart.substring(0, 4);
-    const first3Digits = first4Digits.substring(0, 3);
-
-    const fourthDigit = parseInt(first4Digits[3] || "0");
-
-    // If the 4th digit is >= 5, round up
-    if (fourthDigit >= 5) {
-      const valueToRound = parseFloat(`${integerPart}.${first3Digits}`);
-      const rounded = Math.round(valueToRound * 1000 + 1) / 1000;
-
-      const [intPart, decPart] = rounded.toString().split(".");
-      const formattedDecimal = (decPart || "000")
-        .substring(0, 3)
-        .padEnd(3, "0");
-      cleanValue = intPart + "," + formattedDecimal;
-    } else {
-      // Only truncates to 3 places
-      cleanValue = integerPart + "," + first3Digits;
-    }
+  // Limit to 3 decimal places after the comma
+  if (parts.length === 2 && parts[1].length > 3) {
+    cleaned = parts[0] + "," + parts[1].substring(0, 3);
   }
 
-  // Add thousands points in the integer part
-  if (parts[0]) {
-    const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    cleanValue =
-      parts[1] !== undefined ? `${integerPart},${parts[1]}` : integerPart;
-  }
-
-  return cleanValue;
+  return cleaned;
 };
 
 /**
  * Formats a value for monetary display (price per liter)
- * Example: "5,999" -> "R$ 5.999" (maximum 3 decimal places according to ANP)
- * Automatically rounds when exceeding 3 decimal places
+ * Example: "5,999" -> "R$ 5,999"
  */
 export const formatCurrency = (value: string): string => {
-  // Removes everything that is not a digit, comma or period
-  let cleanValue = value.replace(/[^\d.,]/g, "");
+  // Removes invalid characters, keeps only numbers, commas and periods
+  let cleaned = value.replace(/[^\d,\.]/g, "");
 
-  if (!cleanValue) return "";
+  if (!cleaned) return "";
 
-  // Replaces semicolon with comma
-  cleanValue = cleanValue.replace(".", ",");
+  // Replaces period with comma (Brazilian standard)
+  cleaned = cleaned.replace(".", ",");
 
-  // Guarantees only one comma
-  const parts = cleanValue.split(",");
+  // Allows only one comma
+  const parts = cleaned.split(",");
   if (parts.length > 2) {
-    cleanValue = parts[0] + "," + parts.slice(1).join("");
+    cleaned = parts[0] + "," + parts.slice(1).join("");
   }
 
-  // If it has more than 3 decimal places, it rounds intelligently
-  if (parts[1] && parts[1].length > 3) {
-    const integerPart = parts[0];
-    const decimalPart = parts[1];
+  // Limit to 3 decimal places after the comma
+  if (parts.length === 2 && parts[1].length > 3) {
+    cleaned = parts[0] + "," + parts[1].substring(0, 3);
+  }
 
-    // Takes only the first 4 digits to decide rounding
-    const first4Digits = decimalPart.substring(0, 4);
-    const first3Digits = first4Digits.substring(0, 3);
+  return cleaned ? `R$ ${cleaned}` : "";
+};
 
-    const fourthDigit = parseInt(first4Digits[3] || "0");
+/**
+ * Convert formatted mileage to numeric value for backend
+ */
+export const mileageToNumber = (formattedMileage: string): string => {
+  return formattedMileage.replace(/\./g, "");
+};
 
-    // If the 4th digit is >= 5, round up
-    if (fourthDigit >= 5) {
-      const valueToRound = parseFloat(`${integerPart}.${first3Digits}`);
-      const rounded = Math.round(valueToRound * 1000 + 1) / 1000;
+/**
+ * Convert formatted liters to numeric value for backend
+ */
+export const litersToNumber = (formattedLiters: string): string => {
+  return formattedLiters.replace(",", ".");
+};
 
-      const [intPart, decPart] = rounded.toString().split(".");
+/**
+ * Helper function to convert currency string to numeric value
+ */
+export const formatCurrencyToNumber = (
+  currencyStr: string | number | undefined
+): number => {
+  if (currencyStr === undefined || currencyStr === "") return 0;
 
-      // Format the result
-      const formattedDecimal = (decPart || "000")
-        .substring(0, 3)
-        .padEnd(3, "0");
-      cleanValue = intPart + "," + formattedDecimal;
-    } else {
-      // Only truncates to 3 places
-      cleanValue = integerPart + "," + first3Digits;
+  // If it is already a number, it returns directly
+  if (typeof currencyStr === "number") return currencyStr;
+
+  // If it is a string, we need to process it correctly
+  if (typeof currencyStr === "string") {
+    const cleanedStr = currencyStr.trim();
+
+    // Remove currency symbols and spaces
+    let processedStr = cleanedStr.replace(/R\$\s*/g, "");
+
+    // Special treatment for Brazilian format (1,000.00 or 10,000)
+    // First, we remove all the dots (thousand separators)
+    processedStr = processedStr.replace(/\./g, "");
+
+    // Now we replace the comma with a dot for parseFloat
+    // But we check if there is more than one comma (in case of typo)
+    const commaCount = (processedStr.match(/,/g) || []).length;
+
+    if (commaCount > 1) {
+      // If there is more than one comma, we will only consider the last one.
+      // This handles cases like "10,000.00" -> "10000.00"
+      const parts = processedStr.split(",");
+      const lastPart = parts.pop() || "";
+
+      processedStr = parts.join("") + "." + lastPart;
+    } else if (commaCount === 1) {
+      // Normal case: replace the comma with a period
+      processedStr = processedStr.replace(",", ".");
     }
+
+    const num = parseFloat(processedStr);
+    return isNaN(num) ? 0 : num;
   }
 
-  // Add thousands points in the integer part
-  const finalParts = cleanValue.split(",");
-  if (finalParts[0]) {
-    const integerPart = finalParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    cleanValue =
-      finalParts[1] !== undefined
-        ? `${integerPart},${finalParts[1]}`
-        : integerPart;
-  }
-
-  return cleanValue ? `R$ ${cleanValue}` : "";
+  return 0;
 };
 
 /**
  * Converts formatted value to number
- * Example: "R$ 1,234.56" -> 1234.56
+ * Example: "R$ 1.234,56" -> 1234.56
  */
 export const parseFormattedValue = (formattedValue: string): number => {
   if (!formattedValue) return 0;
@@ -146,16 +139,25 @@ export const parseFormattedValue = (formattedValue: string): number => {
 };
 
 /**
- * Formats total value for beautiful display
- * Example: 123.45 -> "R$ 123.45"
+ * Format number to Brazilian currency string
  */
-export const formatTotalAmount = (amount: number): string => {
-  if (!amount || isNaN(amount)) return "R$ 0,00";
-
-  return amount.toLocaleString("pt-BR", {
+export const formatToBrazilianCurrency = (
+  value: number | string | undefined
+): string => {
+  const numValue = formatCurrencyToNumber(value);
+  return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  });
+  }).format(numValue);
+};
+
+/**
+ * Formats total value for beautiful display
+ * Example: 123.45 -> "R$ 123,45"
+ */
+export const formatTotalAmount = (amount: number): string => {
+  if (!amount || isNaN(amount)) return "R$ 0,00";
+  return formatToBrazilianCurrency(amount);
 };

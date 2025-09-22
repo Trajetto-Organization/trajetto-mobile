@@ -67,6 +67,11 @@ export interface TwoFactorRequiredResponse {
   twoFactorVerification: boolean;
 }
 
+export interface EmailVerificationResponse {
+  message: string;
+  emailVerification: boolean;
+}
+
 export interface TwoFactorVerificationResponse {
   message: string;
   token: string;
@@ -100,6 +105,7 @@ export interface AuthState {
     success: boolean;
     error?: string;
     requiresTwoFactor?: boolean;
+    requiresEmailVerification?: boolean;
     email?: string;
   }>;
   verifyTwoFactor: (

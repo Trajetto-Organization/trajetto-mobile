@@ -62,6 +62,17 @@ const LoginScreen = () => {
 
         // Navigation will be handled automatically by the auth state change
         router.replace("/vehicles");
+      } else if (result.requiresEmailVerification) {
+        // Show email verification message
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        Toast.show({
+          type: "info",
+          text1: "Verificação de e-mail necessária",
+          text2: result.error || "Verifique seu e-mail para continuar",
+          position: "top",
+          visibilityTime: 5000,
+        });
       } else if (result.requiresTwoFactor) {
         // Navigate to two-factor screen
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
