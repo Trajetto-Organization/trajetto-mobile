@@ -14,6 +14,7 @@ export { DatePicker } from "./date-picker";
 export { LogoutModal } from "./logout-modal";
 
 export { SwitchBusinessModal } from "./switch-business-modal";
+export { VehicleActionModal } from "./vehicle-action-modal";
 
 export { Avatar } from "./avatar";
 export { UserSettingsDrawer } from "./user-settings-drawer";

@@ -1,0 +1,670 @@
+import { useState, useCallback, useEffect, useMemo } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import * as ImagePicker from "expo-image-picker";
+import { useCameraPermissions } from "expo-camera";
+
+import { useRouter, useLocalSearchParams } from "expo-router";
+
+import { useForm, type SubmitHandler } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+import Toast from "react-native-toast-message";
+import * as Haptics from "expo-haptics";
+
+import { useAuthStore } from "../../store";
+import { useVehicleData } from "../../hooks";
+
+import { ProtectedRoute } from "../../components/protected-route";
+import { Button, ImagePickerBottomSheet } from "../../components/ui";
+
+import { BranchSelection, DriverSelection } from "../../components/shared";
+import { ChecklistForm } from "../../components/screens/checklist";
+
+import { createChecklistSchema, CreateChecklistFormData } from "../../schemas";
+
+import apiClient, { ApiError } from "../../utils/api";
+import { checkChecklistPermission } from "../../utils/permissions";
+
+interface StepData {
+  branchId: string;
+  branchName: string;
+  driverId: string;
+  driverName: string;
+  driverCnh: string;
+}
+
+interface ChecklistImages {
+  [fieldName: string]: ImagePicker.ImagePickerAsset[];
+}
+
+type Step = "branch" | "driver" | "form";
+
+const ChecklistScreen = () => {
+  const router = useRouter();
+
+  const { vehicleId } = useLocalSearchParams<{ vehicleId: string }>();
+  const { user } = useAuthStore();
+
+  const [currentStep, setCurrentStep] = useState<Step>("branch");
+  const [stepData, setStepData] = useState<Partial<StepData>>({});
+
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const [showImagePickerModal, setShowImagePickerModal] =
+    useState<boolean>(false);
+  const [currentPhotoField, setCurrentPhotoField] = useState<string>("");
+
+  const [checklistImages, setChecklistImages] = useState<ChecklistImages>({});
+
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
+  const { data: vehicleData, isLoading: isLoadingVehicle } = useVehicleData({
+    vehicleId: vehicleId || "",
+    businessId: user?.businessId || "",
+  });
+
+  // Create dynamic schema based on vehicle data
+  const createDynamicChecklistSchema = useCallback(() => {
+    const baseSchema = createChecklistSchema;
+
+    if (vehicleData?.current_mileage) {
+      return baseSchema.extend({
+        current_mileage: baseSchema.shape.current_mileage.refine(
+          (val) => val >= vehicleData.current_mileage,
+          {
+            message: `A quilometragem não pode ser menor que a atual do veículo (${vehicleData.current_mileage?.toLocaleString()} km).`,
+          }
+        ),
+      });
+    }
+
+    return baseSchema;
+  }, [vehicleData?.current_mileage]);
+
+  // Submit form
+  const onSubmit: SubmitHandler<CreateChecklistFormData> = useCallback(
+    async (data: CreateChecklistFormData) => {
+      // Validate required photos based on smart logic
+      const formData = new FormData();
+
+      // Add form fields
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          formData.append(key, String(value));
+        }
+      });
+
+      // Add photos with field names
+      Object.entries(checklistImages).forEach(([fieldName, images]) => {
+        images.forEach((image, index) => {
+          const imageFile = {
+            uri: image.uri,
+            type: "image/jpeg",
+            name: `${fieldName}_${Date.now()}_${index}.jpg`,
+          } as any;
+
+          formData.append(fieldName, imageFile);
+        });
+      });
+
+      setIsSubmitting(true);
+
+      try {
+        await Promise.all([
+          apiClient.postFormData(
+            `/vehicle-checklist/create-vehicle-checklist/${user?.businessId}`,
+            formData
+          ),
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+        ]);
+
+        Toast.show({
+          type: "success",
+          text1: "Checklist criado!",
+          text2: "O checklist veicular foi registrado com sucesso.",
+          position: "top",
+          visibilityTime: 3000,
+        });
+
+        // Navigate back to vehicles
+        router.replace("/vehicles");
+      } catch (error) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+        let errorMessage = "Ocorreu um erro inesperado. Tente novamente.";
+        if (error instanceof ApiError) {
+          errorMessage = error.message;
+        }
+
+        Toast.show({
+          type: "error",
+          text1: "Erro ao criar checklist",
+          text2: errorMessage,
+          position: "top",
+          visibilityTime: 4000,
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [checklistImages, user?.businessId, router, stepData]
+  );
+
+  // Form setup with corrected default values
+  const dynamicSchema = createDynamicChecklistSchema();
+
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+    trigger,
+  } = useForm<CreateChecklistFormData>({
+    resolver: zodResolver(dynamicSchema) as any,
+    mode: "onChange",
+    defaultValues: {
+      vehicleId: vehicleId || "",
+      businessId: user?.businessId || "",
+      checklist_date: new Date().toISOString(),
+      current_mileage: undefined,
+      notes: "",
+      branchId: "",
+      driverId: "",
+      // Initialize all boolean fields to undefined to force user selection
+      headlights_working: undefined,
+      taillights_working: undefined,
+      turn_signals_working: undefined,
+      seatbelts_working: undefined,
+      dashboard_working: undefined,
+      brakes_working: undefined,
+      clutch_working: undefined,
+      fuel_level_adequate: undefined,
+      oil_level_adequate: undefined,
+      radiator_water_adequate: undefined,
+      brake_fluid_adequate: undefined,
+      driver_license_valid: undefined,
+      vehicle_documents_valid: undefined,
+      insurance_valid: undefined,
+      fire_extinguisher_valid: undefined,
+      warning_triangle_present: undefined,
+      jack_present: undefined,
+      // Initialize condition fields to undefined to force selection
+      tires_condition: undefined,
+      bumpers_condition: undefined,
+      windshield_condition: undefined,
+      mirrors_condition: undefined,
+      steering_wheel_condition: undefined,
+      battery_condition: undefined,
+      spare_tire_condition: undefined,
+      overall_condition: undefined,
+    },
+  });
+
+  // Function to check if all required fields are filled
+  const areAllRequiredFieldsFilled = useMemo(() => {
+    const formData = watch();
+
+    // Check if all step data is filled
+    if (!stepData.branchId || !stepData.driverId) {
+      return false;
+    }
+
+    // Check if all required form fields are filled
+    const requiredFields = [
+      "checklist_date",
+      "current_mileage",
+      "tires_condition",
+      "headlights_working",
+      "taillights_working",
+      "turn_signals_working",
+      "bumpers_condition",
+      "windshield_condition",
+      "mirrors_condition",
+      "seatbelts_working",
+      "dashboard_working",
+      "steering_wheel_condition",
+      "brakes_working",
+      "clutch_working",
+      "fuel_level_adequate",
+      "oil_level_adequate",
+      "radiator_water_adequate",
+      "brake_fluid_adequate",
+      "battery_condition",
+      "driver_license_valid",
+      "vehicle_documents_valid",
+      "insurance_valid",
+      "fire_extinguisher_valid",
+      "warning_triangle_present",
+      "jack_present",
+      "spare_tire_condition",
+      "overall_condition",
+    ];
+
+    for (const field of requiredFields) {
+      const value = formData[field as keyof typeof formData];
+      if (value === undefined || value === null || value === "") {
+        return false;
+      }
+    }
+
+    // Check if mileage is greater than 0
+    if (!formData.current_mileage || formData.current_mileage <= 0) {
+      return false;
+    }
+
+    // Check required photos based on backend schema logic
+    // PROTEÇÃO LEGAL - Always required photos
+    const alwaysRequiredPhotos = [
+      "current_mileage",
+      "fuel_level_adequate",
+      "tires_condition",
+    ];
+
+    for (const fieldName of alwaysRequiredPhotos) {
+      const images = checklistImages[fieldName] || [];
+      if (images.length === 0) {
+        return false;
+      }
+    }
+
+    // SEGURANÇA CRÍTICA - Required if not OK
+    const conditionalPhotoFields = [
+      { field: "brakes_working", condition: !formData.brakes_working },
+      { field: "headlights_working", condition: !formData.headlights_working },
+      { field: "taillights_working", condition: !formData.taillights_working },
+      {
+        field: "turn_signals_working",
+        condition: !formData.turn_signals_working,
+      },
+      {
+        field: "steering_wheel_condition",
+        condition: formData.steering_wheel_condition !== "good",
+      },
+      {
+        field: "battery_condition",
+        condition: formData.battery_condition !== "good",
+      },
+      {
+        field: "bumpers_condition",
+        condition: formData.bumpers_condition !== "good",
+      },
+      {
+        field: "windshield_condition",
+        condition: formData.windshield_condition !== "good",
+      },
+      {
+        field: "mirrors_condition",
+        condition: formData.mirrors_condition !== "good",
+      },
+      {
+        field: "spare_tire_condition",
+        condition: formData.spare_tire_condition !== "good",
+      },
+
+      // VERIFICAÇÕES TÉCNICAS - Required if not OK
+      { field: "oil_level_adequate", condition: !formData.oil_level_adequate },
+      {
+        field: "radiator_water_adequate",
+        condition: !formData.radiator_water_adequate,
+      },
+      {
+        field: "brake_fluid_adequate",
+        condition: !formData.brake_fluid_adequate,
+      },
+
+      // ITENS INTERNOS - Required if not OK
+      { field: "seatbelts_working", condition: !formData.seatbelts_working },
+      { field: "dashboard_working", condition: !formData.dashboard_working },
+      { field: "clutch_working", condition: !formData.clutch_working },
+    ];
+
+    for (const { field, condition } of conditionalPhotoFields) {
+      if (condition) {
+        const images = checklistImages[field] || [];
+        if (images.length === 0) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }, [stepData.branchId, stepData.driverId, watch(), checklistImages]);
+
+  // Navigation callbacks
+  const goToNextStep = useCallback(() => {
+    const stepOrder: Step[] = ["branch", "driver", "form"];
+    const currentIndex = stepOrder.indexOf(currentStep);
+
+    if (currentIndex < stepOrder.length - 1) {
+      setCurrentStep(stepOrder[currentIndex + 1]);
+    }
+  }, [currentStep]);
+
+  const goToPrevStep = useCallback(() => {
+    const stepOrder: Step[] = ["branch", "driver", "form"];
+    const currentIndex = stepOrder.indexOf(currentStep);
+
+    if (currentIndex > 0) {
+      setCurrentStep(stepOrder[currentIndex - 1]);
+    } else {
+      router.back();
+    }
+  }, [currentStep, router]);
+
+  const canProceedToNext = useCallback((): boolean => {
+    switch (currentStep) {
+      case "branch":
+        return !!stepData.branchId;
+      case "driver":
+        return !!stepData.driverId;
+      default:
+        return false;
+    }
+  }, [currentStep, stepData]);
+
+  // Image picker functions
+  const requestPermissions = useCallback(async () => {
+    const { status: galleryStatus } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    let cameraStatus = "denied";
+
+    if (cameraPermission?.granted) {
+      cameraStatus = "granted";
+    } else if (!cameraPermission?.granted) {
+      const permission = await requestCameraPermission();
+      cameraStatus = permission.granted ? "granted" : "denied";
+    }
+
+    return cameraStatus === "granted" && galleryStatus === "granted";
+  }, [cameraPermission, requestCameraPermission]);
+
+  const takePhoto = useCallback(async () => {
+    const hasPermissions = await requestPermissions();
+    if (!hasPermissions) {
+      Toast.show({
+        type: "error",
+        text1: "Permissões necessárias",
+        text2: "É necessário permitir acesso à câmera e galeria.",
+        position: "top",
+      });
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0] && currentPhotoField) {
+      setChecklistImages((prev) => ({
+        ...prev,
+        [currentPhotoField]: [
+          ...(prev[currentPhotoField] || []),
+          result.assets[0],
+        ],
+      }));
+    }
+  }, [requestPermissions, currentPhotoField]);
+
+  const pickFromGallery = useCallback(async () => {
+    const hasPermissions = await requestPermissions();
+
+    if (!hasPermissions) {
+      Toast.show({
+        type: "error",
+        text1: "Permissões necessárias",
+        text2: "É necessário permitir acesso à galeria.",
+        position: "top",
+      });
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0] && currentPhotoField) {
+      setChecklistImages((prev) => ({
+        ...prev,
+        [currentPhotoField]: [
+          ...(prev[currentPhotoField] || []),
+          result.assets[0],
+        ],
+      }));
+    }
+  }, [requestPermissions, currentPhotoField]);
+
+  const showImagePicker = useCallback((fieldName: string) => {
+    setCurrentPhotoField(fieldName);
+    setShowImagePickerModal(true);
+  }, []);
+
+  const removeImage = useCallback((fieldName: string, imageIndex: number) => {
+    setChecklistImages((prev) => ({
+      ...prev,
+      [fieldName]: (prev[fieldName] || []).filter(
+        (_, index) => index !== imageIndex
+      ),
+    }));
+  }, []);
+
+  // Auto-fill form when step data changes
+  useEffect(() => {
+    if (stepData.branchId) {
+      setValue("branchId", stepData.branchId);
+    }
+    if (stepData.driverId) {
+      setValue("driverId", stepData.driverId);
+    }
+  }, [stepData, setValue]);
+
+  // Check permissions
+  const permissions = checkChecklistPermission(user);
+
+  if (!permissions.canWrite) {
+    return (
+      <ProtectedRoute>
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-1 justify-center items-center px-6">
+            <Text className="text-xl font-bold text-gray-900 mb-4 text-center">
+              Acesso Negado
+            </Text>
+            <Text className="text-gray-600 text-center mb-8">
+              Você não tem permissão para criar checklists veiculares.
+            </Text>
+            <Button onPress={() => router.back()}>Voltar</Button>
+          </View>
+        </SafeAreaView>
+      </ProtectedRoute>
+    );
+  }
+
+  // Get step title and description
+  const getStepInfo = () => {
+    switch (currentStep) {
+      case "branch":
+        return {
+          title: "Selecionar Filial",
+          description: "Escolha a filial para o checklist",
+          step: 1,
+          total: 3,
+        };
+      case "driver":
+        return {
+          title: "Selecionar Motorista",
+          description: "Escolha o motorista responsável",
+          step: 2,
+          total: 3,
+        };
+      case "form":
+        return {
+          title: "Checklist Veicular",
+          description: "Realizar inspeção do veículo",
+          step: 3,
+          total: 3,
+        };
+      default:
+        return {
+          title: "Checklist Veicular",
+          description: "Criar novo checklist",
+          step: 1,
+          total: 3,
+        };
+    }
+  };
+
+  const stepInfo = getStepInfo();
+
+  return (
+    <ProtectedRoute>
+      <SafeAreaView className="flex-1 bg-gray-50">
+        {/* Step Indicator */}
+        <View className="px-6 py-4 bg-white border-b border-gray-200">
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-gray-900">
+                {stepInfo.title}
+              </Text>
+              <Text className="text-sm text-gray-600">
+                {stepInfo.description}
+              </Text>
+            </View>
+            <View className="bg-primary-100 rounded-full px-3 py-1">
+              <Text className="text-xs font-medium text-primary-800">
+                {stepInfo.step} de {stepInfo.total}
+              </Text>
+            </View>
+          </View>
+
+          {/* Progress Bar */}
+          <View className="w-full bg-gray-200 rounded-full h-2">
+            <View
+              className="bg-primary-500 h-2 rounded-full transition-all"
+              style={{ width: `${(stepInfo.step / stepInfo.total) * 100}%` }}
+            />
+          </View>
+        </View>
+
+        {/* Step Content */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {currentStep === "branch" && (
+              <BranchSelection
+                businessId={user?.businessId || ""}
+                selectedBranchId={stepData.branchId}
+                onSelectBranch={(branch) => {
+                  setStepData((prev) => ({
+                    ...prev,
+                    branchId: branch.id,
+                    branchName: branch.corporate_reason,
+                  }));
+                  setValue("branchId", branch.id);
+                }}
+              />
+            )}
+
+            {currentStep === "driver" && (
+              <DriverSelection
+                businessId={user?.businessId || ""}
+                selectedDriverId={stepData.driverId}
+                onSelectDriver={(driver) => {
+                  setStepData((prev) => ({
+                    ...prev,
+                    driverId: driver.id,
+                    driverName: driver.name,
+                    driverCnh: driver.cnh,
+                  }));
+                  setValue("driverId", driver.id);
+                }}
+              />
+            )}
+
+            {currentStep === "form" && (
+              <ChecklistForm
+                control={control}
+                errors={errors}
+                checklistImages={checklistImages}
+                onImagePicker={showImagePicker}
+                onRemoveImage={removeImage}
+                stepData={stepData}
+                vehicleData={vehicleData}
+                isLoadingVehicle={isLoadingVehicle}
+                trigger={trigger}
+                watch={watch}
+              />
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+
+        {/* Navigation Buttons */}
+        <View className="px-6 py-4 bg-white border-t border-gray-200">
+          <View className="flex-row gap-4">
+            <Button
+              onPress={goToPrevStep}
+              variant="outline"
+              className="flex-1"
+              disabled={isSubmitting}
+            >
+              {currentStep === "branch" ? "Cancelar" : "Voltar"}
+            </Button>
+
+            {currentStep === "form" ? (
+              <>
+                <Button
+                  onPress={handleSubmit(onSubmit)}
+                  loading={isSubmitting}
+                  disabled={isSubmitting || !areAllRequiredFieldsFilled}
+                  className="flex-1"
+                >
+                  {isSubmitting ? "Criando..." : "Criar Checklist"}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onPress={goToNextStep}
+                disabled={!canProceedToNext()}
+                className="flex-1"
+              >
+                Prosseguir
+              </Button>
+            )}
+          </View>
+        </View>
+
+        {/* Image Picker Bottom Sheet */}
+        <ImagePickerBottomSheet
+          visible={showImagePickerModal}
+          onClose={() => setShowImagePickerModal(false)}
+          onTakePhoto={takePhoto}
+          onPickFromGallery={pickFromGallery}
+        />
+      </SafeAreaView>
+    </ProtectedRoute>
+  );
+};
+
+export default ChecklistScreen;

@@ -212,7 +212,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       (vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE") ? (
         <View className="mt-3 pt-3 border-t border-gray-100">
           <Text className="text-center text-primary-600 text-sm font-medium">
-            Toque para abastecer ⛽
+            Toque para ver as opções ⚡
           </Text>
         </View>
       ) : null}

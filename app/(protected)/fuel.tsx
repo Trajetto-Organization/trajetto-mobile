@@ -35,8 +35,9 @@ import {
   BranchSelection,
   DriverSelection,
   FuelTypeSelection,
-  FuelForm,
-} from "../../components/screens/fuel";
+} from "../../components/shared";
+
+import { FuelForm } from "../../components/screens/fuel";
 
 import { createFuelSchema, CreateFuelFormData } from "../../schemas";
 

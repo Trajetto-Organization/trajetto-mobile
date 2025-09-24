@@ -3,26 +3,25 @@ import { useState, useCallback, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useBranchInfiniteScroll } from "../../../hooks";
-import type { Branch } from "../../../hooks/use-branch-infinite-scroll";
+import { useDriverInfiniteScroll } from "../../hooks";
+import type { Driver } from "../../hooks/use-driver-infinite-scroll";
 
-import { LoadingSpinner, Button, Input } from "../../ui";
+import { LoadingSpinner, Button, Input } from "../ui";
 
-interface BranchSelectionProps {
+interface DriverSelectionProps {
   businessId: string;
-  selectedBranchId?: string;
-  onSelectBranch: (branch: Branch) => void;
+  selectedDriverId?: string;
+  onSelectDriver: (driver: Driver) => void;
 }
 
-export const BranchSelection: React.FC<BranchSelectionProps> = ({
+export const DriverSelection: React.FC<DriverSelectionProps> = ({
   businessId,
-  selectedBranchId,
-  onSelectBranch,
+  selectedDriverId,
+  onSelectDriver,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
 
-  // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery.trim());
@@ -30,15 +29,8 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const {
-    branches,
-    isLoading,
-    isError,
-    error,
-    hasNextPage,
-    loadMore,
-    refetch,
-  } = useBranchInfiniteScroll(debouncedSearch || undefined);
+  const { drivers, isLoading, isError, error, hasNextPage, loadMore, refetch } =
+    useDriverInfiniteScroll(debouncedSearch || undefined);
 
   const handleRefresh = useCallback(() => {
     refetch();
@@ -52,15 +44,12 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
 
   if (isError) {
     return (
-      <View
-        className="flex-1 justify-center 
-        items-center px-6"
-      >
+      <View className="flex-1 justify-center items-center px-6">
         <Text
-          className="text-xl font-bold 
+          className="text-xl font-bold
           text-gray-900 mb-4 text-center"
         >
-          Erro ao carregar filiais
+          Erro ao carregar motoristas
         </Text>
         <Text className="text-gray-600 text-center mb-8">{error}</Text>
         <Button onPress={handleRefresh}>Tentar novamente</Button>
@@ -75,7 +64,7 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
         <Input
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Buscar filial por nome..."
+          placeholder="Buscar motorista por nome ou CNH..."
           className="bg-white border-gray-200 rounded-2xl"
           rightIcon={
             searchQuery.length > 0 ? (
@@ -89,25 +78,25 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
         />
       </View>
 
-      {/* Selected Branch Indicator */}
-      {selectedBranchId && (
+      {/* Selected Driver Indicator */}
+      {selectedDriverId && (
         <View
-          className="mb-4 p-3 bg-green-50 
+          className="mb-4 p-3 bg-green-50
           rounded-lg border border-green-200"
         >
           <Text className="text-sm text-green-800 font-medium">
-            ✓ Filial selecionada
+            ✓ Motorista selecionado
           </Text>
         </View>
       )}
 
-      {/* Branch List */}
+      {/* Driver List */}
       {isLoading ? (
-        <LoadingSpinner text="Carregando filiais..." />
-      ) : branches.length === 0 ? (
+        <LoadingSpinner text="Carregando motoristas..." />
+      ) : drivers.length === 0 ? (
         <View className="flex-1 justify-center items-center">
           <Text className="text-gray-600 text-center">
-            Nenhuma filial encontrada
+            Nenhum motorista encontrado
           </Text>
         </View>
       ) : (
@@ -115,12 +104,12 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
           showsVerticalScrollIndicator={false}
           onScrollEndDrag={handleLoadMore}
         >
-          {branches.map((branch) => (
+          {drivers.map((driver) => (
             <TouchableOpacity
-              key={branch.id}
-              onPress={() => onSelectBranch(branch)}
+              key={driver.id}
+              onPress={() => onSelectDriver(driver)}
               className={`bg-white rounded-lg p-4 mb-3 border ${
-                selectedBranchId === branch.id
+                selectedDriverId === driver.id
                   ? "border-primary-500 bg-primary-50"
                   : "border-gray-200"
               }`}
@@ -128,20 +117,18 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
               <View className="flex-row items-center justify-between">
                 <View className="flex-1">
                   <Text className="font-bold text-gray-900 mb-1">
-                    {branch.corporate_reason}
+                    {driver.name}
                   </Text>
-                  {branch.fantasy_name && (
-                    <Text className="text-sm text-gray-600 mb-2">
-                      {branch.fantasy_name}
-                    </Text>
-                  )}
+                  <Text className="text-sm text-gray-600 mb-1">
+                    CNH: {driver.cnh}
+                  </Text>
                   <Text className="text-xs text-gray-500">
-                    {branch.city}, {branch.uf}
+                    {driver.city}, {driver.uf}
                   </Text>
                 </View>
-                {selectedBranchId === branch.id && (
+                {selectedDriverId === driver.id && (
                   <View
-                    className="w-6 h-6 bg-primary-500 
+                    className="w-6 h-6 bg-primary-500
                     rounded-full items-center justify-center"
                   >
                     <Ionicons name="checkmark" size={16} color="white" />

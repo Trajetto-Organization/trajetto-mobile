@@ -76,6 +76,27 @@ export const canRefuelVehicles = (user: User | null): boolean => {
   return permissions.canWrite;
 };
 
+export const checkChecklistPermission = (
+  user: User | null
+): { canRead: boolean; canWrite: boolean } => {
+  if (!user) return { canRead: false, canWrite: false };
+
+  if (user.role === "MASTER" || user.role === "BUSINESS_ADMIN") {
+    return { canRead: true, canWrite: true };
+  }
+
+  if (user.role === "BUSINESS_USER") {
+    // For now, use vehicle_manage permission for checklist
+    // This can be changed later to a specific checklist permission
+    const canRead = checkPermission(user, "vehicle_manage", "read");
+    const canWrite = checkPermission(user, "vehicle_manage", "write");
+
+    return { canRead, canWrite };
+  }
+
+  return { canRead: false, canWrite: false };
+};
+
 export const validateUserAccess = (
   user: User | null
 ): { hasAccess: boolean; reason?: string } => {

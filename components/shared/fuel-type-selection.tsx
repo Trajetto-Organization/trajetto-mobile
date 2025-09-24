@@ -3,10 +3,10 @@ import { useState, useCallback, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useFuelTypeInfiniteScroll } from "../../../hooks";
-import type { FuelType } from "../../../hooks/use-fuel-type-infinite-scroll";
+import { useFuelTypeInfiniteScroll } from "../../hooks";
+import type { FuelType } from "../../hooks/use-fuel-type-infinite-scroll";
 
-import { LoadingSpinner, Button, Input } from "../../ui";
+import { LoadingSpinner, Button, Input } from "../ui";
 
 interface FuelTypeSelectionProps {
   businessId: string;
@@ -53,7 +53,7 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
     return (
       <View className="flex-1 justify-center items-center px-6">
         <Text
-          className="text-xl font-bold 
+          className="text-xl font-bold
           text-gray-900 mb-4 text-center"
         >
           Erro ao carregar tipos de combustível
@@ -88,7 +88,7 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
       {/* Selected Fuel Type Indicator */}
       {selectedFuelTypeId && (
         <View
-          className="mb-4 p-3 bg-green-50 
+          className="mb-4 p-3 bg-green-50
           rounded-lg border border-green-200"
         >
           <Text className="text-sm text-green-800 font-medium">
@@ -129,7 +129,7 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
                 </View>
                 {selectedFuelTypeId === fuelType.id && (
                   <View
-                    className="w-6 h-6 bg-primary-500 
+                    className="w-6 h-6 bg-primary-500
                     rounded-full items-center justify-center"
                   >
                     <Ionicons name="checkmark" size={16} color="white" />

@@ -12,7 +12,11 @@ import { useVehicleInfiniteScroll } from "../../hooks";
 import { ProtectedRoute } from "../../components/protected-route";
 import { Header } from "../../components/header";
 
-import { LogoutModal, SwitchBusinessModal } from "../../components/ui";
+import {
+  LogoutModal,
+  SwitchBusinessModal,
+  VehicleActionModal,
+} from "../../components/ui";
 
 import {
   VehicleSearch,
@@ -43,6 +47,10 @@ const VehiclesScreen = () => {
 
   const [isSwitchingBusiness, setIsSwitchingBusiness] =
     useState<boolean>(false);
+
+  const [showVehicleActionModal, setShowVehicleActionModal] =
+    useState<boolean>(false);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
 
   // Debounce search query
   useEffect(() => {
@@ -107,43 +115,33 @@ const VehiclesScreen = () => {
           text2: "Você só pode visualizar os veículos.",
           position: "top",
         });
-
         return;
       }
 
-      // Check if vehicle can be refueled
-      if (vehicle.status === "INACTIVE") {
-        Toast.show({
-          type: "error",
-          text1: "Veículo inativo",
-          text2: "Este veículo está inativo e não pode ser abastecido.",
-          position: "top",
-        });
-
-        return;
-      }
-
-      if (vehicle.status === "BLOCKED") {
-        Toast.show({
-          type: "error",
-          text1: "Veículo bloqueado",
-          text2: "Este veículo está bloqueado e não pode ser abastecido.",
-          position: "top",
-        });
-
-        return;
-      }
-
-      // Only allow refueling for ACTIVE and IN_ROUTE vehicles
-      if (vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE") {
-        router.push({
-          pathname: "/fuel",
-          params: { vehicleId: vehicle.id },
-        });
-      }
+      // Set selected vehicle and show action modal
+      setSelectedVehicle(vehicle);
+      setShowVehicleActionModal(true);
     },
-    [permissions.canWrite, router]
+    [permissions.canWrite]
   );
+
+  const handleFuelAction = useCallback(() => {
+    if (!selectedVehicle) return;
+
+    router.push({
+      pathname: "/fuel",
+      params: { vehicleId: selectedVehicle.id },
+    });
+  }, [selectedVehicle, router]);
+
+  const handleChecklistAction = useCallback(() => {
+    if (!selectedVehicle) return;
+
+    router.push({
+      pathname: "/checklist",
+      params: { vehicleId: selectedVehicle.id },
+    });
+  }, [selectedVehicle, router]);
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -279,6 +277,18 @@ const VehiclesScreen = () => {
           onConfirm={confirmSwitchBusiness}
           currentBusiness={user?.selectedBusiness as string}
           isLoading={isSwitchingBusiness}
+        />
+
+        {/* Vehicle Action Modal */}
+        <VehicleActionModal
+          visible={showVehicleActionModal}
+          vehicle={selectedVehicle}
+          onClose={() => {
+            setShowVehicleActionModal(false);
+            setSelectedVehicle(null);
+          }}
+          onFuelAction={handleFuelAction}
+          onChecklistAction={handleChecklistAction}
         />
       </SafeAreaView>
     </ProtectedRoute>

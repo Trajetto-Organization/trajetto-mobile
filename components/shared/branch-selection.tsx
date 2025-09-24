@@ -3,25 +3,26 @@ import { useState, useCallback, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useDriverInfiniteScroll } from "../../../hooks";
-import type { Driver } from "../../../hooks/use-driver-infinite-scroll";
+import { useBranchInfiniteScroll } from "../../hooks";
+import type { Branch } from "../../hooks/use-branch-infinite-scroll";
 
-import { LoadingSpinner, Button, Input } from "../../ui";
+import { LoadingSpinner, Button, Input } from "../ui";
 
-interface DriverSelectionProps {
+interface BranchSelectionProps {
   businessId: string;
-  selectedDriverId?: string;
-  onSelectDriver: (driver: Driver) => void;
+  selectedBranchId?: string;
+  onSelectBranch: (branch: Branch) => void;
 }
 
-export const DriverSelection: React.FC<DriverSelectionProps> = ({
+export const BranchSelection: React.FC<BranchSelectionProps> = ({
   businessId,
-  selectedDriverId,
-  onSelectDriver,
+  selectedBranchId,
+  onSelectBranch,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
 
+  // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery.trim());
@@ -29,8 +30,15 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const { drivers, isLoading, isError, error, hasNextPage, loadMore, refetch } =
-    useDriverInfiniteScroll(debouncedSearch || undefined);
+  const {
+    branches,
+    isLoading,
+    isError,
+    error,
+    hasNextPage,
+    loadMore,
+    refetch,
+  } = useBranchInfiniteScroll(debouncedSearch || undefined);
 
   const handleRefresh = useCallback(() => {
     refetch();
@@ -44,12 +52,15 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
 
   if (isError) {
     return (
-      <View className="flex-1 justify-center items-center px-6">
+      <View
+        className="flex-1 justify-center
+        items-center px-6"
+      >
         <Text
-          className="text-xl font-bold 
+          className="text-xl font-bold
           text-gray-900 mb-4 text-center"
         >
-          Erro ao carregar motoristas
+          Erro ao carregar filiais
         </Text>
         <Text className="text-gray-600 text-center mb-8">{error}</Text>
         <Button onPress={handleRefresh}>Tentar novamente</Button>
@@ -64,7 +75,7 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
         <Input
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Buscar motorista por nome ou CNH..."
+          placeholder="Buscar filial por nome..."
           className="bg-white border-gray-200 rounded-2xl"
           rightIcon={
             searchQuery.length > 0 ? (
@@ -78,25 +89,25 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
         />
       </View>
 
-      {/* Selected Driver Indicator */}
-      {selectedDriverId && (
+      {/* Selected Branch Indicator */}
+      {selectedBranchId && (
         <View
-          className="mb-4 p-3 bg-green-50 
+          className="mb-4 p-3 bg-green-50
           rounded-lg border border-green-200"
         >
           <Text className="text-sm text-green-800 font-medium">
-            ✓ Motorista selecionado
+            ✓ Filial selecionada
           </Text>
         </View>
       )}
 
-      {/* Driver List */}
+      {/* Branch List */}
       {isLoading ? (
-        <LoadingSpinner text="Carregando motoristas..." />
-      ) : drivers.length === 0 ? (
+        <LoadingSpinner text="Carregando filiais..." />
+      ) : branches.length === 0 ? (
         <View className="flex-1 justify-center items-center">
           <Text className="text-gray-600 text-center">
-            Nenhum motorista encontrado
+            Nenhuma filial encontrada
           </Text>
         </View>
       ) : (
@@ -104,12 +115,12 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
           showsVerticalScrollIndicator={false}
           onScrollEndDrag={handleLoadMore}
         >
-          {drivers.map((driver) => (
+          {branches.map((branch) => (
             <TouchableOpacity
-              key={driver.id}
-              onPress={() => onSelectDriver(driver)}
+              key={branch.id}
+              onPress={() => onSelectBranch(branch)}
               className={`bg-white rounded-lg p-4 mb-3 border ${
-                selectedDriverId === driver.id
+                selectedBranchId === branch.id
                   ? "border-primary-500 bg-primary-50"
                   : "border-gray-200"
               }`}
@@ -117,18 +128,20 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
               <View className="flex-row items-center justify-between">
                 <View className="flex-1">
                   <Text className="font-bold text-gray-900 mb-1">
-                    {driver.name}
+                    {branch.corporate_reason}
                   </Text>
-                  <Text className="text-sm text-gray-600 mb-1">
-                    CNH: {driver.cnh}
-                  </Text>
+                  {branch.fantasy_name && (
+                    <Text className="text-sm text-gray-600 mb-2">
+                      {branch.fantasy_name}
+                    </Text>
+                  )}
                   <Text className="text-xs text-gray-500">
-                    {driver.city}, {driver.uf}
+                    {branch.city}, {branch.uf}
                   </Text>
                 </View>
-                {selectedDriverId === driver.id && (
+                {selectedBranchId === branch.id && (
                   <View
-                    className="w-6 h-6 bg-primary-500 
+                    className="w-6 h-6 bg-primary-500
                     rounded-full items-center justify-center"
                   >
                     <Ionicons name="checkmark" size={16} color="white" />
