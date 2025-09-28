@@ -38,9 +38,12 @@ interface ChecklistFormProps {
 const getPhotoRequirements = (formData: any) => {
   const requirements = {
     // Always required
-    current_mileage: { required: true, reason: "Proteção legal" },
-    fuel_level_adequate: { required: true, reason: "Proteção legal" },
-    tires_condition: { required: true, reason: "Proteção legal" },
+    current_mileage: { required: true, reason: "Proteção legal - obrigatório" },
+    fuel_level_adequate: {
+      required: true,
+      reason: "Proteção legal - obrigatório",
+    },
+    tires_condition: { required: true, reason: "Proteção legal - obrigatório" },
 
     // Required if not OK
     brakes_working: {
@@ -173,13 +176,17 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
 
     return (
       <View className="mb-4">
-        <View className="flex-row items-center justify-between mb-2">
-          <Text className="text-sm font-medium text-gray-700">
-            📷 {label}
-            {isRequired && <Text className="text-red-500"> *</Text>}
-          </Text>
+        <View className="mb-2">
+          <View className="flex-row items-center flex-wrap">
+            <Text className="text-sm font-medium text-gray-700">
+              📷 {label}
+              {isRequired && <Text className="text-red-500"> *</Text>}
+            </Text>
+          </View>
           {requirement?.reason && (
-            <Text className="text-xs text-gray-500">{requirement.reason}</Text>
+            <Text className="text-xs text-gray-500 mt-1 flex-wrap">
+              {requirement.reason}
+            </Text>
           )}
         </View>
 

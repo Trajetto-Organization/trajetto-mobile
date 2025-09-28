@@ -389,6 +389,20 @@ const ChecklistScreen = () => {
     return cameraStatus === "granted" && galleryStatus === "granted";
   }, [cameraPermission, requestCameraPermission]);
 
+  // File validation function
+  const validateImageFile = useCallback(
+    (asset: ImagePicker.ImagePickerAsset): string | null => {
+      const maxSize = 5 * 1024 * 1024; // 5MB
+
+      if (asset.fileSize && asset.fileSize > maxSize) {
+        return "O arquivo deve ter no máximo 5MB.";
+      }
+
+      return null;
+    },
+    []
+  );
+
   const takePhoto = useCallback(async () => {
     const hasPermissions = await requestPermissions();
     if (!hasPermissions) {
@@ -409,15 +423,26 @@ const ChecklistScreen = () => {
     });
 
     if (!result.canceled && result.assets[0] && currentPhotoField) {
+      const asset = result.assets[0];
+      const validationError = validateImageFile(asset);
+
+      if (validationError) {
+        Toast.show({
+          type: "error",
+          text1: "Arquivo muito grande",
+          text2: validationError,
+          position: "top",
+          visibilityTime: 4000,
+        });
+        return;
+      }
+
       setChecklistImages((prev) => ({
         ...prev,
-        [currentPhotoField]: [
-          ...(prev[currentPhotoField] || []),
-          result.assets[0],
-        ],
+        [currentPhotoField]: [...(prev[currentPhotoField] || []), asset],
       }));
     }
-  }, [requestPermissions, currentPhotoField]);
+  }, [requestPermissions, currentPhotoField, validateImageFile]);
 
   const pickFromGallery = useCallback(async () => {
     const hasPermissions = await requestPermissions();
@@ -440,15 +465,26 @@ const ChecklistScreen = () => {
     });
 
     if (!result.canceled && result.assets[0] && currentPhotoField) {
+      const asset = result.assets[0];
+      const validationError = validateImageFile(asset);
+
+      if (validationError) {
+        Toast.show({
+          type: "error",
+          text1: "Arquivo muito grande",
+          text2: validationError,
+          position: "top",
+          visibilityTime: 4000,
+        });
+        return;
+      }
+
       setChecklistImages((prev) => ({
         ...prev,
-        [currentPhotoField]: [
-          ...(prev[currentPhotoField] || []),
-          result.assets[0],
-        ],
+        [currentPhotoField]: [...(prev[currentPhotoField] || []), asset],
       }));
     }
-  }, [requestPermissions, currentPhotoField]);
+  }, [requestPermissions, currentPhotoField, validateImageFile]);
 
   const showImagePicker = useCallback((fieldName: string) => {
     setCurrentPhotoField(fieldName);

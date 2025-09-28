@@ -291,6 +291,20 @@ const FuelScreen = () => {
     return cameraStatus === "granted" && galleryStatus === "granted";
   }, [cameraPermission, requestCameraPermission]);
 
+  // File validation function
+  const validateImageFile = useCallback(
+    (asset: ImagePicker.ImagePickerAsset): string | null => {
+      const maxSize = 5 * 1024 * 1024; // 5MB
+
+      if (asset.fileSize && asset.fileSize > maxSize) {
+        return "O arquivo deve ter no máximo 5MB.";
+      }
+
+      return null;
+    },
+    []
+  );
+
   const takePhoto = useCallback(async () => {
     const hasPermissions = await requestPermissions();
     if (!hasPermissions) {
@@ -312,9 +326,23 @@ const FuelScreen = () => {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setOdometerImage(result.assets[0]);
+      const asset = result.assets[0];
+      const validationError = validateImageFile(asset);
+
+      if (validationError) {
+        Toast.show({
+          type: "error",
+          text1: "Arquivo muito grande",
+          text2: validationError,
+          position: "top",
+          visibilityTime: 4000,
+        });
+        return;
+      }
+
+      setOdometerImage(asset);
     }
-  }, [requestPermissions]);
+  }, [requestPermissions, validateImageFile]);
 
   const pickFromGallery = useCallback(async () => {
     const hasPermissions = await requestPermissions();
@@ -338,9 +366,23 @@ const FuelScreen = () => {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setOdometerImage(result.assets[0]);
+      const asset = result.assets[0];
+      const validationError = validateImageFile(asset);
+
+      if (validationError) {
+        Toast.show({
+          type: "error",
+          text1: "Arquivo muito grande",
+          text2: validationError,
+          position: "top",
+          visibilityTime: 4000,
+        });
+        return;
+      }
+
+      setOdometerImage(asset);
     }
-  }, [requestPermissions]);
+  }, [requestPermissions, validateImageFile]);
 
   const showImagePicker = useCallback(() => {
     setShowImagePickerModal(true);
