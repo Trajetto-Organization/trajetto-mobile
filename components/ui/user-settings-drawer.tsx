@@ -66,9 +66,13 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
       case "BUSINESS_ADMIN":
         return "Administrador 👑";
       case "BUSINESS_USER":
-        return "Usuário ♦️";
+        // Check if user is a driver
+        if (user?.driverId) {
+          return "Motorista 🚗";
+        }
+        return "Colaborador ♦️";
       default:
-        return "Usuário ♦️";
+        return "Colaborador ♦️";
     }
   };
 

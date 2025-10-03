@@ -10,22 +10,28 @@ interface FetchVehicleParams {
   pageParam: number;
   signal?: AbortSignal;
   search?: string;
+  businessId: string;
 }
 
 const fetchVehicles = async ({
   pageParam,
   signal,
   search,
+  businessId,
 }: FetchVehicleParams): Promise<{ data: Vehicle[]; total: number }> => {
   const MAX_VEHICLE_PAGE = 10;
 
   try {
     // Build endpoint URL with query parameters
-    let endpoint = `/vehicle/list-vehicle?page=${pageParam}&pageSize=${MAX_VEHICLE_PAGE}`;
+    // Use list-vehicle-business to filter by businessId (works for MASTER, BUSINESS_ADMIN, and drivers)
+    let endpoint = `/vehicle/list-vehicle-business?page=${pageParam}&pageSize=${MAX_VEHICLE_PAGE}&businessId=${businessId}`;
 
     if (search) {
       endpoint += `&search=${encodeURIComponent(search)}`;
     }
+
+    // Note: driverId filtering is now handled automatically by the backend
+    // based on the authenticated user's role and driverId
 
     // Use apiClient which handles token refresh automatically
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
@@ -46,7 +52,7 @@ const fetchVehicles = async ({
   }
 };
 
-export function useVehicleInfiniteScroll(search?: string) {
+export function useVehicleInfiniteScroll(search?: string, businessId?: string) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -59,7 +65,7 @@ export function useVehicleInfiniteScroll(search?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["vehicles", search],
+    queryKey: ["vehicles", search, businessId],
     queryFn: ({ pageParam = 1 }) => {
       // Cancel previous request if it exists
       if (abortControllerRef.current) {
@@ -72,9 +78,11 @@ export function useVehicleInfiniteScroll(search?: string) {
       return fetchVehicles({
         pageParam,
         search,
+        businessId: businessId || "", // Require businessId
         signal: abortControllerRef.current.signal,
       });
     },
+    enabled: !!businessId, // Only fetch if businessId is provided
     getNextPageParam: (lastPage, allPages) => {
       // Check if there are more vehicles to load
       return lastPage.data.length === 10 ? allPages.length + 1 : undefined;

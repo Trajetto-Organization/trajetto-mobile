@@ -58,7 +58,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   if (avatar) {
     return (
       <View
-        className={`${sizeClasses.container} 
+        className={`${sizeClasses.container}
         rounded-full overflow-hidden ${className}`}
       >
         <Image

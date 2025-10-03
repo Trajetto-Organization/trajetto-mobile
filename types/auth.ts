@@ -39,6 +39,7 @@ export interface User {
   two_factor_enabled?: boolean;
   avatar?: string | null;
   profileAccess?: ProfileAccess | null;
+  driverId?: string | null;
   email_notifications_enabled?: boolean;
   activity_notifications_enabled?: boolean;
   access_revoked?: boolean;

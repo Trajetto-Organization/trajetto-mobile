@@ -27,7 +27,11 @@ import {
 } from "../../components/screens/vehicles";
 
 import { Vehicle } from "../../types";
-import { checkVehiclePermission } from "../../utils/permissions";
+import {
+  checkVehiclePermission,
+  checkFuelPermission,
+  checkChecklistPermission,
+} from "../../utils/permissions";
 
 const VehiclesScreen = () => {
   const router = useRouter();
@@ -61,6 +65,7 @@ const VehiclesScreen = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Note: driverId filtering is now handled automatically by the backend
   const {
     vehicles,
     total,
@@ -71,7 +76,10 @@ const VehiclesScreen = () => {
     hasNextPage,
     loadMore,
     refetch,
-  } = useVehicleInfiniteScroll(debouncedSearch || undefined);
+  } = useVehicleInfiniteScroll(
+    debouncedSearch || undefined,
+    user?.businessId || user?.selectedBusiness || undefined
+  );
 
   // Calculate active vehicles count (ACTIVE + IN_ROUTE)
   const activeVehiclesCount = vehicles.filter(
@@ -79,6 +87,9 @@ const VehiclesScreen = () => {
   ).length;
 
   const permissions = checkVehiclePermission(user);
+  const fuelPermissions = checkFuelPermission(user);
+
+  const checklistPermissions = checkChecklistPermission(user);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -108,11 +119,19 @@ const VehiclesScreen = () => {
 
   const handleVehiclePress = useCallback(
     (vehicle: Vehicle) => {
-      if (!permissions.canWrite) {
+      // Allow access if user can write fuel OR checklist (for drivers)
+      // OR if user can write vehicles (for admins)
+      const canAccessActions =
+        permissions.canWrite ||
+        fuelPermissions.canWrite ||
+        checklistPermissions.canWrite;
+
+      if (!canAccessActions) {
         Toast.show({
           type: "info",
           text1: "Acesso limitado",
-          text2: "Você só pode visualizar os veículos.",
+          text2:
+            "Você não tem permissão para criar abastecimentos ou checklists.",
           position: "top",
         });
         return;
@@ -122,7 +141,11 @@ const VehiclesScreen = () => {
       setSelectedVehicle(vehicle);
       setShowVehicleActionModal(true);
     },
-    [permissions.canWrite]
+    [
+      permissions.canWrite,
+      fuelPermissions.canWrite,
+      checklistPermissions.canWrite,
+    ]
   );
 
   const handleFuelAction = useCallback(() => {
@@ -260,6 +283,13 @@ const VehiclesScreen = () => {
           onLoadMore={handleLoadMore}
           onClearSearch={handleClearSearch}
           onOpenWebPlatform={openWebPlatform}
+          isDriverWithoutVehicles={
+            user?.role === "BUSINESS_USER" &&
+            !!user?.driverId &&
+            vehicles.length === 0 &&
+            !isLoading &&
+            !debouncedSearch
+          }
         />
 
         {/* Logout Modal */}

@@ -62,7 +62,13 @@ const FuelScreen = () => {
   const { vehicleId } = useLocalSearchParams<{ vehicleId: string }>();
   const { user, logout } = useAuthStore();
 
-  const [currentStep, setCurrentStep] = useState<Step>("branch");
+  // Check if user is a driver
+  const isDriver = user?.role === "BUSINESS_USER" && !!user?.driverId;
+
+  // Drivers start directly at form step (skip branch, driver, fuelType)
+  const [currentStep, setCurrentStep] = useState<Step>(
+    isDriver ? "form" : "branch"
+  );
   const [stepData, setStepData] = useState<Partial<StepData>>({});
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -217,6 +223,22 @@ const FuelScreen = () => {
 
   // Function to check if all required fields are filled
   const areAllRequiredFieldsFilled = useCallback(() => {
+    // For drivers: branchId and fuelTypeId are auto-populated by backend, only check driver and form fields
+    if (isDriver) {
+      return (
+        stepData.driverId &&
+        watchedRefuelingDate &&
+        watchedMileage &&
+        watchedLiters &&
+        watchedPrice &&
+        odometerImage &&
+        watchedMileage > 0 &&
+        watchedLiters > 0 &&
+        watchedPrice > 0
+      );
+    }
+
+    // For non-drivers: check all fields including branchId and fuelTypeId
     return (
       stepData.branchId &&
       stepData.driverId &&
@@ -231,6 +253,7 @@ const FuelScreen = () => {
       watchedPrice > 0
     );
   }, [
+    isDriver,
     stepData.branchId,
     stepData.driverId,
     stepData.fuelTypeId,
@@ -243,24 +266,37 @@ const FuelScreen = () => {
 
   // All useCallback hooks at the top level
   const goToNextStep = useCallback(() => {
+    // Drivers don't navigate between steps (only form step exists)
+    if (isDriver) {
+      return;
+    }
+
     const stepOrder: Step[] = ["branch", "driver", "fuelType", "form"];
     const currentIndex = stepOrder.indexOf(currentStep);
 
     if (currentIndex < stepOrder.length - 1) {
-      setCurrentStep(stepOrder[currentIndex + 1]);
+      const nextStep = stepOrder[currentIndex + 1];
+      setCurrentStep(nextStep);
     }
-  }, [currentStep]);
+  }, [currentStep, isDriver]);
 
   const goToPrevStep = useCallback(() => {
+    // Drivers go back to vehicle list (no previous steps)
+    if (isDriver) {
+      router.back();
+      return;
+    }
+
     const stepOrder: Step[] = ["branch", "driver", "fuelType", "form"];
     const currentIndex = stepOrder.indexOf(currentStep);
 
     if (currentIndex > 0) {
-      setCurrentStep(stepOrder[currentIndex - 1]);
+      const prevStep = stepOrder[currentIndex - 1];
+      setCurrentStep(prevStep);
     } else {
       router.back();
     }
-  }, [currentStep, router]);
+  }, [currentStep, router, isDriver]);
 
   const canProceedToNext = useCallback((): boolean => {
     switch (currentStep) {
@@ -408,6 +444,35 @@ const FuelScreen = () => {
     }
   }, [watchedLiters, watchedPrice, setValue]);
 
+  // Auto-populate driver, branch, and fuel type data for driver users
+  useEffect(() => {
+    if (isDriver && user && vehicleData) {
+      // Auto-populate all data in a single call to avoid overwriting
+      setStepData((prev) => ({
+        ...prev,
+        // Driver data
+        driverId: user.driverId || "",
+        driverName: user.name,
+        driverCnh: "", // CNH is not available in user data, but will be filled by backend
+        // Fuel type from vehicle (drivers cannot change it)
+        fuelTypeId: vehicleData.fuelTypeId || "",
+        fuelTypeName: vehicleData.fuelTypeDescription || "",
+        // Branch from vehicle (drivers cannot change it)
+        branchId: vehicleData.branchId || "",
+        branchName: vehicleData.branchName || "",
+      }));
+
+      // Set form values - always set fuelTypeId and driverId for drivers
+      setValue("driverId", user.driverId || "");
+      setValue("fuelTypeId", vehicleData.fuelTypeId || "");
+
+      // Set branchId if vehicle has one (otherwise backend will use driver's branch)
+      if (vehicleData.branchId) {
+        setValue("branchId", vehicleData.branchId);
+      }
+    }
+  }, [isDriver, user, vehicleData, setValue]);
+
   // Check permissions
   const permissions = checkFuelPermission(user);
   if (!permissions.canWrite) {
@@ -430,41 +495,43 @@ const FuelScreen = () => {
 
   // Get step title and description
   const getStepInfo = () => {
+    const totalSteps = isDriver ? 1 : 4; // 1 step for drivers (only form), 4 steps for others
+
     switch (currentStep) {
       case "branch":
         return {
           title: "Selecionar Filial",
           description: "Escolha a filial para o abastecimento",
           step: 1,
-          total: 4,
+          total: totalSteps,
         };
       case "driver":
         return {
           title: "Selecionar Motorista",
           description: "Escolha o motorista responsável",
           step: 2,
-          total: 4,
+          total: totalSteps,
         };
       case "fuelType":
         return {
           title: "Tipo de Combustível",
           description: "Escolha o tipo de combustível",
           step: 3,
-          total: 4,
+          total: totalSteps,
         };
       case "form":
         return {
           title: "Dados do Abastecimento",
           description: "Insira as informações do abastecimento",
-          step: 4,
-          total: 4,
+          step: isDriver ? 1 : 4, // Drivers only have 1 step (form only)
+          total: totalSteps,
         };
       default:
         return {
           title: "Abastecimento",
           description: "Criar novo abastecimento",
           step: 1,
-          total: 4,
+          total: totalSteps,
         };
     }
   };
@@ -571,6 +638,7 @@ const FuelScreen = () => {
                 vehicleData={vehicleData}
                 isLoadingVehicle={isLoadingVehicle}
                 trigger={trigger}
+                isDriver={isDriver}
               />
             )}
           </ScrollView>

@@ -38,6 +38,11 @@ export const checkVehiclePermission = (
   }
 
   if (user.role === "BUSINESS_USER") {
+    // Drivers have read-only access to their vehicles
+    if (user.driverId) {
+      return { canRead: true, canWrite: false };
+    }
+
     const canRead = checkPermission(user, "vehicle_manage", "read");
     const canWrite = checkPermission(user, "vehicle_manage", "write");
 
@@ -57,6 +62,11 @@ export const checkFuelPermission = (
   }
 
   if (user.role === "BUSINESS_USER") {
+    // Drivers can create fuel records for their vehicles
+    if (user.driverId) {
+      return { canRead: true, canWrite: true };
+    }
+
     const canRead = checkPermission(user, "fuel_manage", "read");
     const canWrite = checkPermission(user, "fuel_manage", "write");
 
@@ -86,6 +96,11 @@ export const checkChecklistPermission = (
   }
 
   if (user.role === "BUSINESS_USER") {
+    // Drivers can create checklists for their vehicles
+    if (user.driverId) {
+      return { canRead: true, canWrite: true };
+    }
+
     // For now, use vehicle_manage permission for checklist
     // This can be changed later to a specific checklist permission
     const canRead = checkPermission(user, "vehicle_manage", "read");
@@ -113,8 +128,15 @@ export const validateUserAccess = (
     return { hasAccess: true };
   }
 
-  // BUSINESS_USER needs vehicle read permission to access the app
+  // BUSINESS_USER validation
   if (user.role === "BUSINESS_USER") {
+    // If user is a driver (has driverId), they have access
+    // Drivers don't need profileAccess or permissions
+    if (user.driverId) {
+      return { hasAccess: true };
+    }
+
+    // If not a driver, check for profileAccess and permissions
     if (
       !user.profileAccess?.permissions ||
       user.profileAccess.permissions.length === 0
@@ -132,4 +154,54 @@ export const validateUserAccess = (
   }
 
   return { hasAccess: false, reason: "invalid_role" };
+};
+
+// Helper for branch permissions
+export const checkBranchPermission = (
+  user: User | null
+): { canRead: boolean; canWrite: boolean } => {
+  if (!user) return { canRead: false, canWrite: false };
+
+  if (user.role === "MASTER" || user.role === "BUSINESS_ADMIN") {
+    return { canRead: true, canWrite: true };
+  }
+
+  if (user.role === "BUSINESS_USER") {
+    // Drivers can read branches (to select branch for fuel/checklist)
+    if (user.driverId) {
+      return { canRead: true, canWrite: false };
+    }
+
+    const canRead = checkPermission(user, "branch_manage", "read");
+    const canWrite = checkPermission(user, "branch_manage", "write");
+
+    return { canRead, canWrite };
+  }
+
+  return { canRead: false, canWrite: false };
+};
+
+// Helper for fuel type permissions
+export const checkFuelTypePermission = (
+  user: User | null
+): { canRead: boolean; canWrite: boolean } => {
+  if (!user) return { canRead: false, canWrite: false };
+
+  if (user.role === "MASTER" || user.role === "BUSINESS_ADMIN") {
+    return { canRead: true, canWrite: true };
+  }
+
+  if (user.role === "BUSINESS_USER") {
+    // Drivers can read fuel types (to select fuel type when creating fuel)
+    if (user.driverId) {
+      return { canRead: true, canWrite: false };
+    }
+
+    const canRead = checkPermission(user, "fuel_type_manage", "read");
+    const canWrite = checkPermission(user, "fuel_type_manage", "write");
+
+    return { canRead, canWrite };
+  }
+
+  return { canRead: false, canWrite: false };
 };

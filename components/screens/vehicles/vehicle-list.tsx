@@ -18,6 +18,7 @@ interface VehicleListProps {
   onLoadMore: () => void;
   onClearSearch: () => void;
   onOpenWebPlatform: () => void;
+  isDriverWithoutVehicles?: boolean;
 }
 
 export const VehicleList: React.FC<VehicleListProps> = ({
@@ -32,6 +33,7 @@ export const VehicleList: React.FC<VehicleListProps> = ({
   onLoadMore,
   onClearSearch,
   onOpenWebPlatform,
+  isDriverWithoutVehicles = false,
 }) => {
   const hasSearchResults = Boolean(
     debouncedSearch && debouncedSearch.length > 0
@@ -65,6 +67,7 @@ export const VehicleList: React.FC<VehicleListProps> = ({
         onClearSearch={showNoResults ? onClearSearch : undefined}
         onRefresh={onRefresh}
         onOpenWebPlatform={!showNoResults ? onOpenWebPlatform : undefined}
+        isDriverWithoutVehicles={isDriverWithoutVehicles}
       />
     );
   };

@@ -54,7 +54,13 @@ const ChecklistScreen = () => {
   const { vehicleId } = useLocalSearchParams<{ vehicleId: string }>();
   const { user } = useAuthStore();
 
-  const [currentStep, setCurrentStep] = useState<Step>("branch");
+  // Check if user is a driver
+  const isDriver = user?.role === "BUSINESS_USER" && !!user?.driverId;
+
+  // Drivers start directly at form step (skip branch and driver selection)
+  const [currentStep, setCurrentStep] = useState<Step>(
+    isDriver ? "form" : "branch"
+  );
   const [stepData, setStepData] = useState<Partial<StepData>>({});
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -215,8 +221,15 @@ const ChecklistScreen = () => {
     const formData = watch();
 
     // Check if all step data is filled
-    if (!stepData.branchId || !stepData.driverId) {
-      return false;
+    // For drivers: branchId is auto-populated by backend, only check driverId
+    if (isDriver) {
+      if (!stepData.driverId) {
+        return false;
+      }
+    } else {
+      if (!stepData.branchId || !stepData.driverId) {
+        return false;
+      }
     }
 
     // Check if all required form fields are filled
@@ -338,28 +351,47 @@ const ChecklistScreen = () => {
     }
 
     return true;
-  }, [stepData.branchId, stepData.driverId, watch(), checklistImages]);
+  }, [
+    isDriver,
+    stepData.branchId,
+    stepData.driverId,
+    watch(),
+    checklistImages,
+  ]);
 
   // Navigation callbacks
   const goToNextStep = useCallback(() => {
+    // Drivers don't navigate between steps (only form step exists)
+    if (isDriver) {
+      return;
+    }
+
     const stepOrder: Step[] = ["branch", "driver", "form"];
     const currentIndex = stepOrder.indexOf(currentStep);
 
     if (currentIndex < stepOrder.length - 1) {
-      setCurrentStep(stepOrder[currentIndex + 1]);
+      const nextStep = stepOrder[currentIndex + 1];
+      setCurrentStep(nextStep);
     }
-  }, [currentStep]);
+  }, [currentStep, isDriver]);
 
   const goToPrevStep = useCallback(() => {
+    // Drivers go back to vehicle list (no previous steps)
+    if (isDriver) {
+      router.back();
+      return;
+    }
+
     const stepOrder: Step[] = ["branch", "driver", "form"];
     const currentIndex = stepOrder.indexOf(currentStep);
 
     if (currentIndex > 0) {
-      setCurrentStep(stepOrder[currentIndex - 1]);
+      const prevStep = stepOrder[currentIndex - 1];
+      setCurrentStep(prevStep);
     } else {
       router.back();
     }
-  }, [currentStep, router]);
+  }, [currentStep, router, isDriver]);
 
   const canProceedToNext = useCallback((): boolean => {
     switch (currentStep) {
@@ -510,6 +542,31 @@ const ChecklistScreen = () => {
     }
   }, [stepData, setValue]);
 
+  // Auto-populate driver and branch data for driver users
+  useEffect(() => {
+    if (isDriver && user && vehicleData) {
+      // Auto-populate all data in a single call to avoid overwriting
+      setStepData((prev) => ({
+        ...prev,
+        // Driver data
+        driverId: user.driverId || "",
+        driverName: user.name,
+        driverCnh: "", // CNH is not available in user data, but will be filled by backend
+        // Branch from vehicle (drivers cannot change it)
+        branchId: vehicleData.branchId || "",
+        branchName: vehicleData.branchName || "",
+      }));
+
+      // Set form values - always set driverId for drivers
+      setValue("driverId", user.driverId || "");
+
+      // Set branchId if vehicle has one (otherwise backend will use driver's branch)
+      if (vehicleData.branchId) {
+        setValue("branchId", vehicleData.branchId);
+      }
+    }
+  }, [isDriver, user, vehicleData, setValue]);
+
   // Check permissions
   const permissions = checkChecklistPermission(user);
 
@@ -533,34 +590,36 @@ const ChecklistScreen = () => {
 
   // Get step title and description
   const getStepInfo = () => {
+    const totalSteps = isDriver ? 1 : 3; // 1 step for drivers (only form), 3 for others
+
     switch (currentStep) {
       case "branch":
         return {
           title: "Selecionar Filial",
           description: "Escolha a filial para o checklist",
           step: 1,
-          total: 3,
+          total: totalSteps,
         };
       case "driver":
         return {
           title: "Selecionar Motorista",
           description: "Escolha o motorista responsável",
           step: 2,
-          total: 3,
+          total: totalSteps,
         };
       case "form":
         return {
           title: "Checklist Veicular",
           description: "Realizar inspeção do veículo",
-          step: 3,
-          total: 3,
+          step: isDriver ? 1 : 3, // Drivers only have 1 step (form only)
+          total: totalSteps,
         };
       default:
         return {
           title: "Checklist Veicular",
           description: "Criar novo checklist",
           step: 1,
-          total: 3,
+          total: totalSteps,
         };
     }
   };
@@ -651,6 +710,7 @@ const ChecklistScreen = () => {
                 isLoadingVehicle={isLoadingVehicle}
                 trigger={trigger}
                 watch={watch}
+                isDriver={isDriver}
               />
             )}
           </ScrollView>

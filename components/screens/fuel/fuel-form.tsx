@@ -36,6 +36,7 @@ interface FuelFormProps {
   vehicleData: any;
   isLoadingVehicle: boolean;
   trigger: any;
+  isDriver?: boolean; // Flag to hide summary for drivers
 }
 
 export const FuelForm: React.FC<FuelFormProps> = ({
@@ -50,6 +51,7 @@ export const FuelForm: React.FC<FuelFormProps> = ({
   vehicleData,
   isLoadingVehicle,
   trigger,
+  isDriver = false,
 }) => {
   // States for formatting fields
   const [formattedMileage, setFormattedMileage] = useState<string>("");
@@ -75,56 +77,58 @@ export const FuelForm: React.FC<FuelFormProps> = ({
 
   return (
     <View className="flex-1 px-6 pt-6">
-      {/* Selected Items Summary */}
-      <View
-        className="bg-white rounded-lg 
-        p-4 mb-6 border border-gray-200"
-      >
-        <Text className="font-bold text-gray-900 mb-3">
-          📋 Resumo da Seleção
-        </Text>
+      {/* Selected Items Summary - Hidden for drivers */}
+      {!isDriver && (
+        <View
+          className="bg-white rounded-lg
+          p-4 mb-6 border border-gray-200"
+        >
+          <Text className="font-bold text-gray-900 mb-3">
+            📋 Resumo da Seleção
+          </Text>
 
-        <View className="space-y-3">
-          <View className="flex-row">
-            <Text className="text-sm text-gray-600">Filial:</Text>
-            <Text
-              className="text-sm text-gray-900 
-              flex-1 font-medium"
-            >
-              {" "}
-              {stepData.branchName || "N/A"}
-            </Text>
-          </View>
+          <View className="space-y-3">
+            <View className="flex-row">
+              <Text className="text-sm text-gray-600">Filial:</Text>
+              <Text
+                className="text-sm text-gray-900
+                flex-1 font-medium"
+              >
+                {" "}
+                {stepData.branchName || "N/A"}
+              </Text>
+            </View>
 
-          <View className="flex-row">
-            <Text className="text-sm text-gray-600">Motorista:</Text>
-            <Text
-              className="text-sm text-gray-900 
-              flex-1 font-medium"
-            >
-              {" "}
-              {stepData.driverName || "N/A"}
-              {stepData.driverCnh && (
-                <Text className="text-xs text-gray-500">
-                  {" "}
-                  (CNH: {stepData.driverCnh})
-                </Text>
-              )}
-            </Text>
-          </View>
+            <View className="flex-row">
+              <Text className="text-sm text-gray-600">Motorista:</Text>
+              <Text
+                className="text-sm text-gray-900
+                flex-1 font-medium"
+              >
+                {" "}
+                {stepData.driverName || "N/A"}
+                {stepData.driverCnh && (
+                  <Text className="text-xs text-gray-500">
+                    {" "}
+                    (CNH: {stepData.driverCnh})
+                  </Text>
+                )}
+              </Text>
+            </View>
 
-          <View className="flex-row">
-            <Text className="text-sm text-gray-600">Combustível:</Text>
-            <Text
-              className="text-sm text-gray-900 
-              flex-1 font-medium"
-            >
-              {" "}
-              {stepData.fuelTypeName || "N/A"}
-            </Text>
+            <View className="flex-row">
+              <Text className="text-sm text-gray-600">Combustível:</Text>
+              <Text
+                className="text-sm text-gray-900
+                flex-1 font-medium"
+              >
+                {" "}
+                {stepData.fuelTypeName || "N/A"}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Important Information */}
       <View

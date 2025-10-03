@@ -19,6 +19,8 @@ import { isTokenExpired } from "../utils/jwt";
 import { validateUserAccess } from "../utils/permissions";
 import apiClient, { ApiError } from "../utils/api";
 
+import { queryClient } from "../providers/query-provider";
+
 interface AuthStore extends AuthState {
   // Additional internal state
   isInitialized: boolean;
@@ -52,7 +54,9 @@ export const useAuthStore = create<AuthStore>()(
 
         try {
           const response = await apiClient.post<
-            LoginResponse | TwoFactorRequiredResponse | EmailVerificationResponse
+            | LoginResponse
+            | TwoFactorRequiredResponse
+            | EmailVerificationResponse
           >(
             "/user/session",
             { email, password },
@@ -62,10 +66,7 @@ export const useAuthStore = create<AuthStore>()(
           set({ isLoading: false });
 
           // Check if email verification is required
-          if (
-            "emailVerification" in response &&
-            response.emailVerification
-          ) {
+          if ("emailVerification" in response && response.emailVerification) {
             return {
               success: false,
               requiresEmailVerification: true,
@@ -257,6 +258,9 @@ export const useAuthStore = create<AuthStore>()(
           // Clear user data from async storage
           await asyncStorage.clear();
 
+          // Clear all React Query cache
+          queryClient.clear();
+
           // Reset store state
           set({
             user: null,
@@ -266,7 +270,8 @@ export const useAuthStore = create<AuthStore>()(
           });
         } catch (error) {
           console.error("Error during logout:", error);
-          // Even if there's an error, reset the state
+          // Even if there's an error, reset the state and clear cache
+          queryClient.clear();
           set({
             user: null,
             tokens: null,
