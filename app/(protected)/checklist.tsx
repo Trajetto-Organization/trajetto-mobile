@@ -85,9 +85,9 @@ const ChecklistScreen = () => {
     if (vehicleData?.current_mileage) {
       return baseSchema.extend({
         current_mileage: baseSchema.shape.current_mileage.refine(
-          (val) => val > vehicleData.current_mileage,
+          (val) => val >= vehicleData.current_mileage,
           {
-            message: `A quilometragem deve ser maior que a atual do veículo (${vehicleData.current_mileage?.toLocaleString()} km).`,
+            message: `A quilometragem não pode ser menor que a atual do veículo (${vehicleData.current_mileage?.toLocaleString()} km).`,
           }
         ),
       });
