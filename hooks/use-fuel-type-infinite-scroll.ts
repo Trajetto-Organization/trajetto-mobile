@@ -15,23 +15,20 @@ export interface FuelType {
 interface FetchFuelTypeParams {
   pageParam: number;
   signal?: AbortSignal;
-  search?: string;
+  businessId: string;
 }
 
 const fetchFuelTypes = async ({
   pageParam,
   signal,
-  search,
+  businessId,
 }: FetchFuelTypeParams): Promise<{ data: FuelType[]; total: number }> => {
   const MAX_FUEL_TYPE_PAGE = 10;
 
   try {
     // Build endpoint URL with query parameters
-    let endpoint = `/fuel-type/list-fuel-type?page=${pageParam}&pageSize=${MAX_FUEL_TYPE_PAGE}`;
-
-    if (search) {
-      endpoint += `&search=${encodeURIComponent(search)}`;
-    }
+    // Use list-fuel-type-business to filter by businessId
+    const endpoint = `/fuel-type/list-fuel-type-business?businessId=${businessId}&page=${pageParam}&pageSize=${MAX_FUEL_TYPE_PAGE}`;
 
     // Use apiClient which handles token refresh automatically
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
@@ -52,7 +49,7 @@ const fetchFuelTypes = async ({
   }
 };
 
-export function useFuelTypeInfiniteScroll(search?: string) {
+export function useFuelTypeInfiniteScroll(businessId?: string) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -65,7 +62,7 @@ export function useFuelTypeInfiniteScroll(search?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["fuelTypes", search],
+    queryKey: ["fuelTypes", businessId],
     queryFn: ({ pageParam = 1 }) => {
       // Cancel previous request if it exists
       if (abortControllerRef.current) {
@@ -77,10 +74,11 @@ export function useFuelTypeInfiniteScroll(search?: string) {
 
       return fetchFuelTypes({
         pageParam,
-        search,
+        businessId: businessId || "", // Require businessId
         signal: abortControllerRef.current.signal,
       });
     },
+    enabled: !!businessId, // Only fetch if businessId is provided
     getNextPageParam: (lastPage, allPages) => {
       // Check if there are more fuel types to load
       return lastPage.data.length === 10 ? allPages.length + 1 : undefined;

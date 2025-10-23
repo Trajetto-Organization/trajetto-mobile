@@ -85,7 +85,7 @@ const FuelScreen = () => {
 
   const { data: vehicleData, isLoading: isLoadingVehicle } = useVehicleData({
     vehicleId: vehicleId || "",
-    businessId: user?.businessId || "",
+    businessId: user?.businessId || user?.selectedBusiness || "",
   });
 
   // Create dynamic schema based on vehicle data
@@ -581,7 +581,7 @@ const FuelScreen = () => {
           >
             {currentStep === "branch" && (
               <BranchSelection
-                businessId={user?.businessId || ""}
+                businessId={user?.businessId || user?.selectedBusiness || ""}
                 selectedBranchId={stepData.branchId}
                 onSelectBranch={(branch) => {
                   setStepData((prev) => ({
@@ -596,7 +596,7 @@ const FuelScreen = () => {
 
             {currentStep === "driver" && (
               <DriverSelection
-                businessId={user?.businessId || ""}
+                businessId={user?.businessId || user?.selectedBusiness || ""}
                 selectedDriverId={stepData.driverId}
                 onSelectDriver={(driver) => {
                   setStepData((prev) => ({
@@ -612,7 +612,7 @@ const FuelScreen = () => {
 
             {currentStep === "fuelType" && (
               <FuelTypeSelection
-                businessId={user?.businessId || ""}
+                businessId={user?.businessId || user?.selectedBusiness || ""}
                 selectedFuelTypeId={stepData.fuelTypeId}
                 onSelectFuelType={(fuelType) => {
                   setStepData((prev) => ({

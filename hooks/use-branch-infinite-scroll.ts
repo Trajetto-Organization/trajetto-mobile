@@ -27,23 +27,20 @@ export interface Branch {
 interface FetchBranchParams {
   pageParam: number;
   signal?: AbortSignal;
-  search?: string;
+  businessId: string;
 }
 
 const fetchBranches = async ({
   pageParam,
   signal,
-  search,
+  businessId,
 }: FetchBranchParams): Promise<{ data: Branch[]; total: number }> => {
   const MAX_BRANCH_PAGE = 10;
 
   try {
     // Build endpoint URL with query parameters
-    let endpoint = `/branch/list-branch?page=${pageParam}&pageSize=${MAX_BRANCH_PAGE}`;
-
-    if (search) {
-      endpoint += `&search=${encodeURIComponent(search)}`;
-    }
+    // Use list-branch-business to filter by businessId
+    const endpoint = `/branch/list-branch-business?businessId=${businessId}&page=${pageParam}&pageSize=${MAX_BRANCH_PAGE}`;
 
     // Use apiClient which handles token refresh automatically
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
@@ -64,7 +61,7 @@ const fetchBranches = async ({
   }
 };
 
-export function useBranchInfiniteScroll(search?: string) {
+export function useBranchInfiniteScroll(businessId?: string) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -77,7 +74,7 @@ export function useBranchInfiniteScroll(search?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["branches", search],
+    queryKey: ["branches", businessId],
     queryFn: ({ pageParam = 1 }) => {
       // Cancel previous request if it exists
       if (abortControllerRef.current) {
@@ -89,10 +86,11 @@ export function useBranchInfiniteScroll(search?: string) {
 
       return fetchBranches({
         pageParam,
-        search,
+        businessId: businessId || "", // Require businessId
         signal: abortControllerRef.current.signal,
       });
     },
+    enabled: !!businessId, // Only fetch if businessId is provided
     getNextPageParam: (lastPage, allPages) => {
       // Check if there are more branches to load
       return lastPage.data.length === 10 ? allPages.length + 1 : undefined;

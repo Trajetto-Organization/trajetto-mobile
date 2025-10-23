@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,7 +38,7 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
     hasNextPage,
     loadMore,
     refetch,
-  } = useBranchInfiniteScroll(debouncedSearch || undefined);
+  } = useBranchInfiniteScroll(businessId);
 
   const handleRefresh = useCallback(() => {
     refetch();
@@ -49,6 +49,28 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
       loadMore();
     }
   }, [hasNextPage, isLoading, loadMore]);
+
+  // Filter branches locally based on search query
+  const filteredBranches = useMemo(() => {
+    if (!branches) return [];
+    if (!debouncedSearch) return branches;
+
+    const searchLower = debouncedSearch.toLowerCase();
+    return branches.filter((branch) => {
+      const corporateReason = branch.corporate_reason?.toLowerCase() || "";
+      const fantasyName = branch.fantasy_name?.toLowerCase() || "";
+
+      const city = branch.city?.toLowerCase() || "";
+      const cnpj = branch.cnpj?.toLowerCase() || "";
+
+      return (
+        corporateReason.includes(searchLower) ||
+        fantasyName.includes(searchLower) ||
+        city.includes(searchLower) ||
+        cnpj.includes(searchLower)
+      );
+    });
+  }, [branches, debouncedSearch]);
 
   if (isError) {
     return (
@@ -104,10 +126,12 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
       {/* Branch List */}
       {isLoading ? (
         <LoadingSpinner text="Carregando filiais..." />
-      ) : branches.length === 0 ? (
+      ) : filteredBranches.length === 0 ? (
         <View className="flex-1 justify-center items-center">
           <Text className="text-gray-600 text-center">
-            Nenhuma filial encontrada
+            {debouncedSearch
+              ? "Nenhuma filial encontrada para esta busca"
+              : "Nenhuma filial encontrada"}
           </Text>
         </View>
       ) : (
@@ -115,7 +139,7 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
           showsVerticalScrollIndicator={false}
           onScrollEndDrag={handleLoadMore}
         >
-          {branches.map((branch) => (
+          {filteredBranches.map((branch) => (
             <TouchableOpacity
               key={branch.id}
               onPress={() => onSelectBranch(branch)}

@@ -75,7 +75,7 @@ const ChecklistScreen = () => {
 
   const { data: vehicleData, isLoading: isLoadingVehicle } = useVehicleData({
     vehicleId: vehicleId || "",
-    businessId: user?.businessId || "",
+    businessId: user?.businessId || user?.selectedBusiness || "",
   });
 
   // Create dynamic schema based on vehicle data
@@ -669,7 +669,7 @@ const ChecklistScreen = () => {
           >
             {currentStep === "branch" && (
               <BranchSelection
-                businessId={user?.businessId || ""}
+                businessId={user?.businessId || user?.selectedBusiness || ""}
                 selectedBranchId={stepData.branchId}
                 onSelectBranch={(branch) => {
                   setStepData((prev) => ({
@@ -684,7 +684,7 @@ const ChecklistScreen = () => {
 
             {currentStep === "driver" && (
               <DriverSelection
-                businessId={user?.businessId || ""}
+                businessId={user?.businessId || user?.selectedBusiness || ""}
                 selectedDriverId={stepData.driverId}
                 onSelectDriver={(driver) => {
                   setStepData((prev) => ({

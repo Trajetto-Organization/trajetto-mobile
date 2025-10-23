@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,7 +30,7 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
   }, [searchQuery]);
 
   const { drivers, isLoading, isError, error, hasNextPage, loadMore, refetch } =
-    useDriverInfiniteScroll(debouncedSearch || undefined);
+    useDriverInfiniteScroll(businessId);
 
   const handleRefresh = useCallback(() => {
     refetch();
@@ -41,6 +41,28 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
       loadMore();
     }
   }, [hasNextPage, isLoading, loadMore]);
+
+  // Filter drivers locally based on search query
+  const filteredDrivers = useMemo(() => {
+    if (!drivers) return [];
+    if (!debouncedSearch) return drivers;
+
+    const searchLower = debouncedSearch.toLowerCase();
+    return drivers.filter((driver) => {
+      const name = driver.name?.toLowerCase() || "";
+      const cnh = driver.cnh?.toLowerCase() || "";
+
+      const cpf = driver.cpf?.toLowerCase() || "";
+      const city = driver.city?.toLowerCase() || "";
+
+      return (
+        name.includes(searchLower) ||
+        cnh.includes(searchLower) ||
+        cpf.includes(searchLower) ||
+        city.includes(searchLower)
+      );
+    });
+  }, [drivers, debouncedSearch]);
 
   if (isError) {
     return (
@@ -93,10 +115,12 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
       {/* Driver List */}
       {isLoading ? (
         <LoadingSpinner text="Carregando motoristas..." />
-      ) : drivers.length === 0 ? (
+      ) : filteredDrivers.length === 0 ? (
         <View className="flex-1 justify-center items-center">
           <Text className="text-gray-600 text-center">
-            Nenhum motorista encontrado
+            {debouncedSearch
+              ? "Nenhum motorista encontrado para esta busca"
+              : "Nenhum motorista encontrado"}
           </Text>
         </View>
       ) : (
@@ -104,7 +128,7 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
           showsVerticalScrollIndicator={false}
           onScrollEndDrag={handleLoadMore}
         >
-          {drivers.map((driver) => (
+          {filteredDrivers.map((driver) => (
             <TouchableOpacity
               key={driver.id}
               onPress={() => onSelectDriver(driver)}

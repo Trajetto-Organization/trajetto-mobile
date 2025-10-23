@@ -26,23 +26,20 @@ export interface Driver {
 interface FetchDriverParams {
   pageParam: number;
   signal?: AbortSignal;
-  search?: string;
+  businessId: string;
 }
 
 const fetchDrivers = async ({
   pageParam,
   signal,
-  search,
+  businessId,
 }: FetchDriverParams): Promise<{ data: Driver[]; total: number }> => {
   const MAX_DRIVER_PAGE = 10;
 
   try {
     // Build endpoint URL with query parameters
-    let endpoint = `/driver/list-driver?page=${pageParam}&pageSize=${MAX_DRIVER_PAGE}`;
-
-    if (search) {
-      endpoint += `&search=${encodeURIComponent(search)}`;
-    }
+    // Use list-driver-business to filter by businessId
+    const endpoint = `/driver/list-driver-business?businessId=${businessId}&page=${pageParam}&pageSize=${MAX_DRIVER_PAGE}`;
 
     // Use apiClient which handles token refresh automatically
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
@@ -63,7 +60,7 @@ const fetchDrivers = async ({
   }
 };
 
-export function useDriverInfiniteScroll(search?: string) {
+export function useDriverInfiniteScroll(businessId?: string) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -76,7 +73,7 @@ export function useDriverInfiniteScroll(search?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["drivers", search],
+    queryKey: ["drivers", businessId],
     queryFn: ({ pageParam = 1 }) => {
       // Cancel previous request if it exists
       if (abortControllerRef.current) {
@@ -88,10 +85,11 @@ export function useDriverInfiniteScroll(search?: string) {
 
       return fetchDrivers({
         pageParam,
-        search,
+        businessId: businessId || "", // Require businessId
         signal: abortControllerRef.current.signal,
       });
     },
+    enabled: !!businessId, // Only fetch if businessId is provided
     getNextPageParam: (lastPage, allPages) => {
       // Check if there are more drivers to load
       return lastPage.data.length === 10 ? allPages.length + 1 : undefined;

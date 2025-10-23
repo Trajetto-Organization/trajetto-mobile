@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -37,7 +37,7 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
     hasNextPage,
     loadMore,
     refetch,
-  } = useFuelTypeInfiniteScroll(debouncedSearch || undefined);
+  } = useFuelTypeInfiniteScroll(businessId);
 
   const handleRefresh = useCallback(() => {
     refetch();
@@ -48,6 +48,18 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
       loadMore();
     }
   }, [hasNextPage, isLoading, loadMore]);
+
+  // Filter fuel types locally based on search query
+  const filteredFuelTypes = useMemo(() => {
+    if (!fuelTypes) return [];
+    if (!debouncedSearch) return fuelTypes;
+
+    const searchLower = debouncedSearch.toLowerCase();
+    return fuelTypes.filter((fuelType) => {
+      const description = fuelType.description?.toLowerCase() || "";
+      return description.includes(searchLower);
+    });
+  }, [fuelTypes, debouncedSearch]);
 
   if (isError) {
     return (
@@ -100,10 +112,12 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
       {/* Fuel Type List */}
       {isLoading ? (
         <LoadingSpinner text="Carregando tipos de combustível..." />
-      ) : fuelTypes.length === 0 ? (
+      ) : filteredFuelTypes.length === 0 ? (
         <View className="flex-1 justify-center items-center">
           <Text className="text-gray-600 text-center">
-            Nenhum tipo de combustível encontrado
+            {debouncedSearch
+              ? "Nenhum tipo de combustível encontrado para esta busca"
+              : "Nenhum tipo de combustível encontrado"}
           </Text>
         </View>
       ) : (
@@ -111,7 +125,7 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
           showsVerticalScrollIndicator={false}
           onScrollEndDrag={handleLoadMore}
         >
-          {fuelTypes.map((fuelType) => (
+          {filteredFuelTypes.map((fuelType) => (
             <TouchableOpacity
               key={fuelType.id}
               onPress={() => onSelectFuelType(fuelType)}
