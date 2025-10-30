@@ -49,6 +49,7 @@ google-service-account.json
 
 # Local builds
 /builds
+/dist
 *.apk
 *.aab
 *.ipa
