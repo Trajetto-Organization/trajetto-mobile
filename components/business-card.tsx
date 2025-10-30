@@ -32,7 +32,8 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
     <TouchableOpacity
       onPress={handleCardPress}
       activeOpacity={0.7}
-      className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-3 mx-4"
+      className="bg-white rounded-lg shadow-sm 
+      border border-gray-200 p-4 mb-3 mx-4"
     >
       {/* Header: Corporate Reason and Fantasy Name */}
       <View className="mb-3">
@@ -109,7 +110,10 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
       {/* Additional Information */}
       <View className="flex-row justify-between items-center mb-3">
         <View className="flex-1">
-          <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+          <Text
+            className="text-xs text-gray-500 
+            uppercase tracking-wide mb-1"
+          >
             Responsável
           </Text>
           <Text
@@ -122,7 +126,10 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
         </View>
         {business.erp_code && business.erp_code !== "N/A" && (
           <View className="ml-4">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+            <Text
+              className="text-xs text-gray-500 
+              uppercase tracking-wide mb-1"
+            >
               Cód. ERP
             </Text>
             <Text className="text-sm text-gray-700">
@@ -134,7 +141,10 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
 
       {/* Selection Hint */}
       <View className="mt-3 pt-3 border-t border-gray-100">
-        <Text className="text-center text-primary-600 text-sm font-medium">
+        <Text
+          className="text-center text-primary-600 
+          text-sm font-medium"
+        >
           Toque para selecionar empresa 🏢
         </Text>
       </View>

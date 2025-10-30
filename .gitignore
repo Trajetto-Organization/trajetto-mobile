@@ -42,3 +42,13 @@ app-example
 .env
 .env.production
 .env.local
+
+# EAS credentials
+google-service-account.json
+*.cer
+
+# Local builds
+/builds
+*.apk
+*.aab
+*.ipa

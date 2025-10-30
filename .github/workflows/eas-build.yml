@@ -1,0 +1,105 @@
+# name: EAS Build and Submit
+
+# on:
+#   push:
+#     branches:
+#       - main
+#       - master
+#   workflow_dispatch:
+#     inputs:
+#       platform:
+#         description: "Platform to build"
+#         required: true
+#         default: "all"
+#         type: choice
+#         options:
+#           - all
+#           - android
+#           - ios
+#       profile:
+#         description: "Build profile"
+#         required: true
+#         default: "preview"
+#         type: choice
+#         options:
+#           - development
+#           - preview
+#           - production
+
+# jobs:
+#   build:
+#     name: EAS Build
+#     runs-on: ubuntu-latest
+#     defaults:
+#       run:
+#         working-directory: trajetto-fleet-manager-mobile
+
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#           cache: "npm"
+#           cache-dependency-path: trajetto-fleet-manager-mobile/package-lock.json
+
+#       - name: Setup Expo and EAS
+#         uses: expo/expo-github-action@v8
+#         with:
+#           eas-version: latest
+#           token: ${{ secrets.EXPO_TOKEN }}
+
+#       - name: Install dependencies
+#         run: npm ci
+
+#       - name: Build on EAS (Auto Push)
+#         if: github.event_name == 'push'
+#         run: |
+#           eas build --platform all --profile preview --non-interactive --no-wait
+
+#       - name: Build on EAS (Manual)
+#         if: github.event_name == 'workflow_dispatch'
+#         run: |
+#           PLATFORM="${{ github.event.inputs.platform }}"
+#           PROFILE="${{ github.event.inputs.profile }}"
+
+#           if [ "$PLATFORM" = "all" ]; then
+#             eas build --platform android --profile $PROFILE --non-interactive --no-wait
+#             eas build --platform ios --profile $PROFILE --non-interactive --no-wait
+#           else
+#             eas build --platform $PLATFORM --profile $PROFILE --non-interactive --no-wait
+#           fi
+
+#   submit:
+#     name: Submit to Stores
+#     runs-on: ubuntu-latest
+#     needs: build
+#     if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'production'
+#     defaults:
+#       run:
+#         working-directory: trajetto-fleet-manager-mobile
+
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+
+#       - name: Setup Expo and EAS
+#         uses: expo/expo-github-action@v8
+#         with:
+#           eas-version: latest
+#           token: ${{ secrets.EXPO_TOKEN }}
+
+#       - name: Submit to Google Play (Internal Testing)
+#         if: github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all'
+#         run: eas submit --platform android --latest --non-interactive
+
+#       - name: Submit to App Store (TestFlight)
+#         if: github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all'
+#         run: eas submit --platform ios --latest --non-interactive

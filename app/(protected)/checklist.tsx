@@ -276,7 +276,7 @@ const ChecklistScreen = () => {
     }
 
     // Check required photos based on backend schema logic
-    // PROTEÇÃO LEGAL - Always required photos
+    // LEGAL PROTECTION - Always required photos
     const alwaysRequiredPhotos = [
       "current_mileage",
       "fuel_level_adequate",
@@ -290,7 +290,7 @@ const ChecklistScreen = () => {
       }
     }
 
-    // SEGURANÇA CRÍTICA - Required if not OK
+    // CRITICAL SECURITY - Required if not OK
     const conditionalPhotoFields = [
       { field: "brakes_working", condition: !formData.brakes_working },
       { field: "headlights_working", condition: !formData.headlights_working },

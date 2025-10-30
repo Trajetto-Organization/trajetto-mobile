@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { View, Animated, Easing, Dimensions, Image, Text } from "react-native";
+import { Animated, Dimensions, Easing, Image, Text, View } from "react-native";
 
 import { LinearGradient } from "expo-linear-gradient";
 import TrajettoLogo from "../assets/images/trajetto-logo.png";
@@ -321,7 +321,7 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
       // Phase 5: Shimmer effect (2.9-3.4s)
       Animated.timing(shimmerX, {
         toValue: width * 1.5,
-        duration: 500,
+        duration: 650,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
@@ -524,7 +524,8 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
 
           {/* Logo circle */}
           <View
-            className="items-center justify-center rounded-full bg-white"
+            className="items-center justify-center 
+            rounded-full bg-white"
             style={{
               width: 130,
               height: 130,
@@ -600,7 +601,8 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
           {Array.from([0, 1, 2]).map((index) => (
             <View
               key={index}
-              className="w-1.5 h-1.5 rounded-full bg-white/40"
+              className="w-1.5 h-1.5 
+              rounded-full bg-white/40"
             />
           ))}
         </Animated.View>

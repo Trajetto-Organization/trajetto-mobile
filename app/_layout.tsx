@@ -1,18 +1,18 @@
 import "../global.css";
 
-import { useEffect, useState } from "react";
 import { Stack } from "expo-router";
+import { useEffect, useState } from "react";
 
-import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
+import { StatusBar } from "expo-status-bar";
 
 import * as SplashScreen from "expo-splash-screen";
 
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-import { Providers } from "../providers";
 import { AnimatedSplashScreen } from "../components/animated-splash-screen";
+import { Providers } from "../providers";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
