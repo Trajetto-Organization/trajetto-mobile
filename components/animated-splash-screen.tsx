@@ -544,33 +544,56 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
           </View>
         </Animated.View>
 
-        {/* Brand text - Minimalista */}
+        {/* Brand text - Minimalist */}
         <Animated.View
           className="absolute items-center"
           style={{
             bottom: height * 0.28,
             opacity: textOpacity,
             transform: [{ scale: textScale }, { translateY: textY }],
-            overflow: "hidden",
           }}
         >
-          {/* Shimmer overlay */}
-          <Animated.View
-            style={{
-              position: "absolute",
-              width: 300,
-              height: 100,
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
-              transform: [{ translateX: shimmerX }, { rotate: "15deg" }],
-            }}
-          />
+          <View style={{ overflow: "hidden" }}>
+            {/* Shimmer overlay with a smooth gradient. */}
+            <Animated.View
+              style={{
+                position: "absolute",
+                width: 400,
+                height: 120,
+                transform: [{ translateX: shimmerX }, { rotate: "-10deg" }],
+              }}
+            >
+              <LinearGradient
+                colors={[
+                  "transparent",
+                  "rgba(255, 255, 255, 0.15)",
+                  "rgba(255, 255, 255, 0.5)",
+                  "rgba(255, 255, 255, 0.8)",
+                  "rgba(255, 255, 255, 0.5)",
+                  "rgba(255, 255, 255, 0.15)",
+                  "transparent",
+                ]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                }}
+              />
+            </Animated.View>
 
-          <Text
-            className="text-white 
-            font-bold text-2xl"
-          >
-            TRAJETTO
-          </Text>
+            <Text
+              className="text-white
+              font-bold text-2xl"
+              style={{
+                textShadowColor: "rgba(255, 255, 255, 0.3)",
+                textShadowOffset: { width: 0, height: 0 },
+                textShadowRadius: 10,
+              }}
+            >
+              TRAJETTO
+            </Text>
+          </View>
         </Animated.View>
 
         {/* Tagline  */}
