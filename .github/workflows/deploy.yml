@@ -3,12 +3,8 @@ name: EAS Build and Submit
 on:
   push:
     branches: [main, master]
-    paths:
-      - 'trajetto-fleet-manager-mobile/**'
   pull_request:
     branches: [main, master]
-    paths:
-      - 'trajetto-fleet-manager-mobile/**'
   workflow_dispatch:
     inputs:
       platform:
