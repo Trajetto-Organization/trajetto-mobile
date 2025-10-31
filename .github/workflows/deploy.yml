@@ -54,7 +54,7 @@ jobs:
       - name: Build on EAS (Auto Push)
         if: github.event_name == 'push'
         run: |
-          eas build --platform all --profile preview --non-interactive --no-wait
+          eas build --platform android --profile preview --non-interactive --no-wait
 
       - name: Build on EAS (Manual)
         if: github.event_name == 'workflow_dispatch'
