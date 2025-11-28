@@ -83,6 +83,16 @@ const FuelScreen = () => {
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
+  // 📍 GEOLOCATION STATE
+  const [locationData, setLocationData] = useState<{
+    latitude: number;
+    longitude: number;
+    wasManuallyAdjusted: boolean;
+    originalLatitude?: number;
+    originalLongitude?: number;
+  } | null>(null);
+  const [isLocationLoading, setIsLocationLoading] = useState<boolean>(true); // 🔄 GPS loading state
+
   const { data: vehicleData, isLoading: isLoadingVehicle } = useVehicleData({
     vehicleId: vehicleId || "",
     businessId: user?.businessId || user?.selectedBusiness || "",
@@ -106,6 +116,23 @@ const FuelScreen = () => {
     return baseSchema;
   }, [vehicleData?.current_mileage]);
 
+  // 📍 GEOLOCATION: Handler for location changes
+  // NOTE: We don't use useCallback here to avoid stale closure issues
+  const handleLocationChange = (location: {
+    latitude: number;
+    longitude: number;
+    wasManuallyAdjusted: boolean;
+    originalLatitude?: number;
+    originalLongitude?: number;
+  }) => {
+    setLocationData(location);
+  };
+
+  // 🔄 GEOLOCATION: Handler for location loading state changes
+  const handleLocationLoadingChange = (isLoading: boolean) => {
+    setIsLocationLoading(isLoading);
+  };
+
   // Submit form - moved before useForm to avoid conditional hook call
   const onSubmit: SubmitHandler<CreateFuelFormData> = useCallback(
     async (data: CreateFuelFormData) => {
@@ -119,16 +146,39 @@ const FuelScreen = () => {
         return;
       }
 
+      // 📍 GEOLOCATION: Validate location
+      if (!locationData) {
+        Toast.show({
+          type: "error",
+          text1: "Localização obrigatória",
+          text2: "É necessário capturar a localização GPS.",
+          position: "top",
+        });
+
+        return;
+      }
       setIsSubmitting(true);
 
       try {
         // Create FormData for multipart upload
         const formData = new FormData();
 
-        // Add form fields (including calculated total)
+        // 📍 GEOLOCATION: Prepare location data for submission
         const submissionData = {
           ...data,
           total_amount: calculatedTotal,
+          // 🔥 CRITICAL: Backend requires created_from field
+          created_from: "MOBILE_APP",
+          // Final location (may be adjusted)
+          latitude: locationData.latitude,
+          longitude: locationData.longitude,
+          // Original GPS location (if manually adjusted)
+          ...(locationData.wasManuallyAdjusted && {
+            latitude_original: locationData.originalLatitude,
+            longitude_original: locationData.originalLongitude,
+            location_source: "GPS_MANUAL",
+          }),
+          // If not manually adjusted, backend will set as GPS_AUTO
         };
 
         Object.entries(submissionData).forEach(([key, value]) => {
@@ -183,7 +233,7 @@ const FuelScreen = () => {
         setIsSubmitting(false);
       }
     },
-    [calculatedTotal, odometerImage, user?.businessId, router]
+    [calculatedTotal, odometerImage, locationData, user?.businessId, router]
   );
 
   // Form setup with corrected default values
@@ -211,6 +261,9 @@ const FuelScreen = () => {
       branchId: "",
       driverId: "",
       fuelTypeId: "",
+      // 📍 GEOLOCATION: Initialize as undefined (will be set when GPS captures)
+      latitude: undefined,
+      longitude: undefined,
     },
   });
 
@@ -220,6 +273,14 @@ const FuelScreen = () => {
 
   const watchedMileage = watch("current_mileage");
   const watchedRefuelingDate = watch("refueling_date");
+
+  // 📍 DEBUG: Monitor locationData changes AND update form fields
+  useEffect(() => {
+    if (locationData) {
+      setValue("latitude", locationData.latitude);
+      setValue("longitude", locationData.longitude);
+    }
+  }, [locationData, setValue]);
 
   // Function to check if all required fields are filled
   const areAllRequiredFieldsFilled = useCallback(() => {
@@ -232,6 +293,7 @@ const FuelScreen = () => {
         watchedLiters &&
         watchedPrice &&
         odometerImage &&
+        locationData && // 📍 Location is required
         watchedMileage > 0 &&
         watchedLiters > 0 &&
         watchedPrice > 0
@@ -248,6 +310,7 @@ const FuelScreen = () => {
       watchedLiters &&
       watchedPrice &&
       odometerImage &&
+      locationData && // 📍 Location is required
       watchedMileage > 0 &&
       watchedLiters > 0 &&
       watchedPrice > 0
@@ -262,6 +325,7 @@ const FuelScreen = () => {
     watchedLiters,
     watchedPrice,
     odometerImage,
+    locationData,
   ]);
 
   // All useCallback hooks at the top level
@@ -639,6 +703,11 @@ const FuelScreen = () => {
                 isLoadingVehicle={isLoadingVehicle}
                 trigger={trigger}
                 isDriver={isDriver}
+                onLocationChange={handleLocationChange}
+                onLocationLoadingChange={handleLocationLoadingChange}
+                locationError={
+                  errors.latitude?.message || errors.longitude?.message
+                }
               />
             )}
           </ScrollView>
@@ -660,7 +729,11 @@ const FuelScreen = () => {
               <Button
                 onPress={handleSubmit(onSubmit)}
                 loading={isSubmitting}
-                disabled={isSubmitting || !areAllRequiredFieldsFilled()}
+                disabled={
+                  isSubmitting ||
+                  isLocationLoading ||
+                  !areAllRequiredFieldsFilled()
+                }
                 className="flex-1"
               >
                 {isSubmitting ? "Criando..." : "Abastecer"}
@@ -690,6 +763,8 @@ const FuelScreen = () => {
           onClose={() => setShowImagePickerModal(false)}
           onTakePhoto={takePhoto}
           onPickFromGallery={pickFromGallery}
+          title="Foto do Odômetro"
+          description="Como deseja adicionar a foto?"
         />
       </SafeAreaView>
     </ProtectedRoute>

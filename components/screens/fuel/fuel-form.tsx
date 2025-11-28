@@ -5,7 +5,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { Controller } from "react-hook-form";
 
 import * as ImagePicker from "expo-image-picker";
-import { Input, DatePicker, TotalAmountDisplay, Button } from "../../ui";
+import {
+  Input,
+  DatePicker,
+  TotalAmountDisplay,
+  Button,
+  LocationPicker,
+} from "../../ui";
 
 import {
   formatMileage,
@@ -37,6 +43,16 @@ interface FuelFormProps {
   isLoadingVehicle: boolean;
   trigger: any;
   isDriver?: boolean; // Flag to hide summary for drivers
+  // 📍 GEOLOCATION
+  onLocationChange: (location: {
+    latitude: number;
+    longitude: number;
+    wasManuallyAdjusted: boolean;
+    originalLatitude?: number;
+    originalLongitude?: number;
+  }) => void;
+  onLocationLoadingChange?: (isLoading: boolean) => void; // 🔄 Loading state callback
+  locationError?: string;
 }
 
 export const FuelForm: React.FC<FuelFormProps> = ({
@@ -52,6 +68,9 @@ export const FuelForm: React.FC<FuelFormProps> = ({
   isLoadingVehicle,
   trigger,
   isDriver = false,
+  onLocationChange,
+  onLocationLoadingChange,
+  locationError,
 }) => {
   // States for formatting fields
   const [formattedMileage, setFormattedMileage] = useState<string>("");
@@ -369,6 +388,13 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             </TouchableOpacity>
           )}
         </View>
+
+        {/* 📍 GEOLOCATION: Location Picker */}
+        <LocationPicker
+          onLocationChange={onLocationChange}
+          onLoadingChange={onLocationLoadingChange}
+          error={locationError}
+        />
 
         {/* Notes - Smaller field */}
         <Controller

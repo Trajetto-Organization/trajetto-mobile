@@ -9,12 +9,11 @@ import {
   TwoFactorRequiredResponse,
   EmailVerificationResponse,
   TwoFactorVerificationResponse,
-  RefreshTokenResponse,
   UserMeResponse,
 } from "../types";
 
 import { tokenStorage, asyncStorage } from "../utils/storage";
-import { isTokenExpired } from "../utils/jwt";
+import { logger } from "../utils/logger";
 
 import { validateUserAccess } from "../utils/permissions";
 import apiClient, { ApiError } from "../utils/api";
@@ -283,36 +282,34 @@ export const useAuthStore = create<AuthStore>()(
 
       refreshToken: async () => {
         try {
-          const refreshToken = await tokenStorage.getRefreshToken();
-          if (!refreshToken) {
-            throw new Error("No refresh token available");
+          logger.dev("🔄 auth-store: Delegating refresh to apiClient...");
+
+          // ✅ Delegate to apiClient which has the complete refresh logic
+          const newAccessToken = await apiClient.refreshToken();
+
+          if (!newAccessToken) {
+            logger.info("❌ auth-store: Token refresh failed");
+            throw new Error("Token refresh failed");
           }
 
-          const response = await apiClient.post<RefreshTokenResponse>(
-            "/user/refresh-token",
-            { token: refreshToken },
-            false // No auth required for refresh
-          );
+          // Get the new refresh token from storage (apiClient already saved it)
+          const newRefreshToken = await tokenStorage.getRefreshToken();
 
-          const { token: newAccessToken, refresh_token: newRefreshToken } =
-            response;
-
-          // Store new tokens
-          await tokenStorage.setTokens(newAccessToken, newRefreshToken);
-
-          // Update store state
+          // Update store state with new tokens
           set({
             tokens: {
               accessToken: newAccessToken,
-              refreshToken: newRefreshToken,
+              refreshToken: newRefreshToken || "",
             },
           });
 
+          logger.info("✅ auth-store: Tokens refreshed successfully");
           return true;
-        } catch (error) {
-          console.error("Token refresh failed:", error);
+        } catch {
+          logger.error("❌ auth-store: Token refresh failed");
 
-          // If refresh fails, logout the user
+          // Clear tokens and logout
+          logger.dev("🧹 auth-store: Clearing tokens and logging out...");
           await get().logout();
           return false;
         }
@@ -325,84 +322,73 @@ export const useAuthStore = create<AuthStore>()(
           const accessToken = await tokenStorage.getAccessToken();
           const refreshToken = await tokenStorage.getRefreshToken();
 
+          logger.dev("🔐 checkAuth: Checking tokens...", {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+          });
+
+          // If no tokens, just mark as initialized and return (user will see login screen)
           if (!accessToken || !refreshToken) {
+            logger.info("🔐 checkAuth: No tokens found");
             set({ isLoading: false, isInitialized: true });
             return;
           }
 
-          // Check if access token is expired
-          if (isTokenExpired(accessToken)) {
-            const refreshSuccess = await get().refreshToken();
-            if (!refreshSuccess) {
-              set({ isLoading: false, isInitialized: true });
-              return;
-            }
-          }
+          // ✅ DON'T manually check expiration or refresh here!
+          // Let apiClient.get() handle token refresh automatically
+          logger.dev("🔐 checkAuth: Fetching user data...");
 
-          // Fetch user data to verify the session is still valid
           try {
             const response = await apiClient.get<{ user: User }>("/user/me");
             const { user } = response;
 
+            logger.dev("🔐 checkAuth: User data received");
+
             // Validate user access
             const accessValidation = validateUserAccess(user);
             if (!accessValidation.hasAccess) {
+              logger.info("🔐 checkAuth: User access denied");
               await get().logout();
               set({ isLoading: false, isInitialized: true });
               return;
             }
 
-            // Update store with fresh user data
-            const currentTokens = get().tokens;
+            // Get fresh tokens from storage (apiClient may have refreshed them)
+            const freshAccessToken = await tokenStorage.getAccessToken();
+            const freshRefreshToken = await tokenStorage.getRefreshToken();
+
+            // Update store with fresh user data and tokens
             set({
               user,
-              tokens: currentTokens || {
-                accessToken: accessToken,
-                refreshToken: refreshToken,
+              tokens: {
+                accessToken: freshAccessToken || "",
+                refreshToken: freshRefreshToken || "",
               },
               isAuthenticated: true,
               isLoading: false,
               isInitialized: true,
             });
+
+            logger.info("✅ checkAuth: Authentication successful");
           } catch (error) {
-            // If user fetch fails, try to refresh token once more
+            // ✅ Silently handle session expiration (401) - don't log as error
             if (error instanceof ApiError && error.status === 401) {
-              const refreshSuccess = await get().refreshToken();
-              if (refreshSuccess) {
-                // Retry fetching user data
-                try {
-                  const response = await apiClient.get<{ user: User }>(
-                    "/user/me"
-                  );
-                  const { user } = response;
-
-                  const accessValidation = validateUserAccess(user);
-                  if (!accessValidation.hasAccess) {
-                    await get().logout();
-                    set({ isLoading: false, isInitialized: true });
-                    return;
-                  }
-
-                  set({
-                    user,
-                    isAuthenticated: true,
-                    isLoading: false,
-                    isInitialized: true,
-                  });
-                } catch {
-                  await get().logout();
-                  set({ isLoading: false, isInitialized: true });
-                }
-              } else {
-                await get().logout();
-                set({ isLoading: false, isInitialized: true });
-              }
+              logger.info("🔒 checkAuth: Session expired");
             } else {
-              await get().logout();
-              set({ isLoading: false, isInitialized: true });
+              logger.error("❌ checkAuth: Unexpected error");
             }
+
+            // If any error occurs (including 401 after refresh attempts), logout silently
+            await get().logout();
+            set({ isLoading: false, isInitialized: true });
           }
         } catch (error) {
+          // ✅ Outer catch: only log truly unexpected errors
+          if (error instanceof ApiError && error.status === 401) {
+            logger.info("🔒 checkAuth: Session expired");
+          } else {
+            logger.error("❌ checkAuth: Critical error");
+          }
           await get().logout();
           set({ isLoading: false, isInitialized: true });
         }

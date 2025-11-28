@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
@@ -14,6 +16,8 @@ interface ImagePickerBottomSheetProps {
   onClose: () => void;
   onTakePhoto: () => void;
   onPickFromGallery: () => void;
+  title?: string; // 📸 Custom title for the bottom sheet
+  description?: string; // 📝 Custom description
 }
 
 export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
@@ -21,8 +25,11 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
   onClose,
   onTakePhoto,
   onPickFromGallery,
+  title = "Foto do Odômetro", // Default title
+  description = "Como deseja adicionar a foto?", // Default description
 }) => {
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const insets = useSafeAreaInsets(); // 📱 Get safe area insets
 
   // Snap points for the bottom sheet
   const snapPoints = useMemo(() => ["42%"], []);
@@ -99,10 +106,10 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
               <Ionicons name="camera" size={32} color="white" />
             </View>
             <Text className="text-xl font-bold text-gray-900 mb-2">
-              Foto do Odômetro
+              {title}
             </Text>
             <Text className="text-gray-600 text-center">
-              Como deseja adicionar a foto?
+              {description}
             </Text>
           </View>
         </View>
@@ -159,7 +166,10 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
         </View>
 
         {/* Cancel Button */}
-        <View className="px-6 pb-4">
+        <View
+          className="px-6"
+          style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        >
           <TouchableOpacity
             onPress={onClose}
             className="bg-gray-100 rounded-2xl py-4 px-6"

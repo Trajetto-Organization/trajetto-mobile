@@ -1,6 +1,8 @@
 import { tokenStorage } from "./storage";
 import { isTokenExpired } from "./jwt";
 
+import { logger } from "./logger";
+
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 export class ApiError extends Error {
@@ -25,6 +27,7 @@ interface ApiRequestConfig {
 
 class ApiClient {
   private isRefreshing = false;
+  private refreshPromise: Promise<string | null> | null = null; // 🔒 Shared promise to prevent duplicate calls
 
   private refreshSubscribers: Array<(token: string) => void> = [];
   private logoutCallback: (() => void) | null = null;
@@ -50,33 +53,85 @@ class ApiClient {
   }
 
   async refreshToken(): Promise<string | null> {
-    try {
-      const refreshToken = await tokenStorage.getRefreshToken();
-      if (!refreshToken) {
-        throw new Error("No refresh token available");
-      }
-
-      const response = await fetch(`${API_BASE_URL}/user/refresh-token`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ token: refreshToken }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to refresh token");
-      }
-
-      const data = await response.json();
-      const { token: newAccessToken, refresh_token: newRefreshToken } = data;
-
-      await tokenStorage.setTokens(newAccessToken, newRefreshToken);
-      return newAccessToken;
-    } catch (error) {
-      await tokenStorage.clearTokens();
-      return null;
+    // 🔒 If already refreshing, return the existing promise
+    if (this.refreshPromise) {
+      logger.dev("⏳ apiClient: Refresh already in progress, waiting...");
+      return this.refreshPromise;
     }
+
+    // Create a new refresh promise
+    this.refreshPromise = (async () => {
+      try {
+        logger.dev("🔄 apiClient: Starting token refresh...");
+        const refreshToken = await tokenStorage.getRefreshToken();
+
+        if (!refreshToken) {
+          logger.info("❌ apiClient: No refresh token found");
+          throw new Error("No refresh token available");
+        }
+
+        // ✅ DON'T check if refresh token is expired here!
+        // Let the BACKEND validate expiration. If expired, backend will return error.
+        // This allows the backend to decide refresh token validity (not the client).
+        logger.dev("📤 apiClient: Sending refresh request to backend...");
+        const response = await fetch(`${API_BASE_URL}/user/refresh-token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: refreshToken }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.message || `HTTP ${response.status}`;
+
+          // ✅ Only log as error if it's NOT a token expiration (those are expected)
+          if (
+            response.status === 401 ||
+            errorMessage.includes("inválida") ||
+            errorMessage.includes("não existe")
+          ) {
+            logger.info("🔒 apiClient: Refresh token expired");
+          } else {
+            logger.error("❌ apiClient: Refresh failed");
+          }
+
+          throw new Error(`Failed to refresh token: ${errorMessage}`);
+        }
+
+        const data = await response.json();
+        const { token: newAccessToken, refresh_token: newRefreshToken } = data;
+
+        logger.info("✅ apiClient: Tokens refreshed successfully");
+        await tokenStorage.setTokens(newAccessToken, newRefreshToken);
+
+        return newAccessToken;
+      } catch (error) {
+        // ✅ Only log as error if it's NOT an expected token expiration
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        if (
+          errorMessage.includes("inválida") ||
+          errorMessage.includes("não existe") ||
+          errorMessage.includes("expired")
+        ) {
+          logger.info("🔒 apiClient: Token expired, clearing session");
+        } else {
+          logger.error("❌ apiClient: Token refresh failed");
+        }
+
+        logger.dev("🧹 apiClient: Clearing tokens...");
+        await tokenStorage.clearTokens();
+        return null;
+      } finally {
+        // ✅ Clear the promise after completion (success or failure)
+        logger.dev("🔓 apiClient: Refresh completed");
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   async request<T>(
@@ -165,9 +220,24 @@ class ApiClient {
           // If response is not JSON, use the default error message
         }
 
-        // Handle 401 Unauthorized - force logout
+        // ✅ Handle 401 Unauthorized - try to refresh token ONCE before giving up
         if (response.status === 401 && requiresAuth) {
+          logger.dev("⚠️ apiClient: Received 401, attempting token refresh...");
+
+          // Try to refresh token
+          const newAccessToken = await this.refreshToken();
+
+          if (newAccessToken) {
+            logger.dev("🔄 apiClient: Retrying request with new token...");
+            // Retry the request with new token (recursive call, will only retry once)
+            return this.request<T>(endpoint, { ...config, requiresAuth: true });
+          }
+
+          // If refresh failed, logout and throw a silent error (user will be redirected to login)
+          logger.info("🔒 apiClient: Session expired");
           this.handleUnauthorized();
+          // Don't throw error - just return a rejected promise silently
+          throw new ApiError("Session expired", 401, "Unauthorized");
         }
 
         throw new ApiError(errorMessage, response.status, response.statusText);

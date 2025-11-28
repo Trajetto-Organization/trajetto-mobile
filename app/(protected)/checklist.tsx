@@ -523,6 +523,39 @@ const ChecklistScreen = () => {
     setShowImagePickerModal(true);
   }, []);
 
+  // 📸 Get friendly title for photo field
+  const getPhotoTitle = (fieldName: string): string => {
+    const titleMap: Record<string, string> = {
+      current_mileage: "Foto do Odômetro",
+      fuel_level_adequate: "Foto do Nível de Combustível",
+      tires_condition: "Foto dos Pneus",
+      brakes_working: "Foto dos Freios",
+      headlights_working: "Foto dos Faróis",
+      taillights_working: "Foto das Lanternas Traseiras",
+      turn_signals_working: "Foto das Setas",
+      steering_wheel_condition: "Foto do Volante",
+      battery_condition: "Foto da Bateria",
+      bumpers_condition: "Foto dos Para-choques",
+      windshield_condition: "Foto do Para-brisa",
+      mirrors_condition: "Foto dos Retrovisores",
+      spare_tire_condition: "Foto do Estepe",
+      oil_level_adequate: "Foto do Nível de Óleo",
+      radiator_water_adequate: "Foto do Nível de Água do Radiador",
+      brake_fluid_adequate: "Foto do Fluido de Freio",
+      windshield_washer_fluid_adequate: "Foto do Fluido do Limpador",
+      horn_working: "Foto da Buzina",
+      seat_belts_working: "Foto dos Cintos de Segurança",
+      fire_extinguisher_valid: "Foto do Extintor",
+      warning_triangle_present: "Foto do Triângulo",
+      first_aid_kit_present: "Foto do Kit de Primeiros Socorros",
+      jack_and_tools_present: "Foto do Macaco e Ferramentas",
+      vehicle_exterior_condition: "Foto da Condição Externa do Veículo",
+      vehicle_interior_condition: "Foto da Condição Interna do Veículo",
+    };
+
+    return titleMap[fieldName] || "Foto do Checklist";
+  };
+
   const removeImage = useCallback((fieldName: string, imageIndex: number) => {
     setChecklistImages((prev) => ({
       ...prev,
@@ -757,6 +790,8 @@ const ChecklistScreen = () => {
           onClose={() => setShowImagePickerModal(false)}
           onTakePhoto={takePhoto}
           onPickFromGallery={pickFromGallery}
+          title={getPhotoTitle(currentPhotoField)}
+          description="Como deseja adicionar a foto?"
         />
       </SafeAreaView>
     </ProtectedRoute>

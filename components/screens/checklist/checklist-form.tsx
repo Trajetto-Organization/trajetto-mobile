@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, Image, ScrollView } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -155,7 +155,7 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
   // Sync formatted mileage with form value on component mount
   const currentMileage = watch("current_mileage");
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (currentMileage && currentMileage > 0) {
       const formatted = currentMileage.toLocaleString("pt-BR");
       setFormattedMileage(formatted);
