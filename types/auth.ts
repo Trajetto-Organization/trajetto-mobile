@@ -16,7 +16,8 @@ export type PermissionKey =
   | "account_payable_manage"
   | "kanban_manage"
   | "fine_manage"
-  | "fuel_manage";
+  | "fuel_manage"
+  | "vehicle_checklist_manage";
 
 export interface Permission {
   permissionKey: PermissionKey;
@@ -40,6 +41,10 @@ export interface User {
   avatar?: string | null;
   profileAccess?: ProfileAccess | null;
   driverId?: string | null;
+  driver?: {
+    id: string;
+    status: string;
+  } | null;
   email_notifications_enabled?: boolean;
   activity_notifications_enabled?: boolean;
   access_revoked?: boolean;

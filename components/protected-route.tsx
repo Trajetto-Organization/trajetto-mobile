@@ -69,6 +69,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         message =
           "Seu acesso foi revogado. Entre em contato com o administrador.";
         break;
+      case "driver_inactive":
+        title = "Motorista inativo";
+        message =
+          "Seu cadastro como motorista está inativo. Entre em contato com o administrador.";
+        break;
       case "no_permissions":
         title = "Sem permissões";
         message =
@@ -77,7 +82,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       case "no_vehicle_permission":
         title = "Permissão insuficiente";
         message =
-          "Você não possui permissão para visualizar veículos. Entre em contato com o administrador.";
+          "Você não possui permissão para visualizar os veículos. Entre em contato com o administrador.";
         break;
     }
 

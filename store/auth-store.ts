@@ -110,6 +110,10 @@ export const useAuthStore = create<AuthStore>()(
                 errorMessage =
                   "Seu acesso foi revogado. Entre em contato com o administrador.";
                 break;
+              case "driver_inactive":
+                errorMessage =
+                  "Seu cadastro como motorista está inativo. Entre em contato com o administrador.";
+                break;
               case "no_permissions":
                 errorMessage =
                   "Você não possui permissões configuradas. Entre em contato com o administrador.";
@@ -181,6 +185,10 @@ export const useAuthStore = create<AuthStore>()(
               case "access_revoked":
                 errorMessage =
                   "Seu acesso foi revogado. Entre em contato com o administrador.";
+                break;
+              case "driver_inactive":
+                errorMessage =
+                  "Seu cadastro como motorista está inativo. Entre em contato com o administrador.";
                 break;
               case "no_permissions":
                 errorMessage =

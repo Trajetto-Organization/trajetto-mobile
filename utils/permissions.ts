@@ -103,8 +103,8 @@ export const checkChecklistPermission = (
 
     // For now, use vehicle_manage permission for checklist
     // This can be changed later to a specific checklist permission
-    const canRead = checkPermission(user, "vehicle_manage", "read");
-    const canWrite = checkPermission(user, "vehicle_manage", "write");
+    const canRead = checkPermission(user, "vehicle_checklist_manage", "read");
+    const canWrite = checkPermission(user, "vehicle_checklist_manage", "write");
 
     return { canRead, canWrite };
   }
@@ -121,6 +121,11 @@ export const validateUserAccess = (
 
   if (user.access_revoked) {
     return { hasAccess: false, reason: "access_revoked" };
+  }
+
+  // Check if driver is inactive
+  if (user.driver && user.driver.status === "INACTIVE") {
+    return { hasAccess: false, reason: "driver_inactive" };
   }
 
   // MASTER and BUSINESS_ADMIN always have access
