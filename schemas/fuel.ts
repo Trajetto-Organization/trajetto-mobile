@@ -1,22 +1,11 @@
 import { z } from "zod";
-
-const hasSpaceAtEdges = (value: string) => /^\s|\s$/.test(value);
-const isEmptyOrWhitespace = (value: string): boolean =>
-  value.trim().length === 0;
-
-const hasConsecutiveSpaces = (value: string): boolean => /\s{2,}/.test(value);
-
-const emptyStringToNull = (value: any) => {
-  if (typeof value === "string" && value.trim() === "") {
-    return null;
-  }
-  return value;
-};
-
-const isValidDateString = (value: string): boolean => {
-  const date = new Date(value);
-  return !isNaN(date.getTime());
-};
+import {
+  emptyStringToNull,
+  hasConsecutiveSpaces,
+  hasSpaceAtEdges,
+  isEmptyOrWhitespace,
+  isValidDateString,
+} from "@/utils";
 
 export const createFuelSchema = z.object({
   current_mileage: z.preprocess(
@@ -25,6 +14,7 @@ export const createFuelSchema = z.object({
         if (val.trim() === "" || val === "0") return undefined;
         return parseFloat(val.replace(",", "."));
       }
+
       if (typeof val === "number" && val === 0) return undefined;
       return val;
     },
@@ -35,15 +25,15 @@ export const createFuelSchema = z.object({
       })
       .positive("A quilometragem atual deve ser um valor positivo.")
       .min(0.1, "A quilometragem atual deve ser maior que zero.")
-      .max(9999999, "A quilometragem atual não pode exceder 9.999.999 km.")
+      .max(9999999, "A quilometragem atual não pode exceder 9.999.999 km."),
   ),
-
   liters_amount: z.preprocess(
     (val) => {
       if (typeof val === "string") {
         if (val.trim() === "" || val === "0") return undefined;
         return parseFloat(val.replace(",", "."));
       }
+
       if (typeof val === "number" && val === 0) return undefined;
       return val;
     },
@@ -54,9 +44,8 @@ export const createFuelSchema = z.object({
       })
       .positive("A quantidade de litros deve ser um valor positivo.")
       .min(0.001, "A quantidade de litros deve ser maior que zero.")
-      .max(99999.999, "A quantidade de litros não pode exceder 99.999,999 L.")
+      .max(99999.999, "A quantidade de litros não pode exceder 99.999,999 L."),
   ),
-
   price_per_liter: z.preprocess(
     (val) => {
       if (typeof val === "string") {
@@ -82,14 +71,12 @@ export const createFuelSchema = z.object({
       })
       .positive("O preço por litro deve ser um valor positivo.")
       .min(0.01, "O preço por litro deve ser no mínimo R$ 0,01")
-      .max(999.99, "O preço por litro não pode exceder R$ 999,99.")
+      .max(999.99, "O preço por litro não pode exceder R$ 999,99."),
   ),
-
   total_amount: z
     .number()
     .positive("O valor total deve ser positivo.")
     .optional(),
-
   notes: z.preprocess(
     emptyStringToNull,
     z
@@ -104,6 +91,7 @@ export const createFuelSchema = z.object({
               code: z.ZodIssueCode.custom,
               message: "As observações não podem conter apenas espaços.",
             });
+
             return;
           }
 
@@ -112,6 +100,7 @@ export const createFuelSchema = z.object({
               code: z.ZodIssueCode.custom,
               message: "As observações não devem conter espaços consecutivos.",
             });
+
             return;
           }
 
@@ -121,12 +110,12 @@ export const createFuelSchema = z.object({
               message:
                 "As observações não podem começar ou terminar com espaço em branco.",
             });
+
             return;
           }
         }
-      })
+      }),
   ),
-
   refueling_date: z
     .string()
     .min(1, "A data do abastecimento é obrigatória.")
@@ -136,6 +125,7 @@ export const createFuelSchema = z.object({
           code: z.ZodIssueCode.custom,
           message: "Data do abastecimento inválida.",
         });
+
         return;
       }
 
@@ -153,7 +143,6 @@ export const createFuelSchema = z.object({
         return;
       }
     }),
-
   vehicleId: z.string().uuid("O ID do veículo deve ser um UUID válido."),
   driverId: z.string().uuid("O ID do motorista deve ser um UUID válido."),
   fuelTypeId: z

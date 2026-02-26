@@ -59,10 +59,10 @@ const ChecklistScreen = () => {
 
   // Drivers start directly at form step (skip branch and driver selection)
   const [currentStep, setCurrentStep] = useState<Step>(
-    isDriver ? "form" : "branch"
+    isDriver ? "form" : "branch",
   );
-  const [stepData, setStepData] = useState<Partial<StepData>>({});
 
+  const [stepData, setStepData] = useState<Partial<StepData>>({});
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const [showImagePickerModal, setShowImagePickerModal] =
@@ -70,7 +70,6 @@ const ChecklistScreen = () => {
   const [currentPhotoField, setCurrentPhotoField] = useState<string>("");
 
   const [checklistImages, setChecklistImages] = useState<ChecklistImages>({});
-
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const { data: vehicleData, isLoading: isLoadingVehicle } = useVehicleData({
@@ -85,10 +84,11 @@ const ChecklistScreen = () => {
     if (vehicleData?.current_mileage) {
       return baseSchema.extend({
         current_mileage: baseSchema.shape.current_mileage.refine(
-          (val) => val >= vehicleData.current_mileage,
+          (val) => val > vehicleData.current_mileage,
           {
-            message: `A quilometragem não pode ser menor que a atual do veículo (${vehicleData.current_mileage?.toLocaleString()} km).`,
-          }
+            message:
+              "A quilometragem informada deve ser maior que a quilometragem atual do veículo!",
+          },
         ),
       });
     }
@@ -128,7 +128,7 @@ const ChecklistScreen = () => {
         await Promise.all([
           apiClient.postFormData(
             `/vehicle-checklist/create-vehicle-checklist/${user?.businessId}`,
-            formData
+            formData,
           ),
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
         ]);
@@ -162,7 +162,7 @@ const ChecklistScreen = () => {
         setIsSubmitting(false);
       }
     },
-    [checklistImages, user?.businessId, router, stepData]
+    [checklistImages, user?.businessId, router, stepData],
   );
 
   // Form setup with corrected default values
@@ -421,18 +421,37 @@ const ChecklistScreen = () => {
     return cameraStatus === "granted" && galleryStatus === "granted";
   }, [cameraPermission, requestCameraPermission]);
 
-  // File validation function
+  // Calculate total size of all checklist images
+  const getTotalImagesSize = useCallback((): number => {
+    let total = 0;
+    Object.values(checklistImages).forEach((images) => {
+      images.forEach((image) => {
+        total += image.fileSize || 0;
+      });
+    });
+    return total;
+  }, [checklistImages]);
+
+  // File validation function - validates total size (5MB for all photos combined)
   const validateImageFile = useCallback(
     (asset: ImagePicker.ImagePickerAsset): string | null => {
-      const maxSize = 5 * 1024 * 1024; // 5MB
+      const maxTotalSize = 5 * 1024 * 1024; // 5MB total
 
-      if (asset.fileSize && asset.fileSize > maxSize) {
-        return "O arquivo deve ter no máximo 5MB.";
+      const currentTotal = getTotalImagesSize();
+      const newTotal = currentTotal + (asset.fileSize || 0);
+
+      if (newTotal > maxTotalSize) {
+        const remainingMB = Math.max(
+          0,
+          (maxTotalSize - currentTotal) / (1024 * 1024),
+        ).toFixed(1);
+
+        return `Limite total de 5MB excedido. Espaço restante: ${remainingMB}MB.`;
       }
 
       return null;
     },
-    []
+    [getTotalImagesSize],
   );
 
   const takePhoto = useCallback(async () => {
@@ -560,7 +579,7 @@ const ChecklistScreen = () => {
     setChecklistImages((prev) => ({
       ...prev,
       [fieldName]: (prev[fieldName] || []).filter(
-        (_, index) => index !== imageIndex
+        (_, index) => index !== imageIndex,
       ),
     }));
   }, []);
@@ -742,7 +761,6 @@ const ChecklistScreen = () => {
                 vehicleData={vehicleData}
                 isLoadingVehicle={isLoadingVehicle}
                 trigger={trigger}
-                watch={watch}
                 isDriver={isDriver}
               />
             )}
@@ -766,7 +784,11 @@ const ChecklistScreen = () => {
                 <Button
                   onPress={handleSubmit(onSubmit)}
                   loading={isSubmitting}
-                  disabled={isSubmitting || !areAllRequiredFieldsFilled}
+                  disabled={
+                    isSubmitting ||
+                    !areAllRequiredFieldsFilled ||
+                    Object.keys(errors).length > 0
+                  }
                   className="flex-1"
                 >
                   {isSubmitting ? "Criando..." : "Criar Checklist"}

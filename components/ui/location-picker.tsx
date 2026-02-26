@@ -11,13 +11,15 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 
 interface LocationPickerProps {
-  onLocationChange: (location: {
-    latitude: number;
-    longitude: number;
-    wasManuallyAdjusted: boolean;
-    originalLatitude?: number;
-    originalLongitude?: number;
-  }) => void;
+  onLocationChange: (
+    location: {
+      latitude: number;
+      longitude: number;
+      wasManuallyAdjusted: boolean;
+      originalLatitude?: number;
+      originalLongitude?: number;
+    } | null,
+  ) => void;
   onLoadingChange?: (isLoading: boolean) => void; // 🔄 Notifies you when it´s charging
   error?: string;
 }
@@ -29,7 +31,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [locationStatus, setLocationStatus] = useState<string>(
-    "Obtendo localização..."
+    "Obtendo localização...",
   );
 
   const [currentLocation, setCurrentLocation] = useState<{
@@ -41,7 +43,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
     requestLocationPermission();
   }, []);
 
-  // 📍 Notify parent whenever location changes
+  // 📍 Notify parent whenever location changes (including when it becomes null)
   useEffect(() => {
     if (currentLocation) {
       onLocationChange({
@@ -49,6 +51,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         longitude: currentLocation.longitude,
         wasManuallyAdjusted: false,
       });
+    } else {
+      onLocationChange(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLocation]); // Only depend on currentLocation, not onLocationChange
@@ -63,19 +67,47 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   const requestLocationPermission = async () => {
     try {
       setIsLoading(true);
-      setLocationStatus("Solicitando permissão...");
+      setLocationStatus("Verificando serviços de localização...");
+
+      // Check if location services are enabled on the device
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+
+      if (!servicesEnabled) {
+        setIsLoading(false);
+        setLocationStatus("Serviços de localização desativados");
+        setCurrentLocation(null);
+
+        Alert.alert(
+          "GPS Desativado",
+          "Os serviços de localização estão desativados no seu dispositivo. Ative o GPS nas configurações para registrar o abastecimento.",
+          [
+            {
+              text: "Tentar Novamente",
+              onPress: requestLocationPermission,
+            },
+            {
+              text: "Cancelar",
+              style: "cancel",
+            },
+          ],
+        );
+
+        return;
+      }
 
       // Request permission
+      setLocationStatus("Solicitando permissão...");
       const { status } = await Location.requestForegroundPermissionsAsync();
 
       if (status !== "granted") {
         setIsLoading(false);
         setLocationStatus("Permissão de localização negada");
 
+        setCurrentLocation(null);
         Alert.alert(
           "Permissão Negada",
           "A localização é obrigatória para registrar o abastecimento. Por favor, ative a permissão de localização nas configurações do app.",
-          [{ text: "OK" }]
+          [{ text: "OK" }],
         );
 
         return;
@@ -98,8 +130,9 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
       setIsLoading(false);
     } catch (error) {
       setIsLoading(false);
-      setLocationStatus("Erro ao obter localização");
+      setCurrentLocation(null);
 
+      setLocationStatus("Erro ao obter localização");
       Alert.alert(
         "Erro de Localização",
         "Não foi possível obter sua localização. Verifique se o GPS está ativado e tente novamente.",
@@ -112,7 +145,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
             text: "Cancelar",
             style: "cancel",
           },
-        ]
+        ],
       );
     }
   };
@@ -127,7 +160,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         className="text-sm font-medium 
         text-gray-700 mb-2"
       >
-        📍 Localização do Abastecimento
+        📍 Localização do Abastecimento <Text className="text-red-500">*</Text>
       </Text>
 
       <View
@@ -135,8 +168,8 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
           error
             ? "border-red-500 bg-red-50"
             : currentLocation
-            ? "border-green-500 bg-green-50"
-            : "border-gray-300 bg-gray-50"
+              ? "border-green-500 bg-green-50"
+              : "border-gray-300 bg-gray-50"
         }`}
       >
         {isLoading ? (

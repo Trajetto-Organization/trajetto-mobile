@@ -333,8 +333,8 @@ const TwoFactorScreen = () => {
               {isSubmitting
                 ? "Verificando..."
                 : isCodeComplete
-                ? "✓ Verificar Código"
-                : `Código ${watchedCode.length}/6`}
+                  ? "✓ Verificar Código"
+                  : `Código ${watchedCode.length}/6`}
             </Button>
 
             <TouchableOpacity

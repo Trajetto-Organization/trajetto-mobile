@@ -1,5 +1,12 @@
-import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, Image } from "react-native";
+import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  InteractionManager,
+} from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
 import { Controller } from "react-hook-form";
@@ -44,13 +51,15 @@ interface FuelFormProps {
   trigger: any;
   isDriver?: boolean; // Flag to hide summary for drivers
   // 📍 GEOLOCATION
-  onLocationChange: (location: {
-    latitude: number;
-    longitude: number;
-    wasManuallyAdjusted: boolean;
-    originalLatitude?: number;
-    originalLongitude?: number;
-  }) => void;
+  onLocationChange: (
+    location: {
+      latitude: number;
+      longitude: number;
+      wasManuallyAdjusted: boolean;
+      originalLatitude?: number;
+      originalLongitude?: number;
+    } | null,
+  ) => void;
   onLocationLoadingChange?: (isLoading: boolean) => void; // 🔄 Loading state callback
   locationError?: string;
 }
@@ -72,11 +81,50 @@ export const FuelForm: React.FC<FuelFormProps> = ({
   onLocationLoadingChange,
   locationError,
 }) => {
-  // States for formatting fields
-  const [formattedMileage, setFormattedMileage] = useState<string>("");
-  const [formattedLiters, setFormattedLiters] = useState<string>("");
+  const [isFormReady, setIsFormReady] = useState<boolean>(false);
 
-  const [formattedPrice, setFormattedPrice] = useState<string>("");
+  const litersInputRef = useRef<TextInput>(null);
+  const priceInputRef = useRef<TextInput>(null);
+
+  // Defer heavy form rendering until after step transition completes
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsFormReady(true);
+    });
+
+    return () => task.cancel();
+  }, []);
+
+  // States for formatting fields - initialized from form values for back-navigation persistence
+  const [formattedMileage, setFormattedMileage] = useState<string>(() => {
+    const mileage = control._formValues?.current_mileage;
+
+    if (mileage && mileage > 0) {
+      return mileage.toLocaleString("pt-BR");
+    }
+
+    return "";
+  });
+
+  const [formattedLiters, setFormattedLiters] = useState<string>(() => {
+    const liters = control._formValues?.liters_amount;
+
+    if (liters && liters > 0) {
+      return liters.toString().replace(".", ",");
+    }
+
+    return "";
+  });
+
+  const [formattedPrice, setFormattedPrice] = useState<string>(() => {
+    const price = control._formValues?.price_per_liter;
+
+    if (price && price > 0) {
+      return `R$ ${price.toString().replace(".", ",")}`;
+    }
+
+    return "";
+  });
 
   // Function to update the calculated total value
   const updateTotal = useCallback(
@@ -91,8 +139,18 @@ export const FuelForm: React.FC<FuelFormProps> = ({
         onTotalChange(0);
       }
     },
-    [onTotalChange]
+    [onTotalChange],
   );
+
+  if (!isFormReady) {
+    return (
+      <View className="flex-1 justify-center items-center py-20">
+        <Text className="text-gray-500 text-base">
+          Carregando formulário...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 px-6 pt-6">
@@ -110,8 +168,9 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             <View className="flex-row">
               <Text className="text-sm text-gray-600">Filial:</Text>
               <Text
-                className="text-sm text-gray-900
-                flex-1 font-medium"
+                className="text-sm text-gray-900 flex-1 font-medium"
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
                 {" "}
                 {stepData.branchName || "N/A"}
@@ -121,25 +180,22 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             <View className="flex-row">
               <Text className="text-sm text-gray-600">Motorista:</Text>
               <Text
-                className="text-sm text-gray-900
-                flex-1 font-medium"
+                className="text-sm text-gray-900 flex-1 font-medium"
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
                 {" "}
                 {stepData.driverName || "N/A"}
-                {stepData.driverCnh && (
-                  <Text className="text-xs text-gray-500">
-                    {" "}
-                    (CNH: {stepData.driverCnh})
-                  </Text>
-                )}
+                {stepData.driverCnh && ` (CNH: ${stepData.driverCnh})`}
               </Text>
             </View>
 
             <View className="flex-row">
               <Text className="text-sm text-gray-600">Combustível:</Text>
               <Text
-                className="text-sm text-gray-900
-                flex-1 font-medium"
+                className="text-sm text-gray-900 flex-1 font-medium"
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
                 {" "}
                 {stepData.fuelTypeName || "N/A"}
@@ -229,6 +285,7 @@ export const FuelForm: React.FC<FuelFormProps> = ({
           render={({ field: { onChange, value } }) => (
             <DatePicker
               label="Data do Abastecimento"
+              required
               value={value ? new Date(value) : new Date()}
               onDateChange={(date) => onChange(date.toISOString())}
               error={errors.refueling_date?.message}
@@ -244,20 +301,20 @@ export const FuelForm: React.FC<FuelFormProps> = ({
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
               label="Quilometragem Atual (km)"
+              required
               placeholder="Ex: 50.000"
               value={formattedMileage}
               onChangeText={(text) => {
                 const formatted = formatMileage(text);
                 setFormattedMileage(formatted);
 
-                // Converts to number and sends to control
                 const numValue = parseFormattedValue(formatted);
                 onChange(numValue || undefined);
-
-                // Trigger validation
+              }}
+              onBlur={() => {
+                onBlur();
                 trigger("current_mileage");
               }}
-              onBlur={onBlur}
               error={errors.current_mileage?.message}
               keyboardType="numeric"
             />
@@ -270,24 +327,41 @@ export const FuelForm: React.FC<FuelFormProps> = ({
           name="liters_amount"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
+              inputRef={litersInputRef}
               label="Quantidade de Litros"
+              required
               placeholder="Ex: 45,500"
               value={formattedLiters}
               onChangeText={(text) => {
+                // Block input if decimal part already has 3 digits
+                const separatorIdx = Math.max(
+                  text.lastIndexOf(","),
+                  text.lastIndexOf("."),
+                );
+                if (separatorIdx !== -1) {
+                  const decimalDigits = text
+                    .substring(separatorIdx + 1)
+                    .replace(/\D/g, "");
+                  if (decimalDigits.length > 3) {
+                    litersInputRef.current?.setNativeProps({
+                      text: formattedLiters,
+                    });
+                    return;
+                  }
+                }
+
                 const formatted = formatLiters(text);
                 setFormattedLiters(formatted);
 
-                // Converts to number and sends to control
                 const numValue = parseFormattedValue(formatted);
                 onChange(numValue || undefined);
 
-                // Calculate total immediately
                 updateTotal(formatted, formattedPrice);
-
-                // Trigger validation
+              }}
+              onBlur={() => {
+                onBlur();
                 trigger("liters_amount");
               }}
-              onBlur={onBlur}
               error={errors.liters_amount?.message}
               keyboardType="numeric"
             />
@@ -298,35 +372,61 @@ export const FuelForm: React.FC<FuelFormProps> = ({
         <Controller
           control={control}
           name="price_per_liter"
-          render={({ field: { onChange, onBlur, value } }) => (
+          render={({ field: { onChange, onBlur } }) => (
             <Input
+              inputRef={priceInputRef}
               label="Preço por Litro"
+              required
               placeholder="Ex: R$ 5,999"
               value={formattedPrice}
               onChangeText={(text) => {
+                // Block input if decimal part already has 3 digits
+                const cleanText = text.replace(/^R\$\s*/, "");
+                const separatorIdx = Math.max(
+                  cleanText.lastIndexOf(","),
+                  cleanText.lastIndexOf("."),
+                );
+
+                if (separatorIdx !== -1) {
+                  const decimalDigits = cleanText
+                    .substring(separatorIdx + 1)
+                    .replace(/\D/g, "");
+
+                  if (decimalDigits.length > 3) {
+                    priceInputRef.current?.setNativeProps({
+                      text: formattedPrice,
+                    });
+                    return;
+                  }
+                }
+
                 const formatted = formatCurrency(text);
                 setFormattedPrice(formatted);
 
-                // Converts to number and sends to control
                 const numValue = parseFormattedValue(formatted);
+
                 onChange(numValue || undefined);
-
-                // Calculate total immediately
                 updateTotal(formattedLiters, formatted);
-
-                // Trigger validation
-                trigger("price_per_liter");
               }}
               onBlur={() => {
-                // Format better when leaving the field
                 if (formattedPrice && formattedPrice !== "R$ ") {
                   const numValue = parseFormattedValue(formattedPrice);
                   if (numValue > 0) {
-                    const betterFormatted = formatCurrency(numValue.toString());
-                    setFormattedPrice(betterFormatted);
+                    // Auto-format with decimals: "23" → "R$ 23,00", "5,9" → "R$ 5,90"
+                    const commaIdx = formattedPrice.indexOf(",");
+                    const existingDecimals =
+                      commaIdx !== -1
+                        ? formattedPrice.substring(commaIdx + 1).length
+                        : 0;
+
+                    const decimals = existingDecimals >= 3 ? 3 : 2;
+                    const formatted = `R$ ${numValue.toFixed(decimals).replace(".", ",")}`;
+
+                    setFormattedPrice(formatted);
                   }
                 }
                 onBlur();
+                trigger("price_per_liter");
               }}
               error={errors.price_per_liter?.message}
               keyboardType="numeric"
@@ -385,6 +485,7 @@ export const FuelForm: React.FC<FuelFormProps> = ({
               <Text className="text-gray-500 text-sm mt-1">
                 Toque para tirar foto ou selecionar da galeria
               </Text>
+              <Text className="mt-3 text-gray-500">(máx. 5MB)</Text>
             </TouchableOpacity>
           )}
         </View>

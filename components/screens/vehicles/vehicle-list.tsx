@@ -36,7 +36,7 @@ export const VehicleList: React.FC<VehicleListProps> = ({
   isDriverWithoutVehicles = false,
 }) => {
   const hasSearchResults = Boolean(
-    debouncedSearch && debouncedSearch.length > 0
+    debouncedSearch && debouncedSearch.length > 0,
   );
   const showNoResults = hasSearchResults && vehicles.length === 0 && !isLoading;
 
@@ -63,7 +63,7 @@ export const VehicleList: React.FC<VehicleListProps> = ({
       <VehicleEmptyState
         isSearchResult={showNoResults}
         searchQuery={debouncedSearch}
-        refreshing={refreshing}
+        isFetching={isFetching}
         onClearSearch={showNoResults ? onClearSearch : undefined}
         onRefresh={onRefresh}
         onOpenWebPlatform={!showNoResults ? onOpenWebPlatform : undefined}
@@ -103,7 +103,7 @@ export const VehicleList: React.FC<VehicleListProps> = ({
       onEndReached={onLoadMore}
       onEndReachedThreshold={0.1}
       ListFooterComponent={renderFooter}
-      ListEmptyComponent={renderEmpty}
+      ListEmptyComponent={renderEmpty()}
       showsVerticalScrollIndicator={false}
       style={{ flex: 1 }}
     />

@@ -14,6 +14,7 @@ interface DatePickerProps {
   placeholder?: string;
   maximumDate?: Date;
   minimumDate?: Date;
+  required?: boolean;
 }
 
 export const DatePicker: React.FC<DatePickerProps> = ({
@@ -26,6 +27,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   placeholder = "Selecione uma data",
   maximumDate,
   minimumDate,
+  required = false,
 }) => {
   const [showPicker, setShowPicker] = useState<boolean>(false);
 
@@ -53,7 +55,12 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
   return (
     <View className={className}>
-      {label && <Text className="text-gray-700 font-medium mb-2">{label}</Text>}
+      {label && (
+        <Text className="text-gray-700 font-medium mb-2">
+          {label}
+          {required && <Text className="text-red-500"> *</Text>}
+        </Text>
+      )}
 
       <TouchableOpacity
         onPress={showDatePicker}
@@ -61,7 +68,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
         className={cn(
           "border rounded-lg px-3 py-3 bg-white flex-row justify-between items-center",
           error ? "border-danger-500" : "border-gray-300",
-          disabled && "bg-gray-100 opacity-60"
+          disabled && "bg-gray-100 opacity-60",
         )}
       >
         <Text

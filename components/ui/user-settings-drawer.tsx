@@ -7,6 +7,8 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 
+import Ionicons from "@expo/vector-icons/Ionicons";
+
 import { Avatar } from "./avatar";
 import { useAuthStore } from "../../store";
 
@@ -42,7 +44,7 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
         onClose();
       }
     },
-    [onClose]
+    [onClose],
   );
 
   // Renderizar backdrop customizado
@@ -56,7 +58,7 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
         pressBehavior="close"
       />
     ),
-    []
+    [],
   );
 
   const getUserRoleDisplay = () => {
@@ -206,7 +208,12 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
               className="w-10 h-10 bg-red-100 
               rounded-full items-center justify-center mr-4"
             >
-              <Text className="text-lg">🚪</Text>
+              <Ionicons
+                className="pl-1"
+                name="exit-outline"
+                size={26}
+                color={"#DC143C"}
+              />
             </View>
             <View className="flex-1">
               <Text

@@ -1,8 +1,14 @@
 import { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, Image, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  InteractionManager,
+} from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
-import { Controller } from "react-hook-form";
+import { Controller, useWatch } from "react-hook-form";
 
 import * as ImagePicker from "expo-image-picker";
 import { Input, DatePicker, Select } from "../../ui";
@@ -31,7 +37,6 @@ interface ChecklistFormProps {
   vehicleData: any;
   isLoadingVehicle: boolean;
   trigger: any;
-  watch: any;
   isDriver?: boolean; // Flag to hide summary for drivers
 }
 
@@ -147,34 +152,39 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
   vehicleData,
   isLoadingVehicle,
   trigger,
-  watch,
   isDriver = false,
 }) => {
-  const [formattedMileage, setFormattedMileage] = useState<string>("");
+  const [isFormReady, setIsFormReady] = useState<boolean>(false);
 
-  // Sync formatted mileage with form value on component mount
-  const currentMileage = watch("current_mileage");
-
+  // Defer heavy form rendering until after step transition completes
   useEffect(() => {
-    if (currentMileage && currentMileage > 0) {
-      const formatted = currentMileage.toLocaleString("pt-BR");
-      setFormattedMileage(formatted);
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsFormReady(true);
+    });
+    return () => task.cancel();
+  }, []);
+
+  // Initialize formatted mileage from form values (for back-navigation persistence)
+  const [formattedMileage, setFormattedMileage] = useState<string>(() => {
+    const mileage = control._formValues?.current_mileage;
+
+    if (mileage && mileage > 0) {
+      return mileage.toLocaleString("pt-BR");
     }
-  }, [currentMileage]);
+
+    return "";
+  });
 
   // Watch all form values to determine photo requirements
-  const formData = watch();
+  const formData = useWatch({ control });
   const photoRequirements = getPhotoRequirements(formData);
 
   const renderPhotoSection = (fieldName: string, label: string) => {
     const requirement =
       photoRequirements[fieldName as keyof typeof photoRequirements];
+
     const images = checklistImages[fieldName] || [];
     const isRequired = requirement?.required;
-
-    if (!isRequired && images.length === 0) {
-      return null; // Don't show photo section if not required and no images
-    }
 
     return (
       <View className="mb-4">
@@ -239,11 +249,18 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
     );
   };
 
+  if (!isFormReady) {
+    return (
+      <View className="flex-1 justify-center items-center py-20">
+        <Text className="text-gray-500 text-base">
+          Carregando formulário...
+        </Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView
-      className="flex-1 px-6 pt-6"
-      showsVerticalScrollIndicator={false}
-    >
+    <View className="flex-1 px-6 pt-6">
       {/* Selected Items Summary - Hidden for drivers */}
       {!isDriver && (
         <View className="bg-white rounded-lg p-4 mb-6 border border-gray-200">
@@ -254,7 +271,11 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           <View className="space-y-3">
             <View className="flex-row">
               <Text className="text-sm text-gray-600">Filial:</Text>
-              <Text className="text-sm text-gray-900 flex-1 font-medium">
+              <Text
+                className="text-sm text-gray-900 flex-1 font-medium"
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {" "}
                 {stepData.branchName || "N/A"}
               </Text>
@@ -262,7 +283,11 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
 
             <View className="flex-row">
               <Text className="text-sm text-gray-600">Motorista:</Text>
-              <Text className="text-sm text-gray-900 flex-1 font-medium">
+              <Text
+                className="text-sm text-gray-900 flex-1 font-medium"
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {" "}
                 {stepData.driverName || "N/A"}
                 {stepData.driverCnh && (
@@ -326,6 +351,17 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         </View>
       )}
 
+      {/* 📸 Upload Limit Info */}
+      <View className="bg-amber-50 rounded-lg p-4 mb-6 border border-amber-200">
+        <Text className="font-bold text-amber-900 mb-1">
+          📸 Limite de upload total:
+        </Text>
+        <Text className="text-lg font-bold text-amber-800">5MB</Text>
+        <Text className="text-sm text-amber-700 mt-1">
+          Soma de todas as fotos do checklist
+        </Text>
+      </View>
+
       {/* Form Fields */}
       <View className="gap-4">
         {/* Date */}
@@ -335,6 +371,7 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           render={({ field: { onChange, value } }) => (
             <DatePicker
               label="Data do Checklist"
+              required
               value={value ? new Date(value) : new Date()}
               onDateChange={(date) => onChange(date.toISOString())}
               error={errors.checklist_date?.message}
@@ -349,17 +386,21 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="current_mileage"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
-              label="Quilometragem Atual (km) *"
+              label="Quilometragem Atual (km)"
+              required
               placeholder="Ex: 50.000"
               value={formattedMileage}
               onChangeText={(text) => {
                 const formatted = formatMileage(text);
                 setFormattedMileage(formatted);
+
                 const numValue = parseFormattedValue(formatted);
                 onChange(numValue || undefined);
+              }}
+              onBlur={() => {
+                onBlur();
                 trigger("current_mileage");
               }}
-              onBlur={onBlur}
               error={errors.current_mileage?.message}
               keyboardType="numeric"
             />
@@ -375,7 +416,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="tires_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição dos Pneus *"
+              label="Condição dos Pneus"
+              required
               placeholder="Selecione a condição"
               value={value}
               onValueChange={onChange}
@@ -394,7 +436,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="fuel_level_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Nível de Combustível Adequado *"
+              label="Nível de Combustível Adequado"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -407,7 +450,7 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {/* Fuel Level Photos - Always Required */}
         {renderPhotoSection(
           "fuel_level_adequate",
-          "Foto do Nível de Combustível"
+          "Foto do Nível de Combustível",
         )}
 
         {/* Headlights */}
@@ -416,7 +459,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="headlights_working"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Faróis Funcionando *"
+              label="Faróis Funcionando"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -435,7 +479,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="taillights_working"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Lanternas Traseiras Funcionando *"
+              label="Lanternas Traseiras Funcionando"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -448,7 +493,7 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {/* Taillights Photos */}
         {renderPhotoSection(
           "taillights_working",
-          "Foto das Lanternas Traseiras"
+          "Foto das Lanternas Traseiras",
         )}
 
         {/* Turn Signals */}
@@ -457,7 +502,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="turn_signals_working"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Setas Funcionando *"
+              label="Setas Funcionando"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -476,7 +522,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="bumpers_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição dos Para-choques *"
+              label="Condição dos Para-choques"
+              required
               placeholder="Selecione a condição"
               value={value}
               onValueChange={onChange}
@@ -495,7 +542,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="windshield_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição do Para-brisa *"
+              label="Condição do Para-brisa"
+              required
               placeholder="Selecione a condição"
               value={value}
               onValueChange={onChange}
@@ -514,7 +562,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="mirrors_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição dos Retrovisores *"
+              label="Condição dos Retrovisores"
+              required
               placeholder="Selecione a condição"
               value={value}
               onValueChange={onChange}
@@ -533,7 +582,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="seatbelts_working"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Cintos de Segurança Funcionando *"
+              label="Cintos de Segurança Funcionando"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -546,7 +596,7 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {/* Seatbelts Photos */}
         {renderPhotoSection(
           "seatbelts_working",
-          "Foto dos Cintos de Segurança"
+          "Foto dos Cintos de Segurança",
         )}
 
         {/* Dashboard Working */}
@@ -555,7 +605,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="dashboard_working"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Painel Funcionando *"
+              label="Painel Funcionando"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -574,7 +625,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="brakes_working"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Freios Funcionando *"
+              label="Freios Funcionando"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -593,7 +645,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="clutch_working"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Embreagem Funcionando *"
+              label="Embreagem Funcionando"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -612,7 +665,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="oil_level_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Nível de Óleo Adequado *"
+              label="Nível de Óleo Adequado"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -631,7 +685,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="radiator_water_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Água do Radiador Adequada *"
+              label="Água do Radiador Adequada"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -644,7 +699,7 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {/* Radiator Water Photos */}
         {renderPhotoSection(
           "radiator_water_adequate",
-          "Foto da Água do Radiador"
+          "Foto da Água do Radiador",
         )}
 
         {/* Brake Fluid Adequate */}
@@ -653,7 +708,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="brake_fluid_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Fluido de Freio Adequado *"
+              label="Fluido de Freio Adequado"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -672,7 +728,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="steering_wheel_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição do Volante *"
+              label="Condição do Volante"
+              required
               placeholder="Selecione a condição"
               value={value}
               onValueChange={onChange}
@@ -691,7 +748,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="battery_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição da Bateria *"
+              label="Condição da Bateria"
+              required
               placeholder="Selecione a condição"
               value={value}
               onValueChange={onChange}
@@ -710,7 +768,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="driver_license_valid"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="CNH Válida *"
+              label="CNH Válida"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -720,16 +779,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           )}
         />
 
-        {/* Driver License Photos */}
-        {renderPhotoSection("driver_license_valid", "Foto da CNH")}
-
         {/* Vehicle Documents Valid */}
         <Controller
           control={control}
           name="vehicle_documents_valid"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Documentos do Veículo Válidos *"
+              label="Documentos do Veículo Válidos"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -739,19 +796,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           )}
         />
 
-        {/* Vehicle Documents Photos */}
-        {renderPhotoSection(
-          "vehicle_documents_valid",
-          "Foto dos Documentos do Veículo"
-        )}
-
         {/* Insurance Valid */}
         <Controller
           control={control}
           name="insurance_valid"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Seguro Válido *"
+              label="Seguro Válido"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -761,16 +813,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           )}
         />
 
-        {/* Insurance Photos */}
-        {renderPhotoSection("insurance_valid", "Foto do Seguro")}
-
         {/* Fire Extinguisher Valid */}
         <Controller
           control={control}
           name="fire_extinguisher_valid"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Extintor Válido *"
+              label="Extintor Válido"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -780,16 +830,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           )}
         />
 
-        {/* Fire Extinguisher Photos */}
-        {renderPhotoSection("fire_extinguisher_valid", "Foto do Extintor")}
-
         {/* Warning Triangle Present */}
         <Controller
           control={control}
           name="warning_triangle_present"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Triângulo Presente *"
+              label="Triângulo Presente"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -799,16 +847,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           )}
         />
 
-        {/* Warning Triangle Photos */}
-        {renderPhotoSection("warning_triangle_present", "Foto do Triângulo")}
-
         {/* Jack Present */}
         <Controller
           control={control}
           name="jack_present"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Macaco Presente *"
+              label="Macaco Presente"
+              required
               placeholder="Selecione"
               value={value?.toString()}
               onValueChange={(val) => onChange(val === "true")}
@@ -818,16 +864,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           )}
         />
 
-        {/* Jack Photos */}
-        {renderPhotoSection("jack_present", "Foto do Macaco")}
-
         {/* Spare Tire Condition */}
         <Controller
           control={control}
           name="spare_tire_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição do Estepe *"
+              label="Condição do Estepe"
+              required
               placeholder="Selecione a condição"
               value={value}
               onValueChange={onChange}
@@ -846,7 +890,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
           name="overall_condition"
           render={({ field: { onChange, value } }) => (
             <Select
-              label="Condição Geral do Veículo *"
+              label="Condição Geral do Veículo"
+              required
               placeholder="Selecione a condição geral"
               value={value}
               onValueChange={onChange}
@@ -877,6 +922,6 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
 
       {/* Bottom Spacing */}
       <View className="h-32" />
-    </ScrollView>
+    </View>
   );
 };

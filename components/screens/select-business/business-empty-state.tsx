@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { View, Text } from "react-native";
+
+import { Ionicons } from "@expo/vector-icons";
 import { Button } from "../../ui";
 
 interface BusinessEmptyStateProps {
   isSearchResult?: boolean;
   searchQuery?: string;
-  refreshing: boolean;
+  isFetching?: boolean;
   onClearSearch?: () => void;
   onRefresh: () => void;
 }
@@ -12,13 +15,28 @@ interface BusinessEmptyStateProps {
 export const BusinessEmptyState: React.FC<BusinessEmptyStateProps> = ({
   isSearchResult = false,
   searchQuery = "",
-  refreshing,
+  isFetching = false,
   onClearSearch,
   onRefresh,
 }) => {
+  const [isClearing, setIsClearing] = useState(false);
+
+  const handleClearSearch = () => {
+    if (!onClearSearch) return;
+    setIsClearing(true);
+    onClearSearch();
+  };
+
   if (isSearchResult) {
     return (
       <View className="flex-1 mt-16 items-center px-8">
+        <View
+          className="w-16 h-16 bg-gray-100 rounded-full
+          items-center justify-center mb-4"
+        >
+          <Ionicons name="search-outline" size={32} color="#9ca3af" />
+        </View>
+
         <Text
           className="text-2xl font-bold
           text-gray-900 mb-3 text-center"
@@ -45,16 +63,22 @@ export const BusinessEmptyState: React.FC<BusinessEmptyStateProps> = ({
         {/* Action buttons */}
         <View className="w-full max-w-xs">
           {onClearSearch && (
-            <Button onPress={onClearSearch} variant="outline" className="mb-3">
-              🗑️ Limpar busca
+            <Button
+              onPress={handleClearSearch}
+              variant="outline"
+              className="mb-3"
+              loading={isClearing}
+              disabled={isClearing || isFetching}
+            >
+              {isClearing ? "Limpando..." : "Limpar busca"}
             </Button>
           )}
           <Button
             onPress={onRefresh}
-            loading={refreshing}
-            disabled={refreshing}
+            loading={isFetching}
+            disabled={isFetching || isClearing}
           >
-            {refreshing ? "Atualizando..." : "🔄 Atualizar lista"}
+            {isFetching ? "Atualizando..." : "Atualizar lista"}
           </Button>
         </View>
       </View>
@@ -102,11 +126,11 @@ export const BusinessEmptyState: React.FC<BusinessEmptyStateProps> = ({
       <View className="w-full max-w-xs">
         <Button
           onPress={onRefresh}
-          loading={refreshing}
-          disabled={refreshing}
+          loading={isFetching}
+          disabled={isFetching}
           className="mb-3"
         >
-          {refreshing ? "Atualizando..." : "🔄 Atualizar lista"}
+          {isFetching ? "Atualizando..." : "Atualizar lista"}
         </Button>
       </View>
 

@@ -24,7 +24,6 @@ import { useAuthStore } from "../../store";
 import { useVehicleData } from "../../hooks";
 
 import { ProtectedRoute } from "../../components/protected-route";
-
 import {
   Button,
   LogoutModal,
@@ -67,7 +66,7 @@ const FuelScreen = () => {
 
   // Drivers start directly at form step (skip branch, driver, fuelType)
   const [currentStep, setCurrentStep] = useState<Step>(
-    isDriver ? "form" : "branch"
+    isDriver ? "form" : "branch",
   );
   const [stepData, setStepData] = useState<Partial<StepData>>({});
 
@@ -108,7 +107,7 @@ const FuelScreen = () => {
           (val) => val > vehicleData.current_mileage,
           {
             message: `A quilometragem deve ser maior que a atual do veículo (${vehicleData.current_mileage?.toLocaleString()} km).`,
-          }
+          },
         ),
       });
     }
@@ -116,15 +115,17 @@ const FuelScreen = () => {
     return baseSchema;
   }, [vehicleData?.current_mileage]);
 
-  // 📍 GEOLOCATION: Handler for location changes
+  // 📍 GEOLOCATION: Handler for location changes (null = location unavailable)
   // NOTE: We don't use useCallback here to avoid stale closure issues
-  const handleLocationChange = (location: {
-    latitude: number;
-    longitude: number;
-    wasManuallyAdjusted: boolean;
-    originalLatitude?: number;
-    originalLongitude?: number;
-  }) => {
+  const handleLocationChange = (
+    location: {
+      latitude: number;
+      longitude: number;
+      wasManuallyAdjusted: boolean;
+      originalLatitude?: number;
+      originalLongitude?: number;
+    } | null,
+  ) => {
     setLocationData(location);
   };
 
@@ -143,6 +144,7 @@ const FuelScreen = () => {
           text2: "É necessário adicionar a foto do odômetro.",
           position: "top",
         });
+
         return;
       }
 
@@ -157,6 +159,7 @@ const FuelScreen = () => {
 
         return;
       }
+
       setIsSubmitting(true);
 
       try {
@@ -199,7 +202,7 @@ const FuelScreen = () => {
         await Promise.all([
           apiClient.postFormData(
             `/fuel/create-fuel/${user?.businessId}`,
-            formData
+            formData,
           ),
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
         ]);
@@ -233,7 +236,7 @@ const FuelScreen = () => {
         setIsSubmitting(false);
       }
     },
-    [calculatedTotal, odometerImage, locationData, user?.businessId, router]
+    [calculatedTotal, odometerImage, locationData, user?.businessId, router],
   );
 
   // Form setup with corrected default values
@@ -402,7 +405,7 @@ const FuelScreen = () => {
 
       return null;
     },
-    []
+    [],
   );
 
   const takePhoto = useCallback(async () => {
@@ -477,6 +480,7 @@ const FuelScreen = () => {
           position: "top",
           visibilityTime: 4000,
         });
+
         return;
       }
 
@@ -732,7 +736,8 @@ const FuelScreen = () => {
                 disabled={
                   isSubmitting ||
                   isLocationLoading ||
-                  !areAllRequiredFieldsFilled()
+                  !areAllRequiredFieldsFilled() ||
+                  Object.keys(errors).length > 0
                 }
                 className="flex-1"
               >

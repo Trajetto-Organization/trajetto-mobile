@@ -51,7 +51,7 @@ const ForgotPasswordScreen = () => {
       const result = await apiClient.post<ForgotPasswordResponse>(
         "/user/forgot/password",
         { email: data.email },
-        false // No auth required
+        false, // No auth required
       );
 
       // Success haptic feedback

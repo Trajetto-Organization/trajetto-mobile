@@ -9,7 +9,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
-    public statusText: string
+    public statusText: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -136,7 +136,7 @@ class ApiClient {
 
   async request<T>(
     endpoint: string,
-    config: ApiRequestConfig = {}
+    config: ApiRequestConfig = {},
   ): Promise<T> {
     const {
       method = "GET",
@@ -262,7 +262,7 @@ class ApiClient {
       throw new ApiError(
         error instanceof Error ? error.message : "Network error",
         0,
-        "Network Error"
+        "Network Error",
       );
     }
   }
@@ -288,7 +288,7 @@ class ApiClient {
   async postFormData<T>(
     endpoint: string,
     formData: FormData,
-    requiresAuth = true
+    requiresAuth = true,
   ): Promise<T> {
     return this.request<T>(endpoint, {
       method: "POST",
@@ -301,7 +301,7 @@ class ApiClient {
   // Special method for NDJSON streaming with automatic token refresh
   async getNDJSONResponse(
     endpoint: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<Response> {
     return this.request<Response>(endpoint, {
       method: "GET",

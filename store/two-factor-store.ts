@@ -20,19 +20,15 @@ export const useTwoFactorStore = create<TwoFactorState>()(
       resendTimer: 0,
       lastResendTime: null,
       email: null,
-
       setResendTimer: (timer: number) => {
         set({ resendTimer: timer });
       },
-
       setLastResendTime: (time: number) => {
         set({ lastResendTime: time });
       },
-
       setEmail: (email: string) => {
         set({ email });
       },
-
       calculateRemainingTime: () => {
         const state = get();
         if (!state.lastResendTime) return 0;
@@ -43,7 +39,6 @@ export const useTwoFactorStore = create<TwoFactorState>()(
         const remaining = Math.max(0, 15 - elapsed); // 15 seconds
         return remaining;
       },
-
       resetTimer: () => {
         set({
           resendTimer: 0,
@@ -58,6 +53,6 @@ export const useTwoFactorStore = create<TwoFactorState>()(
         lastResendTime: state.lastResendTime,
         email: state.email,
       }),
-    }
-  )
+    },
+  ),
 );

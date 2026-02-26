@@ -13,6 +13,7 @@ interface BusinessListProps {
   hasNextPage: boolean;
   refreshing: boolean;
   debouncedSearch: string;
+  selectingBusinessId: string | null;
   onBusinessPress: (business: Business) => void;
   onRefresh: () => void;
   onLoadMore: () => void;
@@ -26,19 +27,25 @@ export const BusinessList: React.FC<BusinessListProps> = ({
   hasNextPage,
   refreshing,
   debouncedSearch,
+  selectingBusinessId,
   onBusinessPress,
   onRefresh,
   onLoadMore,
   onClearSearch,
 }) => {
   const hasSearchResults = Boolean(
-    debouncedSearch && debouncedSearch.length > 0
+    debouncedSearch && debouncedSearch.length > 0,
   );
   const showNoResults =
     hasSearchResults && businesses.length === 0 && !isLoading;
 
   const renderBusinessItem = ({ item }: { item: Business }) => (
-    <BusinessCard business={item} onPress={() => onBusinessPress(item)} />
+    <BusinessCard
+      business={item}
+      onPress={() => onBusinessPress(item)}
+      isSelecting={selectingBusinessId === item.id}
+      disabled={selectingBusinessId !== null && selectingBusinessId !== item.id}
+    />
   );
 
   const renderFooter = () => {
@@ -60,7 +67,7 @@ export const BusinessList: React.FC<BusinessListProps> = ({
       <BusinessEmptyState
         isSearchResult={showNoResults}
         searchQuery={debouncedSearch}
-        refreshing={refreshing}
+        isFetching={isFetching}
         onClearSearch={showNoResults ? onClearSearch : undefined}
         onRefresh={onRefresh}
       />
@@ -98,7 +105,7 @@ export const BusinessList: React.FC<BusinessListProps> = ({
       onEndReached={onLoadMore}
       onEndReachedThreshold={0.1}
       ListFooterComponent={renderFooter}
-      ListEmptyComponent={renderEmpty}
+      ListEmptyComponent={renderEmpty()}
       showsVerticalScrollIndicator={false}
       style={{ flex: 1 }}
     />

@@ -36,6 +36,9 @@ const SelectBusinessScreen = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+  const [selectingBusinessId, setSelectingBusinessId] = useState<string | null>(
+    null,
+  );
 
   // Debounce search query
   useEffect(() => {
@@ -63,7 +66,7 @@ const SelectBusinessScreen = () => {
     setIsRefreshingError(false);
 
     try {
-      refetch();
+      await refetch();
     } finally {
       setRefreshing(false);
     }
@@ -73,7 +76,7 @@ const SelectBusinessScreen = () => {
     setIsRefreshingError(true);
 
     try {
-      refetch();
+      await refetch();
     } finally {
       setIsRefreshingError(false);
     }
@@ -87,6 +90,8 @@ const SelectBusinessScreen = () => {
 
   const handleBusinessPress = useCallback(
     async (business: Business) => {
+      setSelectingBusinessId(business.id);
+
       try {
         // Update user with selected business
         const updatedUser = {
@@ -107,6 +112,8 @@ const SelectBusinessScreen = () => {
         // Navigate to vehicles screen
         router.replace("/vehicles");
       } catch (error) {
+        setSelectingBusinessId(null);
+
         Toast.show({
           type: "error",
           text1: "Erro",
@@ -115,7 +122,7 @@ const SelectBusinessScreen = () => {
         });
       }
     },
-    [user, setUser, router]
+    [user, setUser, router],
   );
 
   const handleLogout = () => {
@@ -175,6 +182,7 @@ const SelectBusinessScreen = () => {
           hasNextPage={hasNextPage}
           refreshing={refreshing}
           debouncedSearch={debouncedSearch}
+          selectingBusinessId={selectingBusinessId}
           onBusinessPress={handleBusinessPress}
           onRefresh={handleRefresh}
           onLoadMore={handleLoadMore}

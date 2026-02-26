@@ -17,6 +17,7 @@ interface SelectProps {
   error?: string;
   disabled?: boolean;
   className?: string;
+  required?: boolean;
 }
 
 export const Select: React.FC<SelectProps> = ({
@@ -28,6 +29,7 @@ export const Select: React.FC<SelectProps> = ({
   error,
   disabled = false,
   className = "",
+  required = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -43,7 +45,7 @@ export const Select: React.FC<SelectProps> = ({
       onPress={() => handleSelect(item.value)}
       className={cn(
         "px-4 py-4 border-b border-gray-100",
-        item.value === value && "bg-primary-50"
+        item.value === value && "bg-primary-50",
       )}
     >
       <Text
@@ -51,7 +53,7 @@ export const Select: React.FC<SelectProps> = ({
           "text-base",
           item.value === value
             ? "text-primary-600 font-medium"
-            : "text-gray-900"
+            : "text-gray-900",
         )}
       >
         {item.label}
@@ -63,10 +65,11 @@ export const Select: React.FC<SelectProps> = ({
     <View className={className}>
       {label && (
         <Text
-          className="text-gray-700 
+          className="text-gray-700
           font-medium mb-2"
         >
           {label}
+          {required && <Text className="text-red-500"> *</Text>}
         </Text>
       )}
 
@@ -76,13 +79,13 @@ export const Select: React.FC<SelectProps> = ({
         className={cn(
           "border rounded-lg px-3 py-3 bg-white flex-row justify-between items-center",
           error ? "border-danger-500" : "border-gray-300",
-          disabled && "bg-gray-100 opacity-60"
+          disabled && "bg-gray-100 opacity-60",
         )}
       >
         <Text
           className={cn(
             "text-base",
-            selectedOption ? "text-gray-900" : "text-gray-500"
+            selectedOption ? "text-gray-900" : "text-gray-500",
           )}
         >
           {selectedOption?.label || placeholder}

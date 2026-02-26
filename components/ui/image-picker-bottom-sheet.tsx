@@ -49,7 +49,7 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
         onClose();
       }
     },
-    [onClose]
+    [onClose],
   );
 
   // Render custom backdrop
@@ -63,7 +63,7 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
         pressBehavior="close"
       />
     ),
-    []
+    [],
   );
 
   const handleTakePhoto = () => {
@@ -108,9 +108,7 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
             <Text className="text-xl font-bold text-gray-900 mb-2">
               {title}
             </Text>
-            <Text className="text-gray-600 text-center">
-              {description}
-            </Text>
+            <Text className="text-gray-600 text-center">{description}</Text>
           </View>
         </View>
 

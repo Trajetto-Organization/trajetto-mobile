@@ -1,4 +1,6 @@
-import { TouchableOpacity, Text, ActivityIndicator } from "react-native";
+import { Pressable, Text, ActivityIndicator } from "react-native";
+import * as Haptics from "expo-haptics";
+
 import { cn } from "../../utils/cn";
 
 interface ButtonProps {
@@ -13,11 +15,11 @@ interface ButtonProps {
 }
 
 const variantStyles = {
-  primary: "bg-primary-600 active:bg-primary-700",
-  secondary: "bg-gray-600 active:bg-gray-700",
-  outline: "border border-primary-600 bg-transparent active:bg-primary-50",
-  ghost: "bg-transparent active:bg-gray-100",
-  danger: "bg-danger-600 active:bg-danger-700",
+  primary: "bg-primary-600",
+  secondary: "bg-gray-600",
+  outline: "border border-primary-600 bg-transparent",
+  ghost: "bg-transparent",
+  danger: "bg-danger-600",
 };
 
 const variantTextStyles = {
@@ -52,19 +54,28 @@ export const Button: React.FC<ButtonProps> = ({
 }) => {
   const isDisabled = disabled || loading;
 
+  const handlePress = () => {
+    if (isDisabled || !onPress) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress();
+  };
+
   return (
-    <TouchableOpacity
-      onPress={!isDisabled ? onPress : undefined}
+    <Pressable
+      onPress={handlePress}
       disabled={isDisabled}
+      style={({ pressed }) => ({
+        opacity: pressed && !isDisabled ? 0.7 : 1,
+        transform: [{ scale: pressed && !isDisabled ? 0.97 : 1 }],
+      })}
       className={cn(
         "flex-row items-center justify-center",
         variantStyles[variant],
         sizeStyles[size],
         fullWidth && "w-full",
         isDisabled && "opacity-50",
-        className
+        className,
       )}
-      activeOpacity={0.8}
     >
       {loading && (
         <ActivityIndicator
@@ -80,11 +91,11 @@ export const Button: React.FC<ButtonProps> = ({
           "font-medium text-center",
           variantTextStyles[variant],
           textSizeStyles[size],
-          loading && "ml-2"
+          loading && "ml-2",
         )}
       >
         {children}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 };

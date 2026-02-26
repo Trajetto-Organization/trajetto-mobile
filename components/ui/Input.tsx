@@ -24,6 +24,8 @@ interface InputProps {
   showPasswordToggle?: boolean;
   rightIcon?: React.ReactNode;
   style?: object;
+  inputRef?: React.RefObject<TextInput | null>;
+  required?: boolean;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -45,6 +47,8 @@ export const Input: React.FC<InputProps> = ({
   showPasswordToggle = false,
   rightIcon,
   style,
+  inputRef,
+  required = false,
 }) => {
   const [isPasswordVisible, setIsPasswordVisible] = useState<boolean>(false);
   const [isFocused, setIsFocused] = useState<boolean>(false);
@@ -59,10 +63,16 @@ export const Input: React.FC<InputProps> = ({
 
   return (
     <View className={className}>
-      {label && <Text className="text-gray-700 font-medium mb-2">{label}</Text>}
+      {label && (
+        <Text className="text-gray-700 font-medium mb-2">
+          {label}
+          {required && <Text className="text-red-500"> *</Text>}
+        </Text>
+      )}
 
       <View className="relative">
         <TextInput
+          ref={inputRef}
           value={value}
           onChangeText={onChangeText}
           onBlur={() => {
@@ -86,7 +96,7 @@ export const Input: React.FC<InputProps> = ({
             !editable && "bg-gray-100 text-gray-500",
             multiline && "min-h-[100px] text-top",
             showPasswordToggle || rightIcon ? "pr-12" : "",
-            inputClassName
+            inputClassName,
           )}
           textAlignVertical="center"
           placeholderTextColor={placeholderTextColor}

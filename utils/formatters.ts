@@ -80,7 +80,7 @@ export const litersToNumber = (formattedLiters: string): string => {
  * Helper function to convert currency string to numeric value
  */
 export const formatCurrencyToNumber = (
-  currencyStr: string | number | undefined
+  currencyStr: string | number | undefined,
 ): number => {
   if (currencyStr === undefined || currencyStr === "") return 0;
 
@@ -142,7 +142,7 @@ export const parseFormattedValue = (formattedValue: string): number => {
  * Format number to Brazilian currency string
  */
 export const formatToBrazilianCurrency = (
-  value: number | string | undefined
+  value: number | string | undefined,
 ): string => {
   const numValue = formatCurrencyToNumber(value);
   return new Intl.NumberFormat("pt-BR", {
@@ -160,4 +160,47 @@ export const formatToBrazilianCurrency = (
 export const formatTotalAmount = (amount: number): string => {
   if (!amount || isNaN(amount)) return "R$ 0,00";
   return formatToBrazilianCurrency(amount);
+};
+
+/**
+ * Format CNPJ to Brazilian standard
+ * Example: "45453453453453" -> "45.453.453/4534-53"
+ */
+export const formatCnpj = (cnpj: string | null | undefined): string => {
+  if (!cnpj) return "";
+  return cnpj.replace(
+    /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+    "$1.$2.$3/$4-$5",
+  );
+};
+
+/**
+ * Format telephone to Brazilian standard
+ * Example: "24992501344" -> "+55 (24) 99250-1344"
+ */
+export const formatTelephone = (
+  telephone: string | null | undefined,
+): string => {
+  if (!telephone) return "";
+  return telephone.replace(/^(\d{2})(\d{5}|\d{4})(\d{4})$/, "+55 ($1) $2-$3");
+};
+
+export const hasSpaceAtEdges = (value: string) => /^\s|\s$/.test(value);
+export const isEmptyOrWhitespace = (value: string): boolean =>
+  value.trim().length === 0;
+
+export const hasConsecutiveSpaces = (value: string): boolean =>
+  /\s{2,}/.test(value);
+
+export const emptyStringToNull = (value: any) => {
+  if (typeof value === "string" && value.trim() === "") {
+    return null;
+  }
+
+  return value;
+};
+
+export const isValidDateString = (value: string): boolean => {
+  const date = new Date(value);
+  return !isNaN(date.getTime());
 };

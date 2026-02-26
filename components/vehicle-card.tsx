@@ -78,7 +78,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
 
   // Helper function to extract year from date string
   const getYearFromDate = (dateString: string) => {
-    if (!dateString || dateString === "N/A") return "N/A";
+    if (!dateString) return "N/A";
 
     try {
       const year = new Date(dateString).getFullYear();
@@ -121,7 +121,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
         </View>
         <View
           className={`px-3 py-1 rounded-full ${getStatusColor(
-            vehicle.status || "INACTIVE"
+            vehicle.status || "INACTIVE",
           )}`}
         >
           <Text className="text-xs font-medium">

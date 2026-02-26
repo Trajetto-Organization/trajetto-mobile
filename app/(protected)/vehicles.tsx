@@ -78,12 +78,12 @@ const VehiclesScreen = () => {
     refetch,
   } = useVehicleInfiniteScroll(
     debouncedSearch || undefined,
-    user?.businessId || user?.selectedBusiness || undefined
+    user?.businessId || user?.selectedBusiness || undefined,
   );
 
   // Calculate active vehicles count (ACTIVE + IN_ROUTE)
   const activeVehiclesCount = vehicles.filter(
-    (vehicle) => vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE"
+    (vehicle) => vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE",
   ).length;
 
   const permissions = checkVehiclePermission(user);
@@ -105,7 +105,7 @@ const VehiclesScreen = () => {
   const handleRefreshError = useCallback(async () => {
     setIsRefreshingError(true);
     try {
-      refetch();
+      await refetch();
     } finally {
       setIsRefreshingError(false);
     }
@@ -145,7 +145,7 @@ const VehiclesScreen = () => {
       permissions.canWrite,
       fuelPermissions.canWrite,
       checklistPermissions.canWrite,
-    ]
+    ],
   );
 
   const handleFuelAction = useCallback(() => {

@@ -27,6 +27,7 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery.trim());
     }, 300);
+
     return () => clearTimeout(timer);
   }, [searchQuery]);
 

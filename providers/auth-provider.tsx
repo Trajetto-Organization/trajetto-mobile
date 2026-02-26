@@ -18,6 +18,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!isInitialized && !isCheckingAuth.current && !hasInitialized.current) {
       isCheckingAuth.current = true;
       hasInitialized.current = true;
+
       logger.dev("🔐 AuthProvider: Initializing auth state...");
       checkAuth().finally(() => {
         logger.dev("🔐 AuthProvider: Auth state initialized");

@@ -34,7 +34,6 @@ export const useAuthStore = create<AuthStore>()(
       isAuthenticated: false,
       isLoading: false,
       isInitialized: false,
-
       setInitialized: (initialized: boolean) => {
         set({ isInitialized: initialized });
 
@@ -43,11 +42,9 @@ export const useAuthStore = create<AuthStore>()(
           get().logout();
         });
       },
-
       setUser: (user: User) => {
         set({ user });
       },
-
       login: async (email: string, password: string) => {
         set({ isLoading: true });
 
@@ -59,9 +56,8 @@ export const useAuthStore = create<AuthStore>()(
           >(
             "/user/session",
             { email, password },
-            false // No auth required for login
+            false, // No auth required for login
           );
-
           set({ isLoading: false });
 
           // Check if email verification is required
@@ -95,16 +91,14 @@ export const useAuthStore = create<AuthStore>()(
           await tokenStorage.setTokens(token, refresh_token);
 
           // Now fetch complete user data using the token
-          const userMeResponse = await apiClient.get<UserMeResponse>(
-            "/user/me"
-          );
+          const userMeResponse =
+            await apiClient.get<UserMeResponse>("/user/me");
           const user = userMeResponse.user;
 
           // Validate user access
           const accessValidation = validateUserAccess(user);
           if (!accessValidation.hasAccess) {
             let errorMessage = "Acesso negado.";
-
             switch (accessValidation.reason) {
               case "access_revoked":
                 errorMessage =
@@ -155,7 +149,6 @@ export const useAuthStore = create<AuthStore>()(
           };
         }
       },
-
       verifyTwoFactor: async (email: string, code: string) => {
         set({ isLoading: true });
 
@@ -163,7 +156,7 @@ export const useAuthStore = create<AuthStore>()(
           const response = await apiClient.post<TwoFactorVerificationResponse>(
             "/user/two-factor-verification",
             { email, code },
-            false // No auth required for two-factor verification
+            false, // No auth required for two-factor verification
           );
 
           // Store tokens first
@@ -171,16 +164,14 @@ export const useAuthStore = create<AuthStore>()(
           await tokenStorage.setTokens(token, refresh_token);
 
           // Now fetch complete user data using the token
-          const userMeResponse = await apiClient.get<UserMeResponse>(
-            "/user/me"
-          );
+          const userMeResponse =
+            await apiClient.get<UserMeResponse>("/user/me");
           const user = userMeResponse.user;
 
           // Validate user access
           const accessValidation = validateUserAccess(user);
           if (!accessValidation.hasAccess) {
             let errorMessage = "Acesso negado.";
-
             switch (accessValidation.reason) {
               case "access_revoked":
                 errorMessage =
@@ -231,14 +222,13 @@ export const useAuthStore = create<AuthStore>()(
           };
         }
       },
-
       resendTwoFactorCode: async (email: string) => {
         try {
           // Call the resend two-factor code endpoint
           await apiClient.post(
             "/user/resend-two-factor-code",
             { email },
-            false // No auth required for resend
+            false, // No auth required for resend
           );
 
           return { success: true };
@@ -256,7 +246,6 @@ export const useAuthStore = create<AuthStore>()(
           };
         }
       },
-
       logout: async () => {
         try {
           // Clear tokens from secure storage
@@ -287,7 +276,6 @@ export const useAuthStore = create<AuthStore>()(
           });
         }
       },
-
       refreshToken: async () => {
         try {
           logger.dev("🔄 auth-store: Delegating refresh to apiClient...");
@@ -322,7 +310,6 @@ export const useAuthStore = create<AuthStore>()(
           return false;
         }
       },
-
       checkAuth: async () => {
         set({ isLoading: true });
 
@@ -410,6 +397,6 @@ export const useAuthStore = create<AuthStore>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
-    }
-  )
+    },
+  ),
 );

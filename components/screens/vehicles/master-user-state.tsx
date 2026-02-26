@@ -1,17 +1,36 @@
-import { View, Text, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useState } from "react";
+import { View, Text } from "react-native";
 
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "../../ui";
 
 interface MasterUserStateProps {
   onSelectBusiness: () => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void> | void;
 }
 
 export const MasterUserState: React.FC<MasterUserStateProps> = ({
   onSelectBusiness,
   onLogout,
 }) => {
+  const [activeAction, setActiveAction] = useState<
+    "logout" | "select-business" | null
+  >(null);
+
+  const handleLogout = async () => {
+    setActiveAction("logout");
+    try {
+      await onLogout();
+    } catch {
+      setActiveAction(null);
+    }
+  };
+
+  const handleSelectBusiness = () => {
+    setActiveAction("select-business");
+    onSelectBusiness();
+  };
+
   return (
     <SafeAreaView
       className="flex-1 bg-gradient-to-br
@@ -50,14 +69,24 @@ export const MasterUserState: React.FC<MasterUserStateProps> = ({
 
         {/* Action buttons */}
         <View className="w-full max-w-sm">
-          <Button onPress={onSelectBusiness} className="mb-4 shadow-lg">
-            🏢 Selecionar Empresa
+          <Button
+            onPress={handleSelectBusiness}
+            className="mb-4 shadow-lg"
+            loading={activeAction === "select-business"}
+            disabled={activeAction !== null}
+          >
+            {activeAction === "select-business"
+              ? "Redirecionando..."
+              : "🏢 Selecionar Empresa"}
           </Button>
-          <TouchableOpacity onPress={onLogout} className="py-3">
-            <Text className="text-gray-500 text-center font-medium">
-              ← Sair da conta
-            </Text>
-          </TouchableOpacity>
+          <Button
+            onPress={handleLogout}
+            variant="ghost"
+            loading={activeAction === "logout"}
+            disabled={activeAction !== null}
+          >
+            {activeAction === "logout" ? "Saindo..." : "← Sair da conta"}
+          </Button>
         </View>
       </View>
     </SafeAreaView>

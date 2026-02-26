@@ -1,10 +1,13 @@
-import { View, Text, TouchableOpacity } from "react-native";
+import { useState } from "react";
+import { View, Text, Pressable } from "react-native";
+
+import { Ionicons } from "@expo/vector-icons";
 import { Button } from "../../ui";
 
 interface VehicleEmptyStateProps {
   isSearchResult?: boolean;
   searchQuery?: string;
-  refreshing: boolean;
+  isFetching?: boolean;
   onClearSearch?: () => void;
   onRefresh: () => void;
   onOpenWebPlatform?: () => void;
@@ -14,12 +17,20 @@ interface VehicleEmptyStateProps {
 export const VehicleEmptyState: React.FC<VehicleEmptyStateProps> = ({
   isSearchResult = false,
   searchQuery = "",
-  refreshing,
+  isFetching = false,
   onClearSearch,
   onRefresh,
   onOpenWebPlatform,
   isDriverWithoutVehicles = false,
 }) => {
+  const [isClearing, setIsClearing] = useState(false);
+
+  const handleClearSearch = () => {
+    if (!onClearSearch) return;
+    setIsClearing(true);
+    onClearSearch();
+  };
+
   // Special message for drivers without vehicles
   if (isDriverWithoutVehicles && !isSearchResult) {
     return (
@@ -56,11 +67,11 @@ export const VehicleEmptyState: React.FC<VehicleEmptyStateProps> = ({
         <View className="w-full max-w-xs">
           <Button
             onPress={onRefresh}
-            loading={refreshing}
-            disabled={refreshing}
+            loading={isFetching}
+            disabled={isFetching}
             className="mb-3"
           >
-            {refreshing ? "Atualizando..." : "🔄 Atualizar lista"}
+            {isFetching ? "Atualizando..." : "Atualizar lista"}
           </Button>
         </View>
 
@@ -77,6 +88,13 @@ export const VehicleEmptyState: React.FC<VehicleEmptyStateProps> = ({
   if (isSearchResult) {
     return (
       <View className="flex-1 mt-16 items-center px-8">
+        <View
+          className="w-16 h-16 bg-gray-100 rounded-full
+          items-center justify-center mb-4"
+        >
+          <Ionicons name="search-outline" size={32} color="#9ca3af" />
+        </View>
+
         <Text
           className="text-2xl font-bold
           text-gray-900 mb-3 text-center"
@@ -103,16 +121,22 @@ export const VehicleEmptyState: React.FC<VehicleEmptyStateProps> = ({
         {/* Action buttons */}
         <View className="w-full max-w-xs">
           {onClearSearch && (
-            <Button onPress={onClearSearch} variant="outline" className="mb-3">
-              🗑️ Limpar busca
+            <Button
+              onPress={handleClearSearch}
+              variant="outline"
+              className="mb-3"
+              loading={isClearing}
+              disabled={isClearing || isFetching}
+            >
+              {isClearing ? "Limpando..." : "Limpar busca"}
             </Button>
           )}
           <Button
             onPress={onRefresh}
-            loading={refreshing}
-            disabled={refreshing}
+            loading={isFetching}
+            disabled={isFetching || isClearing}
           >
-            {refreshing ? "Atualizando..." : "🔄 Atualizar lista"}
+            {isFetching ? "Atualizando..." : "Atualizar lista"}
           </Button>
         </View>
       </View>
@@ -158,26 +182,27 @@ export const VehicleEmptyState: React.FC<VehicleEmptyStateProps> = ({
       <View className="w-full max-w-xs">
         <Button
           onPress={onRefresh}
-          loading={refreshing}
-          disabled={refreshing}
+          loading={isFetching}
+          disabled={isFetching}
           className="mb-3"
         >
-          {refreshing ? "Atualizando..." : "🔄 Atualizar lista"}
+          {isFetching ? "Atualizando..." : "Atualizar lista"}
         </Button>
         {onOpenWebPlatform && (
-          <TouchableOpacity
-            className="py-3"
+          <Pressable
             onPress={onOpenWebPlatform}
-            disabled={refreshing}
+            disabled={isFetching}
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+            className="py-3"
           >
             <Text
               className={`text-center font-medium ${
-                refreshing ? "text-gray-400" : "text-primary-600"
+                isFetching ? "text-gray-400" : "text-primary-600"
               }`}
             >
-              🚚 Cadastre novos veículos na plataforma web!
+              Cadastre novos veículos na plataforma web
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
       </View>
 

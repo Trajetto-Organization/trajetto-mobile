@@ -1,15 +1,20 @@
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { Business } from "../hooks/use-business-infinite-scroll";
+
+import { formatCnpj, formatTelephone } from "../utils/formatters";
 
 interface BusinessCardProps {
   business: Business;
   onPress?: () => void;
+  isSelecting?: boolean;
+  disabled?: boolean;
 }
 
-// Removed status functions since Business doesn't have status
 export const BusinessCard: React.FC<BusinessCardProps> = ({
   business,
   onPress,
+  isSelecting = false,
+  disabled = false,
 }) => {
   // Safety check - if business is null or undefined, don't render
   if (!business) {
@@ -23,35 +28,46 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
   };
 
   const handleCardPress = () => {
-    if (onPress) {
+    if (onPress && !disabled && !isSelecting) {
       onPress();
     }
   };
 
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={handleCardPress}
-      activeOpacity={0.7}
-      className="bg-white rounded-lg shadow-sm 
-      border border-gray-200 p-4 mb-3 mx-4"
+      disabled={disabled || isSelecting}
+      style={({ pressed }) => ({
+        opacity: pressed && !isSelecting && !disabled ? 0.7 : 1,
+      })}
+      className={`bg-white rounded-lg shadow-sm p-4 mb-3 mx-4 ${
+        isSelecting
+          ? "border-2 border-primary-500"
+          : disabled
+            ? "border border-gray-200 opacity-40"
+            : "border border-gray-200"
+      }`}
     >
       {/* Header: Corporate Reason and Fantasy Name */}
       <View className="mb-3">
         <Text className="text-lg font-bold text-gray-900" numberOfLines={1}>
           {safeString(business.corporate_reason)}
         </Text>
-        {business.fantasy_name && business.fantasy_name !== "N/A" && (
+        {business.fantasy_name && (
           <Text className="text-sm text-gray-600" numberOfLines={1}>
             {safeString(business.fantasy_name)}
           </Text>
         )}
         <Text className="text-sm text-gray-600 mt-1">
-          CNPJ: {safeString(business.cnpj)}
+          CNPJ: {safeString(formatCnpj(business.cnpj))}
         </Text>
       </View>
 
       {/* Contact Information */}
-      <View className="flex-row justify-between items-center mb-3">
+      <View
+        className="flex-row justify-between 
+        items-center mb-3"
+      >
         <View className="flex-1">
           <Text
             className="text-xs text-gray-500 
@@ -75,7 +91,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
             Telefone
           </Text>
           <Text className="text-sm text-gray-700">
-            {safeString(business.telephone)}
+            {safeString(formatTelephone(business.telephone))}
           </Text>
         </View>
       </View>
@@ -101,9 +117,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
           ellipsizeMode="tail"
         >
           {business.street}, {business.address_number}
-          {business.complement &&
-            business.complement !== "N/A" &&
-            `, ${business.complement}`}
+          {business.complement && `, ${business.complement}`}
         </Text>
       </View>
 
@@ -124,7 +138,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
             {safeString(business.responsible_name)}
           </Text>
         </View>
-        {business.erp_code && business.erp_code !== "N/A" && (
+        {business.erp_code && (
           <View className="ml-4">
             <Text
               className="text-xs text-gray-500 
@@ -141,13 +155,22 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
 
       {/* Selection Hint */}
       <View className="mt-3 pt-3 border-t border-gray-100">
-        <Text
-          className="text-center text-primary-600 
-          text-sm font-medium"
-        >
-          Toque para selecionar empresa 🏢
-        </Text>
+        {isSelecting ? (
+          <View className="flex-row items-center justify-center gap-2">
+            <ActivityIndicator size="small" color="#3b82f6" />
+            <Text className="text-center text-primary-600 text-sm font-medium">
+              Selecionando...
+            </Text>
+          </View>
+        ) : (
+          <Text
+            className="text-center text-primary-600
+            text-sm font-medium"
+          >
+            Toque para selecionar empresa 🏢
+          </Text>
+        )}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 };

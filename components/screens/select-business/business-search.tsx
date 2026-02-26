@@ -21,7 +21,7 @@ export const BusinessSearch: React.FC<BusinessSearchProps> = ({
   businessesCount,
 }) => {
   const hasSearchResults = Boolean(
-    debouncedSearch && debouncedSearch.length > 0
+    debouncedSearch && debouncedSearch.length > 0,
   );
 
   return (
