@@ -511,8 +511,8 @@ const authStore = create<AuthStore>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
-    }
-  )
+    },
+  ),
 );
 ```
 
@@ -869,7 +869,7 @@ class ApiClient {
   // Método genérico para requisições
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
   ): Promise<T> {
     const token = await SecureStore.getItemAsync("accessToken");
 
@@ -930,7 +930,7 @@ class ApiClient {
 
 // Instância global
 export const api = new ApiClient(
-  process.env.EXPO_PUBLIC_API_URL || "http://localhost:3333"
+  process.env.EXPO_PUBLIC_API_URL || "http://localhost:3333",
 );
 ```
 
@@ -943,7 +943,7 @@ export const useVehicles = (businessId: string) => {
     queryKey: ["vehicles", businessId],
     queryFn: async ({ pageParam = 1 }) => {
       const response = await api.get<VehiclesResponse>(
-        `/vehicles?page=${pageParam}&limit=20&businessId=${businessId}`
+        `/vehicles?page=${pageParam}&limit=20&businessId=${businessId}`,
       );
       return response;
     },
@@ -1070,7 +1070,7 @@ export const useAuthStore = create<AuthState>()(
 
           await TokenManager.setTokens(
             response.accessToken,
-            response.refreshToken
+            response.refreshToken,
           );
 
           set({
@@ -1105,8 +1105,8 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
-    }
-  )
+    },
+  ),
 );
 ```
 
@@ -1339,7 +1339,7 @@ export const customValidations = {
     const oneYearAgo = new Date(
       now.getFullYear() - 1,
       now.getMonth(),
-      now.getDate()
+      now.getDate(),
     );
 
     if (date > now) {

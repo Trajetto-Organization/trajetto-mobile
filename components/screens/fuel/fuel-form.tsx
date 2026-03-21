@@ -25,7 +25,7 @@ import {
   formatLiters,
   formatCurrency,
   parseFormattedValue,
-} from "../../../utils/formatters";
+} from "@/utils/formatters";
 
 interface StepData {
   branchId?: string;

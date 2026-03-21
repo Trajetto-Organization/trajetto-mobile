@@ -1,13 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { View, Linking } from "react-native";
-
+import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-import { useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
-
-import { useAuthStore } from "../../store";
-import { useVehicleInfiniteScroll } from "../../hooks";
 
 import { ProtectedRoute } from "../../components/protected-route";
 import { Header } from "../../components/header";
@@ -17,7 +9,6 @@ import {
   SwitchBusinessModal,
   VehicleActionModal,
 } from "../../components/ui";
-
 import {
   VehicleSearch,
   VehicleStats,
@@ -26,211 +17,59 @@ import {
   VehicleList,
 } from "../../components/screens/vehicles";
 
-import { Vehicle } from "../../types";
-import {
-  checkVehiclePermission,
-  checkFuelPermission,
-  checkChecklistPermission,
-} from "../../utils/permissions";
+import { useVehicles } from "./hooks/use-vehicles";
 
 const VehiclesScreen = () => {
-  const router = useRouter();
-
-  const { user, logout, setUser } = useAuthStore();
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-
-  const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
-  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
-
-  const [isRefreshingError, setIsRefreshingError] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-
-  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
-  const [showSwitchBusinessModal, setShowSwitchBusinessModal] =
-    useState<boolean>(false);
-
-  const [isSwitchingBusiness, setIsSwitchingBusiness] =
-    useState<boolean>(false);
-
-  const [showVehicleActionModal, setShowVehicleActionModal] =
-    useState<boolean>(false);
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim());
-    }, 300); // 300ms delay
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Note: driverId filtering is now handled automatically by the backend
   const {
-    vehicles,
-    total,
+    user,
+    searchQuery,
+    setSearchQuery,
+    debouncedSearch,
+    filteredVehicles,
+    activeVehiclesCount,
     isLoading,
     isFetching,
     isError,
     error,
     hasNextPage,
-    loadMore,
-    refetch,
-  } = useVehicleInfiniteScroll(
-    debouncedSearch || undefined,
-    user?.businessId || user?.selectedBusiness || undefined,
-  );
+    refreshing,
+    isRefreshingError,
+    showLogoutModal,
+    setShowLogoutModal,
+    isLoggingOut,
+    showSwitchBusinessModal,
+    setShowSwitchBusinessModal,
+    isSwitchingBusiness,
+    showVehicleActionModal,
+    setShowVehicleActionModal,
+    selectedVehicle,
+    setSelectedVehicle,
+    fuelPermissions,
+    checklistPermissions,
+    hasActionPermission,
+    isMasterWithoutBusiness,
+    isDriverWithoutVehicles,
+    handleRefresh,
+    handleRefreshError,
+    handleLoadMore,
+    handleVehiclePress,
+    handleFuelAction,
+    handleChecklistAction,
+    handleLogout,
+    confirmLogout,
+    handleSwitchBusiness,
+    confirmSwitchBusiness,
+    openWebPlatform,
+    handleClearSearch,
+    navigateToSelectBusiness,
+    handleMasterLogout,
+  } = useVehicles();
 
-  // Calculate active vehicles count (ACTIVE + IN_ROUTE)
-  const activeVehiclesCount = vehicles.filter(
-    (vehicle) => vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE",
-  ).length;
-
-  const permissions = checkVehiclePermission(user);
-  const fuelPermissions = checkFuelPermission(user);
-
-  const checklistPermissions = checkChecklistPermission(user);
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    setIsRefreshingError(false);
-
-    try {
-      refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refetch]);
-
-  const handleRefreshError = useCallback(async () => {
-    setIsRefreshingError(true);
-    try {
-      await refetch();
-    } finally {
-      setIsRefreshingError(false);
-    }
-  }, [refetch]);
-
-  const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isFetching) {
-      loadMore();
-    }
-  }, [hasNextPage, isFetching, loadMore]);
-
-  const handleVehiclePress = useCallback(
-    (vehicle: Vehicle) => {
-      // Allow access if user can write fuel OR checklist (for drivers)
-      // OR if user can write vehicles (for admins)
-      const canAccessActions =
-        permissions.canWrite ||
-        fuelPermissions.canWrite ||
-        checklistPermissions.canWrite;
-
-      if (!canAccessActions) {
-        Toast.show({
-          type: "info",
-          text1: "Acesso limitado",
-          text2:
-            "Você não tem permissão para criar abastecimentos ou checklists.",
-          position: "top",
-        });
-        return;
-      }
-
-      // Set selected vehicle and show action modal
-      setSelectedVehicle(vehicle);
-      setShowVehicleActionModal(true);
-    },
-    [
-      permissions.canWrite,
-      fuelPermissions.canWrite,
-      checklistPermissions.canWrite,
-    ],
-  );
-
-  const handleFuelAction = useCallback(() => {
-    if (!selectedVehicle) return;
-
-    router.push({
-      pathname: "/fuel",
-      params: { vehicleId: selectedVehicle.id },
-    });
-  }, [selectedVehicle, router]);
-
-  const handleChecklistAction = useCallback(() => {
-    if (!selectedVehicle) return;
-
-    router.push({
-      pathname: "/checklist",
-      params: { vehicleId: selectedVehicle.id },
-    });
-  }, [selectedVehicle, router]);
-
-  const handleLogout = () => {
-    setShowLogoutModal(true);
-  };
-
-  const confirmLogout = async () => {
-    setIsLoggingOut(true);
-    try {
-      await logout();
-      router.replace("/login");
-    } catch (error) {
-      setIsLoggingOut(false);
-    }
-  };
-
-  const handleSwitchBusiness = () => {
-    setShowSwitchBusinessModal(true);
-  };
-
-  const confirmSwitchBusiness = async () => {
-    setIsSwitchingBusiness(true);
-    try {
-      // Add a small delay to show the loading state
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // Clear business selection from user
-      const updatedUser = {
-        ...user!,
-        businessId: undefined,
-        selectedBusiness: undefined,
-      };
-
-      setUser(updatedUser);
-
-      // Close modal and navigate
-      setShowSwitchBusinessModal(false);
-      router.replace("/select-business");
-    } catch (error) {
-      setIsSwitchingBusiness(false);
-    } finally {
-      setIsSwitchingBusiness(false);
-    }
-  };
-
-  const openWebPlatform = async () => {
-    const webUrl = process.env.EXPO_PUBLIC_WEB_APPLICATION_URL;
-    if (webUrl) {
-      try {
-        await Linking.openURL(webUrl);
-      } catch (error) {}
-    }
-  };
-
-  const handleClearSearch = useCallback(() => {
-    setSearchQuery("");
-  }, []);
-
-  // Handle MASTER user without business selection
-  if (user?.role === "MASTER" && !user?.businessId) {
+  if (isMasterWithoutBusiness) {
     return (
       <MasterUserState
-        onSelectBusiness={() => router.push("/select-business")}
-        onLogout={async () => {
-          await logout();
-          router.replace("/login");
-        }}
+        onSelectBusiness={navigateToSelectBusiness}
+        onLogout={handleMasterLogout}
       />
     );
   }
@@ -254,11 +93,14 @@ const VehiclesScreen = () => {
             onClearSearch={handleClearSearch}
             debouncedSearch={debouncedSearch}
             isFetching={isFetching}
-            vehiclesCount={vehicles.length}
+            vehiclesCount={filteredVehicles.length}
           />
 
           {/* Stats Cards */}
-          <VehicleStats total={total} activeCount={activeVehiclesCount} />
+          <VehicleStats
+            total={filteredVehicles.length}
+            activeCount={activeVehiclesCount}
+          />
         </View>
 
         {/* Error State */}
@@ -272,7 +114,7 @@ const VehiclesScreen = () => {
 
         {/* Vehicle List */}
         <VehicleList
-          vehicles={vehicles}
+          vehicles={filteredVehicles}
           isLoading={isLoading}
           isFetching={isFetching}
           hasNextPage={hasNextPage}
@@ -283,13 +125,8 @@ const VehiclesScreen = () => {
           onLoadMore={handleLoadMore}
           onClearSearch={handleClearSearch}
           onOpenWebPlatform={openWebPlatform}
-          isDriverWithoutVehicles={
-            user?.role === "BUSINESS_USER" &&
-            !!user?.driverId &&
-            vehicles.length === 0 &&
-            !isLoading &&
-            !debouncedSearch
-          }
+          hasActionPermission={hasActionPermission}
+          isDriverWithoutVehicles={isDriverWithoutVehicles}
         />
 
         {/* Logout Modal */}
@@ -313,6 +150,8 @@ const VehiclesScreen = () => {
         <VehicleActionModal
           visible={showVehicleActionModal}
           vehicle={selectedVehicle}
+          canFuel={fuelPermissions.canWrite}
+          canChecklist={checklistPermissions.canWrite}
           onClose={() => {
             setShowVehicleActionModal(false);
             setSelectedVehicle(null);

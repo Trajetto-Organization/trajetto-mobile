@@ -20,20 +20,6 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.trajetto.fleetmanager",
-      "icon": "./assets/images/icon.png",
-      "requireFullScreen": false,
-      "infoPlist": {
-        "NSCameraUsageDescription": "O Trajetto precisa acessar a câmera para registrar fotos do odômetro durante abastecimentos e checklists.",
-        "NSPhotoLibraryUsageDescription": "O Trajetto acessa sua galeria para selecionar fotos do odômetro e relatórios de manutenção.",
-        "NSLocationWhenInUseUsageDescription": "O Trajetto usa sua localização para registrar o local dos abastecimentos e serviços.",
-        "UIBackgroundModes": [
-          "location"
-        ]
-      }
-    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#2563eb",
@@ -52,14 +38,9 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.RECORD_AUDIO"
       ],
-      "blockedPermissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
     },
-    "platforms": [
-      "android",
-      "ios"
-    ],
+    "platforms": ["android"],
     "notification": {
       "icon": "./assets/images/icon.png",
       "color": "#0ea5e9",
@@ -87,7 +68,14 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização para registrar o local dos abastecimentos.",
+          "locationWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização para registrar o local dos abastecimentos."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

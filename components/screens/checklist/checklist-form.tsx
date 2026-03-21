@@ -13,7 +13,7 @@ import { Controller, useWatch } from "react-hook-form";
 import * as ImagePicker from "expo-image-picker";
 import { Input, DatePicker, Select } from "../../ui";
 
-import { formatMileage, parseFormattedValue } from "../../../utils/formatters";
+import { formatMileage, parseFormattedValue } from "@/utils/formatters";
 
 interface StepData {
   branchId?: string;

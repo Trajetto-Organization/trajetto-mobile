@@ -1,19 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
 import { View } from "react-native";
-
 import { SafeAreaView } from "react-native-safe-area-context";
-
-import { useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
-
-import { useAuthStore } from "../../store";
-import { useBusinessInfiniteScroll } from "../../hooks";
 
 import { ProtectedRoute } from "../../components/protected-route";
 import { Header } from "../../components/header";
 
 import { LogoutModal } from "../../components/ui";
-
 import {
   BusinessSearch,
   BusinessStats,
@@ -21,128 +12,33 @@ import {
   BusinessList,
 } from "../../components/screens/select-business";
 
-import { Business } from "../../hooks/use-business-infinite-scroll";
+import { useSelectBusiness } from "./hooks/use-select-business";
 
 const SelectBusinessScreen = () => {
-  const router = useRouter();
-
-  const { user, logout, setUser } = useAuthStore();
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-
-  const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
-  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
-
-  const [isRefreshingError, setIsRefreshingError] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-
-  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
-  const [selectingBusinessId, setSelectingBusinessId] = useState<string | null>(
-    null,
-  );
-
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim());
-    }, 300); // 300ms delay
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
   const {
-    businesses,
-    total,
+    searchQuery,
+    setSearchQuery,
+    debouncedSearch,
+    filteredBusinesses,
     isLoading,
     isFetching,
     isError,
     error,
     hasNextPage,
-    loadMore,
-    refetch,
-  } = useBusinessInfiniteScroll(debouncedSearch || undefined);
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    setIsRefreshingError(false);
-
-    try {
-      await refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refetch]);
-
-  const handleRefreshError = useCallback(async () => {
-    setIsRefreshingError(true);
-
-    try {
-      await refetch();
-    } finally {
-      setIsRefreshingError(false);
-    }
-  }, [refetch]);
-
-  const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isFetching) {
-      loadMore();
-    }
-  }, [hasNextPage, isFetching, loadMore]);
-
-  const handleBusinessPress = useCallback(
-    async (business: Business) => {
-      setSelectingBusinessId(business.id);
-
-      try {
-        // Update user with selected business
-        const updatedUser = {
-          ...user!,
-          businessId: business.id,
-          selectedBusiness: business.corporate_reason,
-        };
-
-        setUser(updatedUser);
-
-        Toast.show({
-          type: "success",
-          text1: "Empresa selecionada",
-          text2: `Agora gerenciando ${business.corporate_reason}`,
-          position: "top",
-        });
-
-        // Navigate to vehicles screen
-        router.replace("/vehicles");
-      } catch (error) {
-        setSelectingBusinessId(null);
-
-        Toast.show({
-          type: "error",
-          text1: "Erro",
-          text2: "Não foi possível selecionar a empresa.",
-          position: "top",
-        });
-      }
-    },
-    [user, setUser, router],
-  );
-
-  const handleLogout = () => {
-    setShowLogoutModal(true);
-  };
-
-  const confirmLogout = async () => {
-    setIsLoggingOut(true);
-
-    try {
-      await logout();
-      router.replace("/login");
-    } catch (error) {
-      setIsLoggingOut(false);
-    }
-  };
-
-  const handleClearSearch = useCallback(() => {
-    setSearchQuery("");
-  }, []);
+    refreshing,
+    isRefreshingError,
+    selectingBusinessId,
+    showLogoutModal,
+    setShowLogoutModal,
+    isLoggingOut,
+    handleRefresh,
+    handleRefreshError,
+    handleLoadMore,
+    handleBusinessPress,
+    handleLogout,
+    confirmLogout,
+    handleClearSearch,
+  } = useSelectBusiness();
 
   return (
     <ProtectedRoute>
@@ -158,11 +54,11 @@ const SelectBusinessScreen = () => {
             onClearSearch={handleClearSearch}
             debouncedSearch={debouncedSearch}
             isFetching={isFetching}
-            businessesCount={businesses.length}
+            businessesCount={filteredBusinesses.length}
           />
 
           {/* Stats Cards */}
-          <BusinessStats total={total} />
+          <BusinessStats total={filteredBusinesses.length} />
         </View>
 
         {/* Error State */}
@@ -176,7 +72,7 @@ const SelectBusinessScreen = () => {
 
         {/* Business List */}
         <BusinessList
-          businesses={businesses}
+          businesses={filteredBusinesses}
           isLoading={isLoading}
           isFetching={isFetching}
           hasNextPage={hasNextPage}

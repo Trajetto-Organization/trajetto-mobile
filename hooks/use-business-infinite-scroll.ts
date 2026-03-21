@@ -25,35 +25,36 @@ export interface Business {
 }
 
 interface FetchBusinessParams {
-  pageParam: number;
+  cursor?: string;
   signal?: AbortSignal;
-  search?: string;
 }
 
+interface FetchBusinessResult {
+  data: Business[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+const BUSINESS_LIMIT = 10;
+
 const fetchBusinesses = async ({
-  pageParam,
+  cursor,
   signal,
-  search,
-}: FetchBusinessParams): Promise<{ data: Business[]; total: number }> => {
-  const MAX_BUSINESS_PAGE = 10;
-
+}: FetchBusinessParams): Promise<FetchBusinessResult> => {
   try {
-    // Build endpoint URL with query parameters
-    let endpoint = `/business/list-business?page=${pageParam}&pageSize=${MAX_BUSINESS_PAGE}`;
+    let endpoint = `/business/search-business?limit=${BUSINESS_LIMIT}`;
 
-    if (search) {
-      endpoint += `&search=${encodeURIComponent(search)}`;
+    if (cursor) {
+      endpoint += `&cursor=${cursor}`;
     }
 
-    // Use apiClient which handles token refresh automatically
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
-
-    // Parse the NDJSON stream
     const { meta, data } = await parseNDJSON(response);
 
     return {
       data: data || [],
-      total: meta?.total || 0,
+      nextCursor: meta?.searchMeta?.nextCursor || null,
+      hasMore: meta?.searchMeta?.hasMore || false,
     };
   } catch (error: any) {
     if (error.name === "AbortError") {
@@ -64,7 +65,7 @@ const fetchBusinesses = async ({
   }
 };
 
-export function useBusinessInfiniteScroll(search?: string) {
+export function useBusinessInfiniteScroll() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -77,37 +78,31 @@ export function useBusinessInfiniteScroll(search?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["businesses", search],
-    queryFn: ({ pageParam = 1 }) => {
-      // Cancel previous request if it exists
+    queryKey: ["businesses"],
+    queryFn: ({ pageParam }) => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
 
-      // Create new abort controller
       abortControllerRef.current = new AbortController();
 
       return fetchBusinesses({
-        pageParam,
-        search,
+        cursor: pageParam,
         signal: abortControllerRef.current.signal,
       });
     },
-    getNextPageParam: (lastPage, allPages) => {
-      // Check if there are more businesses to load
-      return lastPage.data.length === 10 ? allPages.length + 1 : undefined;
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.nextCursor : undefined;
     },
-    initialPageParam: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialPageParam: undefined as string | undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
-  // Flatten all pages into a single array
   const businesses = data?.pages.flatMap((page) => page.data) || [];
-  const total = data?.pages[0]?.total || 0;
+  const total = businesses.length;
 
   const handleRefetch = useCallback(() => {
-    // Cancel any ongoing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -121,7 +116,6 @@ export function useBusinessInfiniteScroll(search?: string) {
     }
   }, [hasNextPage, isFetching, fetchNextPage]);
 
-  // Get error message
   const errorMessage =
     error instanceof Error ? error.message : "Erro ao carregar empresas";
 

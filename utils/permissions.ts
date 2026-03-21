@@ -3,7 +3,7 @@ import { User, PermissionKey, Permission } from "../types";
 export const checkPermission = (
   user: User | null,
   permissionKey: PermissionKey,
-  action: "read" | "write" = "read"
+  action: "read" | "write" = "read",
 ): boolean => {
   if (!user) return false;
 
@@ -18,7 +18,7 @@ export const checkPermission = (
     if (!user.profileAccess?.permissions) return false;
 
     const permission = user.profileAccess.permissions.find(
-      (p: Permission) => p.permissionKey === permissionKey
+      (p: Permission) => p.permissionKey === permissionKey,
     );
 
     if (!permission) return false;
@@ -29,7 +29,7 @@ export const checkPermission = (
 };
 
 export const checkVehiclePermission = (
-  user: User | null
+  user: User | null,
 ): { canRead: boolean; canWrite: boolean } => {
   if (!user) return { canRead: false, canWrite: false };
 
@@ -53,7 +53,7 @@ export const checkVehiclePermission = (
 };
 
 export const checkFuelPermission = (
-  user: User | null
+  user: User | null,
 ): { canRead: boolean; canWrite: boolean } => {
   if (!user) return { canRead: false, canWrite: false };
 
@@ -87,7 +87,7 @@ export const canRefuelVehicles = (user: User | null): boolean => {
 };
 
 export const checkChecklistPermission = (
-  user: User | null
+  user: User | null,
 ): { canRead: boolean; canWrite: boolean } => {
   if (!user) return { canRead: false, canWrite: false };
 
@@ -113,7 +113,7 @@ export const checkChecklistPermission = (
 };
 
 export const validateUserAccess = (
-  user: User | null
+  user: User | null,
 ): { hasAccess: boolean; reason?: string } => {
   if (!user) {
     return { hasAccess: false, reason: "user_not_found" };
@@ -163,7 +163,7 @@ export const validateUserAccess = (
 
 // Helper for branch permissions
 export const checkBranchPermission = (
-  user: User | null
+  user: User | null,
 ): { canRead: boolean; canWrite: boolean } => {
   if (!user) return { canRead: false, canWrite: false };
 
@@ -188,7 +188,7 @@ export const checkBranchPermission = (
 
 // Helper for fuel type permissions
 export const checkFuelTypePermission = (
-  user: User | null
+  user: User | null,
 ): { canRead: boolean; canWrite: boolean } => {
   if (!user) return { canRead: false, canWrite: false };
 

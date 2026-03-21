@@ -9,7 +9,7 @@ export const BusinessStats: React.FC<BusinessStatsProps> = ({ total }) => {
     <View className="mt-4 -mb-4">
       <View
         className="bg-primary-500 rounded-2xl 
-        p-5 flex-row items-center justify-between shadow-lg"
+        px-5 py-3 flex-row items-center justify-between shadow-lg"
       >
         <View className="flex-1">
           <Text
@@ -18,13 +18,13 @@ export const BusinessStats: React.FC<BusinessStatsProps> = ({ total }) => {
           >
             Total de Empresas
           </Text>
-          <Text className="text-3xl font-bold text-white mt-1">{total}</Text>
+          <Text className="text-2xl font-bold text-white mt-1">{total}</Text>
         </View>
         <View
-          className="w-14 h-14 bg-white/20 
+          className="w-12 h-12 bg-white/20 
           rounded-2xl items-center justify-center"
         >
-          <Text className="text-2xl">🏢</Text>
+          <Text className="text-xl">🏢</Text>
         </View>
       </View>
     </View>

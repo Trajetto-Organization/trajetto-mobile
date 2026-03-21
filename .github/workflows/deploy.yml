@@ -7,15 +7,6 @@ on:
     branches: [main, master]
   workflow_dispatch:
     inputs:
-      platform:
-        description: "Platform to build"
-        required: true
-        default: "all"
-        type: choice
-        options:
-          - all
-          - android
-          - ios
       profile:
         description: "Build profile"
         required: true
@@ -59,18 +50,10 @@ jobs:
       - name: Build on EAS (Manual)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          PLATFORM="${{ github.event.inputs.platform }}"
-          PROFILE="${{ github.event.inputs.profile }}"
-
-          if [ "$PLATFORM" = "all" ]; then
-            eas build --platform android --profile $PROFILE --non-interactive --no-wait
-            eas build --platform ios --profile $PROFILE --non-interactive --no-wait
-          else
-            eas build --platform $PLATFORM --profile $PROFILE --non-interactive --no-wait
-          fi
+          eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive --no-wait
 
   submit:
-    name: Submit to Stores
+    name: Submit to Google Play
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'production'
@@ -91,9 +74,4 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Submit to Google Play (Internal Testing)
-        if: github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all'
         run: eas submit --platform android --latest --non-interactive
-
-      - name: Submit to App Store (TestFlight)
-        if: github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all'
-        run: eas submit --platform ios --latest --non-interactive

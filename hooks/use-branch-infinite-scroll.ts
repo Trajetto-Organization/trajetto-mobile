@@ -25,32 +25,38 @@ export interface Branch {
 }
 
 interface FetchBranchParams {
-  pageParam: number;
+  cursor?: string;
   signal?: AbortSignal;
   businessId: string;
 }
 
+interface FetchBranchResult {
+  data: Branch[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+const BRANCH_LIMIT = 10;
+
 const fetchBranches = async ({
-  pageParam,
+  cursor,
   signal,
   businessId,
-}: FetchBranchParams): Promise<{ data: Branch[]; total: number }> => {
-  const MAX_BRANCH_PAGE = 10;
-
+}: FetchBranchParams): Promise<FetchBranchResult> => {
   try {
-    // Build endpoint URL with query parameters
-    // Use list-branch-business to filter by businessId
-    const endpoint = `/branch/list-branch-business?businessId=${businessId}&page=${pageParam}&pageSize=${MAX_BRANCH_PAGE}`;
+    let endpoint = `/branch/search-branch-business?limit=${BRANCH_LIMIT}&businessId=${businessId}`;
 
-    // Use apiClient which handles token refresh automatically
+    if (cursor) {
+      endpoint += `&cursor=${cursor}`;
+    }
+
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
-
-    // Parse the NDJSON stream
     const { meta, data } = await parseNDJSON(response);
 
     return {
       data: data || [],
-      total: meta?.total || 0,
+      nextCursor: meta?.searchMeta?.nextCursor || null,
+      hasMore: meta?.searchMeta?.hasMore || false,
     };
   } catch (error: any) {
     if (error.name === "AbortError") {
@@ -75,37 +81,32 @@ export function useBranchInfiniteScroll(businessId?: string) {
     refetch,
   } = useInfiniteQuery({
     queryKey: ["branches", businessId],
-    queryFn: ({ pageParam = 1 }) => {
-      // Cancel previous request if it exists
+    queryFn: ({ pageParam }) => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
 
-      // Create new abort controller
       abortControllerRef.current = new AbortController();
 
       return fetchBranches({
-        pageParam,
-        businessId: businessId || "", // Require businessId
+        cursor: pageParam,
+        businessId: businessId || "",
         signal: abortControllerRef.current.signal,
       });
     },
-    enabled: !!businessId, // Only fetch if businessId is provided
-    getNextPageParam: (lastPage, allPages) => {
-      // Check if there are more branches to load
-      return lastPage.data.length === 10 ? allPages.length + 1 : undefined;
+    enabled: !!businessId,
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.nextCursor : undefined;
     },
-    initialPageParam: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialPageParam: undefined as string | undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
-  // Flatten all pages into a single array
   const branches = data?.pages.flatMap((page) => page.data) || [];
-  const total = data?.pages[0]?.total || 0;
+  const total = branches.length;
 
   const handleRefetch = useCallback(() => {
-    // Cancel any ongoing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -119,7 +120,6 @@ export function useBranchInfiniteScroll(businessId?: string) {
     }
   }, [hasNextPage, isFetching, fetchNextPage]);
 
-  // Get error message
   const errorMessage =
     error instanceof Error ? error.message : "Erro ao carregar filiais";
 

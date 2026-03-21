@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
+import type {
   AuthState,
   User,
   LoginResponse,
@@ -16,8 +16,9 @@ import { tokenStorage, asyncStorage } from "../utils/storage";
 import { logger } from "../utils/logger";
 
 import { validateUserAccess } from "../utils/permissions";
-import apiClient, { ApiError } from "../utils/api";
+import { apiClient, ApiError } from "../utils/api";
 
+import { disconnectSocket } from "../utils/socket";
 import { queryClient } from "../providers/query-provider";
 
 interface AuthStore extends AuthState {
@@ -100,25 +101,40 @@ export const useAuthStore = create<AuthStore>()(
           if (!accessValidation.hasAccess) {
             let errorMessage = "Acesso negado.";
             switch (accessValidation.reason) {
+              case "session_expired":
+                errorMessage = "Sua sessão expirou. Faça login novamente.";
+                break;
+              case "session_not_renewed":
+                errorMessage =
+                  "Não foi possível renovar sua sessão. Faça login novamente.";
+                break;
               case "access_revoked":
                 errorMessage =
-                  "Seu acesso foi revogado. Entre em contato com o administrador.";
+                  "Seu acesso foi revogado! Para acessar a plataforma novamente, por favor contate o administrador.";
                 break;
               case "driver_inactive":
                 errorMessage =
-                  "Seu cadastro como motorista está inativo. Entre em contato com o administrador.";
+                  "Seu cadastro como motorista está inativo! Para acessar a plataforma novamente, por favor contate o administrador.";
                 break;
               case "no_permissions":
                 errorMessage =
-                  "Você não possui permissões configuradas. Entre em contato com o administrador.";
+                  "Usuário sem perfil de acesso ou permissões configuradas! Por favor, contate o administrador.";
                 break;
               case "no_vehicle_permission":
                 errorMessage =
-                  "Você não possui permissão para visualizar veículos. Entre em contato com o administrador.";
+                  "Você não possui permissão para visualizar veículos! Por favor, contate o administrador.";
+                break;
+              case "access_denied":
+                errorMessage =
+                  "Sua conta foi excluída ou não está autorizada. Por favor, entre em contato com o administrador.";
+                break;
+              case "permissions_changed":
+                errorMessage =
+                  "Suas permissões de acesso foram atualizadas. Por favor, faça login novamente para continuar.";
                 break;
               default:
                 errorMessage =
-                  "Acesso negado. Entre em contato com o administrador.";
+                  "Acesso negado! Por favor, contate o administrador.";
             }
 
             return { success: false, error: errorMessage };
@@ -173,25 +189,40 @@ export const useAuthStore = create<AuthStore>()(
           if (!accessValidation.hasAccess) {
             let errorMessage = "Acesso negado.";
             switch (accessValidation.reason) {
+              case "session_expired":
+                errorMessage = "Sua sessão expirou. Faça login novamente.";
+                break;
+              case "session_not_renewed":
+                errorMessage =
+                  "Não foi possível renovar sua sessão. Faça login novamente.";
+                break;
               case "access_revoked":
                 errorMessage =
-                  "Seu acesso foi revogado. Entre em contato com o administrador.";
+                  "Seu acesso foi revogado! Para acessar a plataforma novamente, por favor contate o administrador.";
                 break;
               case "driver_inactive":
                 errorMessage =
-                  "Seu cadastro como motorista está inativo. Entre em contato com o administrador.";
+                  "Seu cadastro como motorista está inativo! Para acessar a plataforma novamente, por favor contate o administrador.";
                 break;
               case "no_permissions":
                 errorMessage =
-                  "Você não possui permissões configuradas. Entre em contato com o administrador.";
+                  "Usuário sem perfil de acesso ou permissões configuradas! Por favor, contate o administrador.";
                 break;
               case "no_vehicle_permission":
                 errorMessage =
-                  "Você não possui permissão para visualizar veículos. Entre em contato com o administrador.";
+                  "Você não possui permissão para visualizar veículos! Por favor, contate o administrador.";
+                break;
+              case "access_denied":
+                errorMessage =
+                  "Sua conta foi excluída ou não está autorizada. Por favor, entre em contato com o administrador.";
+                break;
+              case "permissions_changed":
+                errorMessage =
+                  "Suas permissões de acesso foram atualizadas. Por favor, faça login novamente para continuar.";
                 break;
               default:
                 errorMessage =
-                  "Acesso negado. Entre em contato com o administrador.";
+                  "Acesso negado! Por favor, contate o administrador.";
             }
 
             return { success: false, error: errorMessage };
@@ -248,6 +279,9 @@ export const useAuthStore = create<AuthStore>()(
       },
       logout: async () => {
         try {
+          // Notify server of intentional logout and close socket connection
+          disconnectSocket();
+
           // Clear tokens from secure storage
           await tokenStorage.clearTokens();
 
@@ -306,6 +340,7 @@ export const useAuthStore = create<AuthStore>()(
 
           // Clear tokens and logout
           logger.dev("🧹 auth-store: Clearing tokens and logging out...");
+
           await get().logout();
           return false;
         }
@@ -325,6 +360,7 @@ export const useAuthStore = create<AuthStore>()(
           // If no tokens, just mark as initialized and return (user will see login screen)
           if (!accessToken || !refreshToken) {
             logger.info("🔐 checkAuth: No tokens found");
+
             set({ isLoading: false, isInitialized: true });
             return;
           }
@@ -344,6 +380,7 @@ export const useAuthStore = create<AuthStore>()(
             if (!accessValidation.hasAccess) {
               logger.info("🔐 checkAuth: User access denied");
               await get().logout();
+
               set({ isLoading: false, isInitialized: true });
               return;
             }

@@ -23,10 +23,11 @@ export const VehicleEmptyState: React.FC<VehicleEmptyStateProps> = ({
   onOpenWebPlatform,
   isDriverWithoutVehicles = false,
 }) => {
-  const [isClearing, setIsClearing] = useState(false);
+  const [isClearing, setIsClearing] = useState<boolean>(false);
 
   const handleClearSearch = () => {
     if (!onClearSearch) return;
+
     setIsClearing(true);
     onClearSearch();
   };
@@ -52,7 +53,10 @@ export const VehicleEmptyState: React.FC<VehicleEmptyStateProps> = ({
           </View>
         </View>
 
-        <Text className="text-2xl font-bold text-gray-900 mb-3 text-center">
+        <Text
+          className="text-2xl font-bold 
+        text-gray-900 mb-3 text-center"
+        >
           Aguardando veículos 🔑
         </Text>
         <Text

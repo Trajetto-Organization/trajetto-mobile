@@ -19,6 +19,7 @@ export const MasterUserState: React.FC<MasterUserStateProps> = ({
 
   const handleLogout = async () => {
     setActiveAction("logout");
+
     try {
       await onLogout();
     } catch {

@@ -4,7 +4,7 @@ import { BusinessCard } from "../../business-card";
 import { LoadingSpinner, VehicleSkeletonList } from "../../ui";
 import { BusinessEmptyState } from "./business-empty-state";
 
-import { Business } from "../../../hooks/use-business-infinite-scroll";
+import { Business } from "@/hooks/use-business-infinite-scroll";
 
 interface BusinessListProps {
   businesses: Business[];

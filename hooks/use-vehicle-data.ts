@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import apiClient from "../utils/api";
+import { apiClient } from "../utils/api";
 
 import type { Vehicle } from "../types/vehicle";
 
@@ -32,8 +32,9 @@ export const useVehicleData = ({
 
     try {
       const response = await apiClient.get<Vehicle>(
-        `/vehicle/get-vehicle/${vehicleId}/business/${businessId}`
+        `/vehicle/get-vehicle/${vehicleId}/business/${businessId}`,
       );
+
       setData(response);
     } catch (err) {
       const errorMessage =

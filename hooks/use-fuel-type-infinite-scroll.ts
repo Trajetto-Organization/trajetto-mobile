@@ -13,32 +13,38 @@ export interface FuelType {
 }
 
 interface FetchFuelTypeParams {
-  pageParam: number;
+  cursor?: string;
   signal?: AbortSignal;
   businessId: string;
 }
 
+interface FetchFuelTypeResult {
+  data: FuelType[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+const FUEL_TYPE_LIMIT = 10;
+
 const fetchFuelTypes = async ({
-  pageParam,
+  cursor,
   signal,
   businessId,
-}: FetchFuelTypeParams): Promise<{ data: FuelType[]; total: number }> => {
-  const MAX_FUEL_TYPE_PAGE = 10;
-
+}: FetchFuelTypeParams): Promise<FetchFuelTypeResult> => {
   try {
-    // Build endpoint URL with query parameters
-    // Use list-fuel-type-business to filter by businessId
-    const endpoint = `/fuel-type/list-fuel-type-business?businessId=${businessId}&page=${pageParam}&pageSize=${MAX_FUEL_TYPE_PAGE}`;
+    let endpoint = `/fuel-type/search-fuel-type-business?limit=${FUEL_TYPE_LIMIT}&businessId=${businessId}`;
 
-    // Use apiClient which handles token refresh automatically
+    if (cursor) {
+      endpoint += `&cursor=${cursor}`;
+    }
+
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
-
-    // Parse the NDJSON stream
     const { meta, data } = await parseNDJSON(response);
 
     return {
       data: data || [],
-      total: meta?.total || 0,
+      nextCursor: meta?.searchMeta?.nextCursor || null,
+      hasMore: meta?.searchMeta?.hasMore || false,
     };
   } catch (error: any) {
     if (error.name === "AbortError") {
@@ -63,37 +69,32 @@ export function useFuelTypeInfiniteScroll(businessId?: string) {
     refetch,
   } = useInfiniteQuery({
     queryKey: ["fuelTypes", businessId],
-    queryFn: ({ pageParam = 1 }) => {
-      // Cancel previous request if it exists
+    queryFn: ({ pageParam }) => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
 
-      // Create new abort controller
       abortControllerRef.current = new AbortController();
 
       return fetchFuelTypes({
-        pageParam,
-        businessId: businessId || "", // Require businessId
+        cursor: pageParam,
+        businessId: businessId || "",
         signal: abortControllerRef.current.signal,
       });
     },
-    enabled: !!businessId, // Only fetch if businessId is provided
-    getNextPageParam: (lastPage, allPages) => {
-      // Check if there are more fuel types to load
-      return lastPage.data.length === 10 ? allPages.length + 1 : undefined;
+    enabled: !!businessId,
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.nextCursor : undefined;
     },
-    initialPageParam: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialPageParam: undefined as string | undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
-  // Flatten all pages into a single array
   const fuelTypes = data?.pages.flatMap((page) => page.data) || [];
-  const total = data?.pages[0]?.total || 0;
+  const total = fuelTypes.length;
 
   const handleRefetch = useCallback(() => {
-    // Cancel any ongoing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -107,7 +108,6 @@ export function useFuelTypeInfiniteScroll(businessId?: string) {
     }
   }, [hasNextPage, isFetching, fetchNextPage]);
 
-  // Get error message
   const errorMessage =
     error instanceof Error
       ? error.message

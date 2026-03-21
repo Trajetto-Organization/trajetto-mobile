@@ -1,14 +1,10 @@
 import { View, Text, TouchableOpacity } from "react-native";
-
-import { canRefuelVehicles } from "../utils/permissions";
-import { useAuthStore } from "../store";
-
 import { Vehicle } from "../types";
 
 interface VehicleCardProps {
   vehicle: Vehicle;
+  hasActionPermission: boolean;
   onPress?: () => void;
-  onRefuel?: () => void;
 }
 
 const getStatusColor = (status: Vehicle["status"]) => {
@@ -43,12 +39,9 @@ const getStatusText = (status: Vehicle["status"]) => {
 
 export const VehicleCard: React.FC<VehicleCardProps> = ({
   vehicle,
+  hasActionPermission,
   onPress,
-  onRefuel,
 }) => {
-  const { user } = useAuthStore();
-  const canRefuel = canRefuelVehicles(user);
-
   // Safety check - if vehicle is null or undefined, don't render
   if (!vehicle) {
     return null;
@@ -65,14 +58,11 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
   };
 
   const handleCardPress = () => {
-    // Only allow interaction for ACTIVE and IN_ROUTE vehicles
     const isInteractable =
       vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE";
 
-    if (onPress && isInteractable) {
+    if (onPress && isInteractable && hasActionPermission) {
       onPress();
-    } else if (canRefuel && onRefuel && isInteractable) {
-      onRefuel();
     }
   };
 
@@ -95,15 +85,17 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
   };
 
   // Check if vehicle is disabled (INACTIVE or BLOCKED)
-  const isDisabled =
+  const isStatusDisabled =
     vehicle.status === "INACTIVE" || vehicle.status === "BLOCKED";
+
+  const isDisabled = isStatusDisabled || !hasActionPermission;
 
   return (
     <TouchableOpacity
       onPress={handleCardPress}
       activeOpacity={isDisabled ? 1 : 0.7}
       disabled={isDisabled}
-      className={`bg-white rounded-lg 
+      className={`bg-white rounded-lg
       shadow-sm border p-4 mb-3 mx-4 ${
         isDisabled ? "border-gray-300 opacity-60" : "border-gray-200"
       }`}
@@ -112,11 +104,11 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       <View className="flex-row justify-between items-start mb-3">
         <View className="flex-1">
           <Text className="text-lg font-bold text-gray-900">
-            {safeString(vehicle.brand)} {safeString(vehicle.model)}
+            {safeString(vehicle.description)}
           </Text>
           <Text className="text-sm text-gray-600">
-            {getYearFromDate(vehicle.model_year)} •{" "}
-            {safeString(vehicle.description)}
+            {safeString(vehicle.brand)} • {safeString(vehicle.model)} •{" "}
+            {getYearFromDate(vehicle.model_year)}
           </Text>
         </View>
         <View
@@ -130,20 +122,34 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
         </View>
       </View>
 
-      {/* License Plate */}
-      <View className="mb-3">
-        <Text
-          className="text-xs text-gray-500 
-          uppercase tracking-wide mb-1"
-        >
-          Placa
-        </Text>
-        <Text
-          className="text-base 
-          font-semibold text-gray-900"
-        >
-          {safeString(vehicle.license_plate)}
-        </Text>
+      {/* License Plate and Renavam */}
+      <View className="flex-row justify-between mb-3">
+        <View>
+          <Text
+            className="text-xs text-gray-500
+            uppercase tracking-wide mb-1"
+          >
+            Placa
+          </Text>
+          <Text
+            className="text-base
+            font-semibold text-gray-900"
+          >
+            {safeString(vehicle.license_plate)}
+          </Text>
+        </View>
+
+        <View className="items-end">
+          <Text
+            className="text-xs text-gray-500
+            uppercase tracking-wide mb-1"
+          >
+            Renavam
+          </Text>
+          <Text className="text-base font-semibold text-gray-900">
+            {safeString(vehicle.renavam)}
+          </Text>
+        </View>
       </View>
 
       {/* Mileage Information */}
@@ -208,7 +214,8 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       ) : null}
 
       {/* Action Hint */}
-      {canRefuel === true &&
+      {hasActionPermission &&
+      !isStatusDisabled &&
       (vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE") ? (
         <View className="mt-3 pt-3 border-t border-gray-100">
           <Text className="text-center text-primary-600 text-sm font-medium">
@@ -217,19 +224,22 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
         </View>
       ) : null}
 
-      {/* Disabled State Message */}
-      {isDisabled === true ? (
-        <View
-          className="mt-3 pt-3 
-          border-t border-gray-100"
-        >
-          <Text
-            className="text-center 
-            text-gray-400 text-sm font-medium"
-          >
+      {/* Disabled State - Vehicle Status */}
+      {isStatusDisabled ? (
+        <View className="mt-3 pt-3 border-t border-gray-100">
+          <Text className="text-center text-gray-400 text-sm font-medium">
             {vehicle.status === "BLOCKED"
               ? "🚫 Veículo bloqueado"
               : "⏸️ Veículo inativo"}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Disabled State - No Permission */}
+      {!hasActionPermission && !isStatusDisabled ? (
+        <View className="mt-3 pt-3 border-t border-gray-100">
+          <Text className="text-center text-gray-400 text-sm font-medium">
+            🔒 Permissão de abastecimento ou checklist necessária
           </Text>
         </View>
       ) : null}

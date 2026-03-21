@@ -4,7 +4,7 @@ interface ParsedNDJSONResult {
 }
 
 export async function parseNDJSON(
-  response: Response
+  response: Response,
 ): Promise<ParsedNDJSONResult> {
   try {
     // React Native fetch automatically handles gzip decompression

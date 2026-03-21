@@ -1,9 +1,7 @@
-import { useState } from "react";
 import {
   View,
   Text,
   KeyboardAvoidingView,
-  Platform,
   TouchableOpacity,
   Image,
 } from "react-native";
@@ -11,121 +9,24 @@ import {
 import TrajettoLogo from "../../assets/images/trajetto-logo.png";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useRouter } from "expo-router";
-import { useForm, Controller } from "react-hook-form";
-
-import { zodResolver } from "@hookform/resolvers/zod";
-import Toast from "react-native-toast-message";
-
-import * as Haptics from "expo-haptics";
-
-import { useAuthStore } from "../../store";
-import { loginSchema, LoginFormData } from "../../schemas";
+import { Controller } from "react-hook-form";
 
 import { Button, Input } from "../../components/ui";
+import { useLogin } from "./hooks/use-login";
 
 const LoginScreen = () => {
-  const router = useRouter();
-  const { login } = useAuthStore();
-
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-
   const {
     control,
     handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  });
-
-  const onSubmit = async (data: LoginFormData) => {
-    setIsSubmitting(true);
-
-    try {
-      const result = await login(data.email, data.password);
-
-      if (result.success) {
-        // Success haptic feedback
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-        Toast.show({
-          type: "success",
-          text1: "Login realizado com sucesso!",
-          text2: "Bem-vindo ao Trajetto",
-          position: "top",
-          visibilityTime: 3000,
-        });
-
-        // Navigation will be handled automatically by the auth state change
-        router.replace("/vehicles");
-      } else if (result.requiresEmailVerification) {
-        // Show email verification message
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-        Toast.show({
-          type: "info",
-          text1: "Verificação de e-mail necessária",
-          text2: result.error || "Verifique seu e-mail para continuar",
-          position: "top",
-          visibilityTime: 5000,
-        });
-      } else if (result.requiresTwoFactor) {
-        // Navigate to two-factor screen
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-        Toast.show({
-          type: "info",
-          text1: "Verificação de dois fatores",
-          text2: result.error || "Código enviado para seu e-mail",
-          position: "top",
-          visibilityTime: 3000,
-        });
-
-        router.push({
-          pathname: "/two-factor",
-          params: { email: result.email || data.email },
-        });
-      } else {
-        // Error haptic feedback
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-        Toast.show({
-          type: "error",
-          text1: "Erro no login",
-          text2: result.error || "Credenciais inválidas",
-          position: "top",
-          visibilityTime: 4000,
-        });
-      }
-    } catch (error) {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-      Toast.show({
-        type: "error",
-        text1: "Erro no login",
-        text2: "Ocorreu um erro inesperado. Tente novamente.",
-        position: "top",
-        visibilityTime: 4000,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const navigateToForgotPassword = () => {
-    router.push("/forgot-password");
-  };
+    errors,
+    isSubmitting,
+    onSubmit,
+    navigateToForgotPassword,
+  } = useLogin();
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
+      <KeyboardAvoidingView behavior={"height"} className="flex-1">
         <View className="flex-1 px-6 justify-center">
           {/* Logo and Title */}
           <View className="items-center mb-8">
@@ -144,13 +45,13 @@ const LoginScreen = () => {
               />
             </View>
             <Text
-              className="text-3xl font-bold 
+              className="text-3xl font-bold
               text-gray-900 mb-2"
             >
               Trajetto
             </Text>
             <Text
-              className="text-gray-600 
+              className="text-gray-600
               text-center text-base"
             >
               Gestão de frota inteligente
@@ -213,7 +114,7 @@ const LoginScreen = () => {
               className="items-center py-3"
             >
               <Text
-                className="text-primary-600 
+                className="text-primary-600
                 font-medium"
               >
                 Esqueci minha senha

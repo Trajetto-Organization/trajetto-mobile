@@ -6,6 +6,8 @@ import { Vehicle } from "../../types";
 interface VehicleActionModalProps {
   visible: boolean;
   vehicle: Vehicle | null;
+  canFuel: boolean;
+  canChecklist: boolean;
   onClose: () => void;
   onFuelAction: () => void;
   onChecklistAction: () => void;
@@ -14,6 +16,8 @@ interface VehicleActionModalProps {
 export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
   visible,
   vehicle,
+  canFuel,
+  canChecklist,
   onClose,
   onFuelAction,
   onChecklistAction,
@@ -64,94 +68,106 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
 
             <View className="gap-3">
               {/* Fuel Action */}
-              <TouchableOpacity
-                onPress={() => {
-                  onClose();
-                  onFuelAction();
-                }}
-                disabled={!isInteractable}
-                className={`flex-row items-center p-4 rounded-lg border ${
-                  isInteractable
-                    ? "border-gray-200 bg-white"
-                    : "border-gray-100 bg-gray-50"
-                }`}
-              >
-                <View
-                  className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
-                    isInteractable ? "bg-blue-100" : "bg-gray-100"
+              {canFuel && (
+                <TouchableOpacity
+                  onPress={() => {
+                    onClose();
+                    onFuelAction();
+                  }}
+                  disabled={!isInteractable}
+                  className={`flex-row items-center p-4 rounded-lg border ${
+                    isInteractable
+                      ? "border-gray-200 bg-white"
+                      : "border-gray-100 bg-gray-50"
                   }`}
                 >
-                  <Ionicons
-                    name="car"
-                    size={24}
-                    color={isInteractable ? "#3b82f6" : "#9ca3af"}
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text
-                    className={`font-medium ${
-                      isInteractable ? "text-gray-900" : "text-gray-400"
+                  <View
+                    className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
+                      isInteractable ? "bg-blue-100" : "bg-gray-100"
                     }`}
                   >
-                    Abastecer Veículo
-                  </Text>
-                  <Text
-                    className={`text-sm ${
-                      isInteractable ? "text-gray-600" : "text-gray-400"
-                    }`}
-                  >
-                    Registrar abastecimento do veículo
-                  </Text>
-                </View>
-                {isInteractable && (
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-                )}
-              </TouchableOpacity>
+                    <Ionicons
+                      name="car"
+                      size={24}
+                      color={isInteractable ? "#3b82f6" : "#9ca3af"}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text
+                      className={`font-medium ${
+                        isInteractable ? "text-gray-900" : "text-gray-400"
+                      }`}
+                    >
+                      Abastecer Veículo
+                    </Text>
+                    <Text
+                      className={`text-sm ${
+                        isInteractable ? "text-gray-600" : "text-gray-400"
+                      }`}
+                    >
+                      Registrar abastecimento do veículo
+                    </Text>
+                  </View>
+                  {isInteractable && (
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#9ca3af"
+                    />
+                  )}
+                </TouchableOpacity>
+              )}
 
               {/* Checklist Action */}
-              <TouchableOpacity
-                onPress={() => {
-                  onClose();
-                  onChecklistAction();
-                }}
-                disabled={!isInteractable}
-                className={`flex-row items-center p-4 rounded-lg border ${
-                  isInteractable
-                    ? "border-gray-200 bg-white"
-                    : "border-gray-100 bg-gray-50"
-                }`}
-              >
-                <View
-                  className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
-                    isInteractable ? "bg-green-100" : "bg-gray-100"
+              {canChecklist && (
+                <TouchableOpacity
+                  onPress={() => {
+                    onClose();
+                    onChecklistAction();
+                  }}
+                  disabled={!isInteractable}
+                  className={`flex-row items-center p-4 rounded-lg border ${
+                    isInteractable
+                      ? "border-gray-200 bg-white"
+                      : "border-gray-100 bg-gray-50"
                   }`}
                 >
-                  <Ionicons
-                    name="checkmark-done"
-                    size={24}
-                    color={isInteractable ? "#10b981" : "#9ca3af"}
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text
-                    className={`font-medium ${
-                      isInteractable ? "text-gray-900" : "text-gray-400"
+                  <View
+                    className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
+                      isInteractable ? "bg-green-100" : "bg-gray-100"
                     }`}
                   >
-                    Checklist Veicular
-                  </Text>
-                  <Text
-                    className={`text-sm ${
-                      isInteractable ? "text-gray-600" : "text-gray-400"
-                    }`}
-                  >
-                    Realizar inspeção do veículo
-                  </Text>
-                </View>
-                {isInteractable && (
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-                )}
-              </TouchableOpacity>
+                    <Ionicons
+                      name="checkmark-done"
+                      size={24}
+                      color={isInteractable ? "#10b981" : "#9ca3af"}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text
+                      className={`font-medium ${
+                        isInteractable ? "text-gray-900" : "text-gray-400"
+                      }`}
+                    >
+                      Checklist Veicular
+                    </Text>
+                    <Text
+                      className={`text-sm ${
+                        isInteractable ? "text-gray-600" : "text-gray-400"
+                      }`}
+                    >
+                      Realizar inspeção do veículo
+                    </Text>
+                  </View>
+                  {isInteractable && (
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#9ca3af"
+                    />
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
 
             {!isInteractable && (

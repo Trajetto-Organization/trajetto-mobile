@@ -24,32 +24,38 @@ export interface Driver {
 }
 
 interface FetchDriverParams {
-  pageParam: number;
+  cursor?: string;
   signal?: AbortSignal;
   businessId: string;
 }
 
+interface FetchDriverResult {
+  data: Driver[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+const DRIVER_LIMIT = 10;
+
 const fetchDrivers = async ({
-  pageParam,
+  cursor,
   signal,
   businessId,
-}: FetchDriverParams): Promise<{ data: Driver[]; total: number }> => {
-  const MAX_DRIVER_PAGE = 10;
-
+}: FetchDriverParams): Promise<FetchDriverResult> => {
   try {
-    // Build endpoint URL with query parameters
-    // Use list-driver-business to filter by businessId
-    const endpoint = `/driver/list-driver-business?businessId=${businessId}&page=${pageParam}&pageSize=${MAX_DRIVER_PAGE}`;
+    let endpoint = `/driver/search-driver-business?limit=${DRIVER_LIMIT}&businessId=${businessId}`;
 
-    // Use apiClient which handles token refresh automatically
+    if (cursor) {
+      endpoint += `&cursor=${cursor}`;
+    }
+
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
-
-    // Parse the NDJSON stream
     const { meta, data } = await parseNDJSON(response);
 
     return {
       data: data || [],
-      total: meta?.total || 0,
+      nextCursor: meta?.searchMeta?.nextCursor || null,
+      hasMore: meta?.searchMeta?.hasMore || false,
     };
   } catch (error: any) {
     if (error.name === "AbortError") {
@@ -74,37 +80,32 @@ export function useDriverInfiniteScroll(businessId?: string) {
     refetch,
   } = useInfiniteQuery({
     queryKey: ["drivers", businessId],
-    queryFn: ({ pageParam = 1 }) => {
-      // Cancel previous request if it exists
+    queryFn: ({ pageParam }) => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
 
-      // Create new abort controller
       abortControllerRef.current = new AbortController();
 
       return fetchDrivers({
-        pageParam,
-        businessId: businessId || "", // Require businessId
+        cursor: pageParam,
+        businessId: businessId || "",
         signal: abortControllerRef.current.signal,
       });
     },
-    enabled: !!businessId, // Only fetch if businessId is provided
-    getNextPageParam: (lastPage, allPages) => {
-      // Check if there are more drivers to load
-      return lastPage.data.length === 10 ? allPages.length + 1 : undefined;
+    enabled: !!businessId,
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.nextCursor : undefined;
     },
-    initialPageParam: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialPageParam: undefined as string | undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
-  // Flatten all pages into a single array
   const drivers = data?.pages.flatMap((page) => page.data) || [];
-  const total = data?.pages[0]?.total || 0;
+  const total = drivers.length;
 
   const handleRefetch = useCallback(() => {
-    // Cancel any ongoing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -118,7 +119,6 @@ export function useDriverInfiniteScroll(businessId?: string) {
     }
   }, [hasNextPage, isFetching, fetchNextPage]);
 
-  // Get error message
   const errorMessage =
     error instanceof Error ? error.message : "Erro ao carregar motoristas";
 

@@ -106,7 +106,7 @@ export interface AuthState {
   isLoading: boolean;
   login: (
     email: string,
-    password: string
+    password: string,
   ) => Promise<{
     success: boolean;
     error?: string;
@@ -116,10 +116,10 @@ export interface AuthState {
   }>;
   verifyTwoFactor: (
     email: string,
-    code: string
+    code: string,
   ) => Promise<{ success: boolean; error?: string }>;
   resendTwoFactorCode: (
-    email: string
+    email: string,
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;

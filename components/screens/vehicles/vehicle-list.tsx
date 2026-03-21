@@ -4,7 +4,7 @@ import { VehicleCard } from "../../vehicle-card";
 import { LoadingSpinner, VehicleSkeletonList } from "../../ui";
 import { VehicleEmptyState } from "./vehicle-empty-state";
 
-import { Vehicle } from "../../../types";
+import { Vehicle } from "@/types";
 
 interface VehicleListProps {
   vehicles: Vehicle[];
@@ -19,6 +19,7 @@ interface VehicleListProps {
   onClearSearch: () => void;
   onOpenWebPlatform: () => void;
   isDriverWithoutVehicles?: boolean;
+  hasActionPermission: boolean;
 }
 
 export const VehicleList: React.FC<VehicleListProps> = ({
@@ -34,6 +35,7 @@ export const VehicleList: React.FC<VehicleListProps> = ({
   onClearSearch,
   onOpenWebPlatform,
   isDriverWithoutVehicles = false,
+  hasActionPermission,
 }) => {
   const hasSearchResults = Boolean(
     debouncedSearch && debouncedSearch.length > 0,
@@ -41,7 +43,11 @@ export const VehicleList: React.FC<VehicleListProps> = ({
   const showNoResults = hasSearchResults && vehicles.length === 0 && !isLoading;
 
   const renderVehicleItem = ({ item }: { item: Vehicle }) => (
-    <VehicleCard vehicle={item} onRefuel={() => onVehiclePress(item)} />
+    <VehicleCard
+      vehicle={item}
+      hasActionPermission={hasActionPermission}
+      onPress={() => onVehiclePress(item)}
+    />
   );
 
   const renderFooter = () => {

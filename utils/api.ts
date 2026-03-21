@@ -123,6 +123,7 @@ class ApiClient {
 
         logger.dev("🧹 apiClient: Clearing tokens...");
         await tokenStorage.clearTokens();
+
         return null;
       } finally {
         // ✅ Clear the promise after completion (success or failure)
@@ -315,5 +316,5 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient();
-export default apiClient;
+const apiClient = new ApiClient();
+export { apiClient };

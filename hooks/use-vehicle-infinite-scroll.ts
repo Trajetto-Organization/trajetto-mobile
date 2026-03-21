@@ -7,41 +7,38 @@ import { parseNDJSON } from "../utils/parseNDJSON";
 import { Vehicle } from "../types";
 
 interface FetchVehicleParams {
-  pageParam: number;
+  cursor?: string;
   signal?: AbortSignal;
-  search?: string;
   businessId: string;
 }
 
+interface FetchVehicleResult {
+  data: Vehicle[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+const VEHICLE_LIMIT = 10;
+
 const fetchVehicles = async ({
-  pageParam,
+  cursor,
   signal,
-  search,
   businessId,
-}: FetchVehicleParams): Promise<{ data: Vehicle[]; total: number }> => {
-  const MAX_VEHICLE_PAGE = 10;
-
+}: FetchVehicleParams): Promise<FetchVehicleResult> => {
   try {
-    // Build endpoint URL with query parameters
-    // Use list-vehicle-business to filter by businessId (works for MASTER, BUSINESS_ADMIN, and drivers)
-    let endpoint = `/vehicle/list-vehicle-business?page=${pageParam}&pageSize=${MAX_VEHICLE_PAGE}&businessId=${businessId}`;
+    let endpoint = `/vehicle/search-vehicle-business?limit=${VEHICLE_LIMIT}&businessId=${businessId}`;
 
-    if (search) {
-      endpoint += `&search=${encodeURIComponent(search)}`;
+    if (cursor) {
+      endpoint += `&cursor=${cursor}`;
     }
 
-    // Note: driverId filtering is now handled automatically by the backend
-    // based on the authenticated user's role and driverId
-
-    // Use apiClient which handles token refresh automatically
     const response = await apiClient.getNDJSONResponse(endpoint, signal);
-
-    // Parse the NDJSON stream
     const { meta, data } = await parseNDJSON(response);
 
     return {
       data: data || [],
-      total: meta?.total || 0,
+      nextCursor: meta?.searchMeta?.nextCursor || null,
+      hasMore: meta?.searchMeta?.hasMore || false,
     };
   } catch (error: any) {
     if (error.name === "AbortError") {
@@ -52,7 +49,7 @@ const fetchVehicles = async ({
   }
 };
 
-export function useVehicleInfiniteScroll(search?: string, businessId?: string) {
+export function useVehicleInfiniteScroll(businessId?: string) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -65,39 +62,33 @@ export function useVehicleInfiniteScroll(search?: string, businessId?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["vehicles", search, businessId],
-    queryFn: ({ pageParam = 1 }) => {
-      // Cancel previous request if it exists
+    queryKey: ["vehicles", businessId],
+    queryFn: ({ pageParam }) => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
 
-      // Create new abort controller
       abortControllerRef.current = new AbortController();
 
       return fetchVehicles({
-        pageParam,
-        search,
-        businessId: businessId || "", // Require businessId
+        cursor: pageParam,
+        businessId: businessId || "",
         signal: abortControllerRef.current.signal,
       });
     },
-    enabled: !!businessId, // Only fetch if businessId is provided
-    getNextPageParam: (lastPage, allPages) => {
-      // Check if there are more vehicles to load
-      return lastPage.data.length === 10 ? allPages.length + 1 : undefined;
+    enabled: !!businessId,
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.nextCursor : undefined;
     },
-    initialPageParam: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialPageParam: undefined as string | undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
-  // Flatten all pages into a single array
   const vehicles = data?.pages.flatMap((page) => page.data) || [];
-  const total = data?.pages[0]?.total || 0;
+  const total = vehicles.length;
 
   const handleRefetch = useCallback(() => {
-    // Cancel any ongoing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -111,7 +102,6 @@ export function useVehicleInfiniteScroll(search?: string, businessId?: string) {
     }
   }, [hasNextPage, isFetching, fetchNextPage]);
 
-  // Get error message
   const errorMessage =
     error instanceof Error ? error.message : "Erro ao carregar veículos";
 
