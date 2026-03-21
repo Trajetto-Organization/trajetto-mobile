@@ -47,8 +47,13 @@ jobs:
         run: |
           eas build --platform android --profile preview --non-interactive --no-wait
 
-      - name: Build on EAS (Manual)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Build on EAS (Manual - Production)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'production'
+        run: |
+          eas build --platform android --profile production --non-interactive
+
+      - name: Build on EAS (Manual - Other)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile != 'production'
         run: |
           eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive --no-wait
 

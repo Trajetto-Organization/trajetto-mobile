@@ -57,13 +57,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Permitir que $(PRODUCT_NAME) acesse sua câmera para tirar fotos do odômetro."
+          "cameraPermission": "Permitir que $(PRODUCT_NAME) acesse sua câmera para tirar fotos."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "O app acessa suas fotos para permitir que você escolha uma imagem do odômetro."
+          "photosPermission": "O app acessa suas fotos para permitir que você escolha uma imagem."
         }
       ],
       "@react-native-community/datetimepicker",
@@ -72,8 +72,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização para registrar o local dos abastecimentos.",
-          "locationWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização para registrar o local dos abastecimentos."
+          "locationAlwaysAndWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização.",
+          "locationWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização."
         }
       ]
     ],
