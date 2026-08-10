@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { Linking } from "react-native";
 
 import { useRouter } from "expo-router";
 
 import { useAuthStore } from "@/store";
-import { useVehicleInfiniteScroll } from "@/hooks";
+import { useDebounce, useVehicleInfiniteScroll } from "@/hooks";
 
 import { Vehicle } from "@/types";
 import {
@@ -15,7 +15,10 @@ import {
 export const useVehicles = () => {
   const router = useRouter();
 
-  const { user, logout, setUser } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+
+  const setUser = useAuthStore((state) => state.setUser);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
@@ -24,7 +27,7 @@ export const useVehicles = () => {
   const [isRefreshingError, setIsRefreshingError] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+  const debouncedSearch = useDebounce(searchQuery.trim());
   const [showSwitchBusinessModal, setShowSwitchBusinessModal] =
     useState<boolean>(false);
 
@@ -35,14 +38,6 @@ export const useVehicles = () => {
     useState<boolean>(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim());
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
   const {
     vehicles,
     isLoading,
@@ -52,33 +47,9 @@ export const useVehicles = () => {
     hasNextPage,
     loadMore,
     refetch,
-  } = useVehicleInfiniteScroll(
-    user?.businessId || user?.selectedBusiness || undefined,
-  );
+  } = useVehicleInfiniteScroll(user?.businessId || undefined, debouncedSearch);
 
-  const filteredVehicles = useMemo(() => {
-    if (!vehicles) return [];
-    if (!debouncedSearch) return vehicles;
-
-    const searchLower = debouncedSearch.toLowerCase();
-    return vehicles.filter((vehicle) => {
-      const licensePlate = vehicle.license_plate?.toLowerCase() || "";
-      const model = vehicle.model?.toLowerCase() || "";
-
-      const brand = vehicle.brand?.toLowerCase() || "";
-      const description = vehicle.description?.toLowerCase() || "";
-
-      const renavam = vehicle.renavam?.toLowerCase() || "";
-
-      return (
-        licensePlate.includes(searchLower) ||
-        model.includes(searchLower) ||
-        brand.includes(searchLower) ||
-        description.includes(searchLower) ||
-        renavam.includes(searchLower)
-      );
-    });
-  }, [vehicles, debouncedSearch]);
+  const filteredVehicles = vehicles;
 
   const activeVehiclesCount = filteredVehicles.filter(
     (vehicle) => vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE",
@@ -95,7 +66,7 @@ export const useVehicles = () => {
     setIsRefreshingError(false);
 
     try {
-      refetch();
+      await refetch();
     } finally {
       setRefreshing(false);
     }
@@ -104,7 +75,7 @@ export const useVehicles = () => {
   const handleRefreshError = useCallback(async () => {
     setIsRefreshingError(true);
     try {
-      refetch();
+      await refetch();
     } finally {
       setIsRefreshingError(false);
     }

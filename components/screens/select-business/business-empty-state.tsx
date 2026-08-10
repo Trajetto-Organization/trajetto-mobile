@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View, Text } from "react-native";
 
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Button } from "../../ui";
 
 interface BusinessEmptyStateProps {
@@ -19,7 +19,7 @@ export const BusinessEmptyState: React.FC<BusinessEmptyStateProps> = ({
   onClearSearch,
   onRefresh,
 }) => {
-  const [isClearing, setIsClearing] = useState(false);
+  const [isClearing, setIsClearing] = useState<boolean>(false);
 
   const handleClearSearch = () => {
     if (!onClearSearch) return;

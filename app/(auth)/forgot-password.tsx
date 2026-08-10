@@ -6,11 +6,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Controller } from "react-hook-form";
 
 import { Button, Input } from "../../components/ui";
-import { useForgotPassword } from "./hooks/use-forgot-password";
+import { useForgotPassword } from "@/features/auth/hooks";
 
 const ForgotPasswordScreen = () => {
   const {

@@ -1,13 +1,21 @@
-import { View, Text, ScrollView, KeyboardAvoidingView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  View,
+  Text,
+  ScrollView,
+  KeyboardAvoidingView,
+  TouchableOpacity,
+} from "react-native";
 
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ProtectedRoute } from "../../components/protected-route";
+
 import {
   Button,
+  DiscardDraftModal,
   LogoutModal,
   ImagePickerBottomSheet,
+  LoadingSpinner,
 } from "../../components/ui";
-
 import {
   BranchSelection,
   DriverSelection,
@@ -15,7 +23,7 @@ import {
 } from "../../components/shared";
 
 import { FuelForm } from "../../components/screens/fuel";
-import { useFuel } from "./hooks/use-fuel";
+import { useFuel } from "@/features/fuel/hooks/use-fuel";
 
 const FuelScreen = () => {
   const {
@@ -31,7 +39,11 @@ const FuelScreen = () => {
     calculatedTotal,
     setCalculatedTotal,
     odometerImage,
-    setOdometerImage,
+    removeOdometerImage,
+    isDraftReady,
+    hasDraft,
+    showDiscardDraftModal,
+    isDiscardingDraft,
     isLocationLoading,
     vehicleData,
     isLoadingVehicle,
@@ -50,11 +62,24 @@ const FuelScreen = () => {
     takePhoto,
     pickFromGallery,
     showImagePicker,
+    requestDiscardDraft,
+    cancelDiscardDraft,
+    confirmDiscardDraft,
     confirmLogout,
     handleLocationChange,
     handleLocationLoadingChange,
     isDriver,
   } = useFuel();
+
+  if (!isDraftReady) {
+    return (
+      <ProtectedRoute>
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <LoadingSpinner text="Restaurando rascunho..." />
+        </SafeAreaView>
+      </ProtectedRoute>
+    );
+  }
 
   if (!permissions.canWrite) {
     return (
@@ -87,6 +112,17 @@ const FuelScreen = () => {
               <Text className="text-sm text-gray-600">
                 {stepInfo.description}
               </Text>
+              {currentStep === "form" && hasDraft ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={requestDiscardDraft}
+                  className="self-start mt-2"
+                >
+                  <Text className="text-sm font-medium text-red-600">
+                    Descartar rascunho
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             <View className="bg-primary-100 rounded-full px-3 py-1">
               <Text className="text-xs font-medium text-primary-800">
@@ -106,65 +142,65 @@ const FuelScreen = () => {
 
         {/* Step Content */}
         <KeyboardAvoidingView behavior={"height"} className="flex-1">
-          <ScrollView
-            className="flex-1"
-            contentContainerStyle={{ flexGrow: 1 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {currentStep === "branch" && (
-              <BranchSelection
-                businessId={user?.businessId || user?.selectedBusiness || ""}
-                selectedBranchId={stepData.branchId}
-                onSelectBranch={(branch) => {
-                  setStepData((prev) => ({
-                    ...prev,
-                    branchId: branch.id,
-                    branchName: branch.corporate_reason,
-                  }));
-                  setValue("branchId", branch.id);
-                }}
-              />
-            )}
+          {currentStep === "branch" && (
+            <BranchSelection
+              businessId={user?.businessId || ""}
+              selectedBranchId={stepData.branchId}
+              onSelectBranch={(branch) => {
+                setStepData((prev) => ({
+                  ...prev,
+                  branchId: branch.id,
+                  branchName: branch.corporate_reason,
+                }));
+                setValue("branchId", branch.id);
+              }}
+            />
+          )}
 
-            {currentStep === "driver" && (
-              <DriverSelection
-                businessId={user?.businessId || user?.selectedBusiness || ""}
-                selectedDriverId={stepData.driverId}
-                onSelectDriver={(driver) => {
-                  setStepData((prev) => ({
-                    ...prev,
-                    driverId: driver.id,
-                    driverName: driver.name,
-                    driverCnh: driver.cnh,
-                  }));
-                  setValue("driverId", driver.id);
-                }}
-              />
-            )}
+          {currentStep === "driver" && (
+            <DriverSelection
+              businessId={user?.businessId || ""}
+              selectedDriverId={stepData.driverId}
+              onSelectDriver={(driver) => {
+                setStepData((prev) => ({
+                  ...prev,
+                  driverId: driver.id,
+                  driverName: driver.name,
+                  driverCnh: driver.cnh,
+                }));
+                setValue("driverId", driver.id);
+              }}
+            />
+          )}
 
-            {currentStep === "fuelType" && (
-              <FuelTypeSelection
-                businessId={user?.businessId || user?.selectedBusiness || ""}
-                selectedFuelTypeId={stepData.fuelTypeId}
-                onSelectFuelType={(fuelType) => {
-                  setStepData((prev) => ({
-                    ...prev,
-                    fuelTypeId: fuelType.id,
-                    fuelTypeName: fuelType.description,
-                  }));
-                  setValue("fuelTypeId", fuelType.id);
-                }}
-              />
-            )}
+          {currentStep === "fuelType" && (
+            <FuelTypeSelection
+              businessId={user?.businessId || ""}
+              selectedFuelTypeId={stepData.fuelTypeId}
+              onSelectFuelType={(fuelType) => {
+                setStepData((prev) => ({
+                  ...prev,
+                  fuelTypeId: fuelType.id,
+                  fuelTypeName: fuelType.description,
+                }));
+                setValue("fuelTypeId", fuelType.id);
+              }}
+            />
+          )}
 
-            {currentStep === "form" && (
+          {currentStep === "form" && (
+            <ScrollView
+              className="flex-1"
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <FuelForm
                 control={control}
                 errors={errors}
                 odometerImage={odometerImage}
                 onImagePicker={showImagePicker}
-                onRemoveImage={() => setOdometerImage(null)}
+                onRemoveImage={removeOdometerImage}
                 stepData={stepData}
                 calculatedTotal={calculatedTotal}
                 onTotalChange={setCalculatedTotal}
@@ -178,19 +214,14 @@ const FuelScreen = () => {
                   errors.latitude?.message || errors.longitude?.message
                 }
               />
-            )}
-          </ScrollView>
+            </ScrollView>
+          )}
         </KeyboardAvoidingView>
 
         {/* Navigation Buttons */}
         <View className="px-6 py-4 bg-white border-t border-gray-200">
           <View className="flex-row gap-4">
-            <Button
-              onPress={goToPrevStep}
-              variant="outline"
-              className="flex-1"
-              disabled={isSubmitting}
-            >
+            <Button onPress={goToPrevStep} variant="outline" className="flex-1">
               {currentStep === "branch" ? "Cancelar" : "Voltar"}
             </Button>
 
@@ -225,6 +256,14 @@ const FuelScreen = () => {
           visible={showLogoutModal}
           onClose={() => setShowLogoutModal(false)}
           onConfirm={confirmLogout}
+        />
+
+        <DiscardDraftModal
+          visible={showDiscardDraftModal}
+          message="Os dados preenchidos e a foto salva neste dispositivo serão removidos. Esta ação não pode ser desfeita."
+          isLoading={isDiscardingDraft}
+          onClose={cancelDiscardDraft}
+          onConfirm={() => void confirmDiscardDraft()}
         />
 
         {/* Image Picker Bottom Sheet */}

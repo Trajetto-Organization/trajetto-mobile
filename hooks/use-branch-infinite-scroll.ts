@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../utils/api";
@@ -28,6 +28,7 @@ interface FetchBranchParams {
   cursor?: string;
   signal?: AbortSignal;
   businessId: string;
+  search?: string;
 }
 
 interface FetchBranchResult {
@@ -42,34 +43,30 @@ const fetchBranches = async ({
   cursor,
   signal,
   businessId,
+  search,
 }: FetchBranchParams): Promise<FetchBranchResult> => {
-  try {
-    let endpoint = `/branch/search-branch-business?limit=${BRANCH_LIMIT}&businessId=${businessId}`;
+  let endpoint = `/branch/search-branch-business?limit=${BRANCH_LIMIT}&businessId=${encodeURIComponent(businessId)}`;
 
-    if (cursor) {
-      endpoint += `&cursor=${cursor}`;
-    }
-
-    const response = await apiClient.getNDJSONResponse(endpoint, signal);
-    const { meta, data } = await parseNDJSON(response);
-
-    return {
-      data: data || [],
-      nextCursor: meta?.searchMeta?.nextCursor || null,
-      hasMore: meta?.searchMeta?.hasMore || false,
-    };
-  } catch (error: any) {
-    if (error.name === "AbortError") {
-      throw error;
-    }
-
-    throw new Error(error.message || "Erro ao carregar filiais");
+  if (cursor) {
+    endpoint += `&cursor=${encodeURIComponent(cursor)}`;
   }
+
+  if (search) {
+    endpoint += `&search=${encodeURIComponent(search)}`;
+  }
+
+  const response = await apiClient.getNDJSONResponse(endpoint, signal);
+  const { meta, data } = await parseNDJSON(response);
+
+  return {
+    data: data || [],
+    nextCursor: meta?.searchMeta?.nextCursor || null,
+    hasMore: meta?.searchMeta?.hasMore || false,
+  };
 };
 
-export function useBranchInfiniteScroll(businessId?: string) {
-  const abortControllerRef = useRef<AbortController | null>(null);
-
+export function useBranchInfiniteScroll(businessId?: string, search = "") {
+  const normalizedSearch = search.trim();
   const {
     data,
     fetchNextPage,
@@ -80,18 +77,13 @@ export function useBranchInfiniteScroll(businessId?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["branches", businessId],
-    queryFn: ({ pageParam }) => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-
-      abortControllerRef.current = new AbortController();
-
+    queryKey: ["branches", businessId, normalizedSearch],
+    queryFn: ({ pageParam, signal }) => {
       return fetchBranches({
         cursor: pageParam,
         businessId: businessId || "",
-        signal: abortControllerRef.current.signal,
+        signal,
+        search: normalizedSearch || undefined,
       });
     },
     enabled: !!businessId,
@@ -103,15 +95,14 @@ export function useBranchInfiniteScroll(businessId?: string) {
     gcTime: 10 * 60 * 1000,
   });
 
-  const branches = data?.pages.flatMap((page) => page.data) || [];
+  const branches = useMemo(
+    () => data?.pages.flatMap((page) => page.data) ?? [],
+    [data?.pages],
+  );
   const total = branches.length;
 
   const handleRefetch = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    refetch();
+    return refetch();
   }, [refetch]);
 
   const loadMore = useCallback(() => {

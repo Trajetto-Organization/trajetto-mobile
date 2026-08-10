@@ -1,18 +1,12 @@
 import { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Image,
-  InteractionManager,
-} from "react-native";
+import { View, Text } from "react-native";
 
-import { Ionicons } from "@expo/vector-icons";
 import { Controller, useWatch } from "react-hook-form";
 
 import * as ImagePicker from "expo-image-picker";
 import { Input, DatePicker, Select } from "../../ui";
 
+import { ChecklistPhotoSection } from "./checklist-photo-section";
 import { formatMileage, parseFormattedValue } from "@/utils/formatters";
 
 interface StepData {
@@ -39,6 +33,25 @@ interface ChecklistFormProps {
   trigger: any;
   isDriver?: boolean; // Flag to hide summary for drivers
 }
+
+const PHOTO_REQUIREMENT_FIELDS = [
+  "brakes_working",
+  "headlights_working",
+  "taillights_working",
+  "turn_signals_working",
+  "steering_wheel_condition",
+  "battery_condition",
+  "bumpers_condition",
+  "windshield_condition",
+  "mirrors_condition",
+  "spare_tire_condition",
+  "oil_level_adequate",
+  "radiator_water_adequate",
+  "brake_fluid_adequate",
+  "seatbelts_working",
+  "dashboard_working",
+  "clutch_working",
+] as const;
 
 // Smart photo requirements based on backend logic
 const getPhotoRequirements = (formData: any) => {
@@ -156,12 +169,12 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
 }) => {
   const [isFormReady, setIsFormReady] = useState<boolean>(false);
 
-  // Defer heavy form rendering until after step transition completes
+  // Yield one frame so the step transition can paint before mounting the form.
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
+    const frame = requestAnimationFrame(() => {
       setIsFormReady(true);
     });
-    return () => task.cancel();
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   // Initialize formatted mileage from form values (for back-navigation persistence)
@@ -175,8 +188,19 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
     return "";
   });
 
-  // Watch all form values to determine photo requirements
-  const formData = useWatch({ control });
+  // Subscribe only to values that can change a photo requirement. This avoids
+  // re-rendering the whole form while typing mileage, notes and other fields.
+  const requirementValues = useWatch({
+    control,
+    name: PHOTO_REQUIREMENT_FIELDS,
+    exact: true,
+  });
+  const formData = Object.fromEntries(
+    PHOTO_REQUIREMENT_FIELDS.map((fieldName, index) => [
+      fieldName,
+      requirementValues[index],
+    ]),
+  );
   const photoRequirements = getPhotoRequirements(formData);
 
   const renderPhotoSection = (fieldName: string, label: string) => {
@@ -187,65 +211,15 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
     const isRequired = requirement?.required;
 
     return (
-      <View className="mb-4">
-        <View className="mb-2">
-          <View className="flex-row items-center flex-wrap">
-            <Text className="text-sm font-medium text-gray-700">
-              📷 {label}
-              {isRequired && <Text className="text-red-500"> *</Text>}
-            </Text>
-          </View>
-          {requirement?.reason && (
-            <Text className="text-xs text-gray-500 mt-1 flex-wrap">
-              {requirement.reason}
-            </Text>
-          )}
-        </View>
-
-        {images.length > 0 ? (
-          <View className="flex-row flex-wrap gap-2 mb-2">
-            {images.map((image, index) => (
-              <View key={index} className="relative">
-                <Image
-                  source={{ uri: image.uri }}
-                  className="w-20 h-20 rounded-lg"
-                  resizeMode="cover"
-                />
-                <TouchableOpacity
-                  onPress={() => onRemoveImage(fieldName, index)}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500
-                  rounded-full items-center justify-center"
-                >
-                  <Ionicons name="close" size={12} color="white" />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        <TouchableOpacity
-          onPress={() => onImagePicker(fieldName)}
-          className={`border-2 border-dashed rounded-lg p-3 items-center ${
-            isRequired ? "border-red-300 bg-red-50" : "border-gray-300"
-          }`}
-        >
-          <Ionicons
-            name="camera"
-            size={24}
-            color={isRequired ? "#ef4444" : "#9ca3af"}
-          />
-          <Text
-            className={`text-sm mt-1 ${
-              isRequired ? "text-red-600" : "text-gray-600"
-            }`}
-          >
-            {images.length > 0 ? "Adicionar mais fotos" : "Adicionar foto"}
-          </Text>
-          {isRequired && (
-            <Text className="text-xs text-red-500 mt-1">Obrigatório</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      <ChecklistPhotoSection
+        fieldName={fieldName}
+        label={label}
+        images={images}
+        isRequired={Boolean(isRequired)}
+        reason={requirement?.reason}
+        onImagePicker={onImagePicker}
+        onRemoveImage={onRemoveImage}
+      />
     );
   };
 

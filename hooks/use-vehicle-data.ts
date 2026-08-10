@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { apiClient } from "../utils/api";
+import { useQuery } from "@tanstack/react-query";
 
+import { apiClient } from "../utils/api";
 import type { Vehicle } from "../types/vehicle";
 
 interface UseVehicleDataProps {
@@ -12,55 +12,36 @@ interface UseVehicleDataReturn {
   data: Vehicle | null;
   isLoading: boolean;
   error: string | null;
-  refetch: () => void;
+  refetch: () => Promise<void>;
 }
 
 export const useVehicleData = ({
   vehicleId,
   businessId,
 }: UseVehicleDataProps): UseVehicleDataReturn => {
-  const [data, setData] = useState<Vehicle | null>(null);
-
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchVehicleData = async () => {
-    if (!vehicleId || !businessId) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await apiClient.get<Vehicle>(
+  const query = useQuery({
+    queryKey: ["vehicle", businessId, vehicleId],
+    enabled: Boolean(vehicleId && businessId),
+    staleTime: 2 * 60 * 1000,
+    queryFn: ({ signal }) =>
+      apiClient.request<Vehicle>(
         `/vehicle/get-vehicle/${vehicleId}/business/${businessId}`,
-      );
+        { method: "GET", signal },
+      ),
+  });
 
-      setData(response);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : "Erro ao carregar dados do veículo";
-
-      setError(errorMessage);
-      setData(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchVehicleData();
-  }, [vehicleId, businessId]);
-
-  const refetch = () => {
-    fetchVehicleData();
-  };
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Erro ao carregar dados do veículo"
+    : null;
 
   return {
-    data,
-    isLoading,
+    data: query.data ?? null,
+    isLoading: query.isLoading,
     error,
-    refetch,
+    refetch: async () => {
+      await query.refetch();
+    },
   };
 };

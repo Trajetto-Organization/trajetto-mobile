@@ -1,25 +1,19 @@
 import { Redirect } from "expo-router";
 
-import { useAuthStore } from "../store";
 import { LoadingSpinner } from "../components/ui";
+import { useAuthStore } from "../store";
 
 const Index = () => {
-  const { isAuthenticated, isLoading, isInitialized } = useAuthStore();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const isLoading = useAuthStore((state) => state.isLoading);
 
-  // ✅ DON'T call checkAuth here - AuthProvider already handles it!
-  // Calling it here would create a race condition with duplicate requests
+  const isInitialized = useAuthStore((state) => state.isInitialized);
 
-  // Show loading while initializing auth
   if (!isInitialized || isLoading) {
     return <LoadingSpinner text="Carregando..." className="bg-white" />;
   }
 
-  // Redirect based on auth status
-  if (isAuthenticated) {
-    return <Redirect href="/vehicles" />;
-  }
-
-  return <Redirect href="/login" />;
+  return <Redirect href={isAuthenticated ? "/vehicles" : "/login"} />;
 };
 
 export default Index;

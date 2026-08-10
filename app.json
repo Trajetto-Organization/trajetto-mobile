@@ -18,7 +18,7 @@
     },
     "jsEngine": "hermes",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,26 +28,22 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
+      "predictiveBackGestureEnabled": true,
+      "allowBackup": false,
       "package": "com.trajetto.fleetmanager",
       "icon": "./assets/images/icon.png",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
-      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
-    "platforms": ["android"],
-    "notification": {
-      "icon": "./assets/images/icon.png",
-      "color": "#0ea5e9",
-      "androidMode": "default",
-      "androidCollapsedTitle": "#{unread_notifications} novas notificações"
-    },
+    "platforms": [
+      "android"
+    ],
     "updates": {
       "enabled": true,
       "fallbackToCacheTimeout": 0,
@@ -57,17 +53,12 @@
       "expo-router",
       "@react-native-community/datetimepicker",
       "expo-secure-store",
-      "expo-web-browser",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Permitir que $(PRODUCT_NAME) acesse sua câmera para tirar fotos."
-        }
-      ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "O app acessa suas fotos para permitir que você escolha uma imagem."
+          "photosPermission": "O app acessa suas fotos para permitir que você escolha uma imagem.",
+          "cameraPermission": "O app acessa sua câmera para registrar fotos de abastecimentos e checklists.",
+          "microphonePermission": false
         }
       ],
       [
@@ -81,11 +72,14 @@
         "expo-build-properties",
         {
           "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,

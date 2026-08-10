@@ -12,7 +12,7 @@ import {
   BusinessList,
 } from "../../components/screens/select-business";
 
-import { useSelectBusiness } from "./hooks/use-select-business";
+import { useSelectBusiness } from "@/features/businesses/hooks/use-select-business";
 
 const SelectBusinessScreen = () => {
   const {

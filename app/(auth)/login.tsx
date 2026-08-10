@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Controller } from "react-hook-form";
 
 import { Button, Input } from "../../components/ui";
-import { useLogin } from "./hooks/use-login";
+import { useLogin } from "@/features/auth/hooks";
 
 const LoginScreen = () => {
   const {

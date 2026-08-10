@@ -15,7 +15,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onSwitchBusiness,
 }) => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const [showUserDrawer, setShowUserDrawer] = useState<boolean>(false);
 
   const getUserRoleDisplay = () => {
@@ -29,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
         if (user?.driverId) {
           return "Motorista 🚗";
         }
+
         return "Colaborador ♦️";
       default:
         return "Colaborador ♦️";
