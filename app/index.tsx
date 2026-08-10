@@ -6,6 +6,7 @@ import { useAuthStore } from "../store";
 const Index = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
+
   const isInitialized = useAuthStore((state) => state.isInitialized);
 
   if (!isInitialized || isLoading) {

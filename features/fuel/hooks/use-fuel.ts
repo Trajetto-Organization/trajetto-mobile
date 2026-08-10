@@ -19,6 +19,7 @@ import { createFuelSchema, CreateFuelFormData } from "@/schemas";
 
 import { apiClient, ApiError } from "@/utils/api";
 import { checkFuelPermission } from "@/utils/permissions";
+
 import {
   createImageFormDataPart,
   getImageValidationError,
@@ -29,6 +30,7 @@ import {
   createSubmissionStorageKey,
   getOrCreateSubmissionId,
 } from "@/features/submissions/submission-id";
+
 import {
   clearFuelDraft,
   deleteFuelDraftImage,
@@ -54,11 +56,13 @@ export const useFuel = () => {
   const queryClient = useQueryClient();
 
   const { vehicleId } = useLocalSearchParams<{ vehicleId: string }>();
+
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
 
   const isDriver = user?.role === "BUSINESS_USER" && !!user?.driverId;
   const submissionBusinessId = user?.businessId || "";
+
   const submissionStorageKey = useMemo(
     () =>
       createSubmissionStorageKey(
@@ -77,13 +81,17 @@ export const useFuel = () => {
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isDraftReady, setIsDraftReady] = useState<boolean>(false);
+
   const [hasDraft, setHasDraft] = useState<boolean>(false);
   const [showDiscardDraftModal, setShowDiscardDraftModal] =
     useState<boolean>(false);
+
   const [isDiscardingDraft, setIsDiscardingDraft] = useState<boolean>(false);
   const discardInFlightRef = useRef<boolean>(false);
+
   const submissionAbortControllerRef = useRef<AbortController | null>(null);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const draftPersistenceEnabledRef = useRef<boolean>(true);
   const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
 
@@ -93,6 +101,7 @@ export const useFuel = () => {
 
   const [odometerImage, setOdometerImage] =
     useState<ImagePicker.ImagePickerAsset | null>(null);
+
   const odometerImageRef = useRef<ImagePicker.ImagePickerAsset | null>(null);
   const stepDataRef = useRef<Partial<StepData>>({});
 
@@ -225,9 +234,9 @@ export const useFuel = () => {
           },
         );
 
-        void Haptics.impactAsync(
-          Haptics.ImpactFeedbackStyle.Light,
-        ).catch(() => undefined);
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+          () => undefined,
+        );
         draftPersistenceEnabledRef.current = false;
         if (draftSaveTimerRef.current) {
           clearTimeout(draftSaveTimerRef.current);
@@ -332,23 +341,19 @@ export const useFuel = () => {
       if (!isDraftReady || !draftPersistenceEnabledRef.current) return;
       if (!user?.id || !submissionBusinessId || !vehicleId) return;
 
-      const submissionId =
-        await getOrCreateSubmissionId(submissionStorageKey);
-      await saveFuelDraft<CreateFuelFormData, StepData>(
-        submissionStorageKey,
-        {
-          submissionId,
-          formData: {
-            ...formData,
-            // A GPS position must be freshly captured for each refueling.
-            latitude: undefined,
-            longitude: undefined,
-          },
-          stepData: stepDataRef.current,
-          odometerImage: odometerImageRef.current,
-          updatedAt: new Date().toISOString(),
+      const submissionId = await getOrCreateSubmissionId(submissionStorageKey);
+      await saveFuelDraft<CreateFuelFormData, StepData>(submissionStorageKey, {
+        submissionId,
+        formData: {
+          ...formData,
+          // A GPS position must be freshly captured for each refueling.
+          latitude: undefined,
+          longitude: undefined,
         },
-      );
+        stepData: stepDataRef.current,
+        odometerImage: odometerImageRef.current,
+        updatedAt: new Date().toISOString(),
+      });
     },
     [
       isDraftReady,
@@ -371,13 +376,7 @@ export const useFuel = () => {
         void persistFuelDraft(formData).catch(() => undefined);
       }, 500);
     },
-    [
-      isDraftReady,
-      persistFuelDraft,
-      submissionBusinessId,
-      user?.id,
-      vehicleId,
-    ],
+    [isDraftReady, persistFuelDraft, submissionBusinessId, user?.id, vehicleId],
   );
 
   useEffect(() => {
@@ -488,8 +487,7 @@ export const useFuel = () => {
       draftSaveTimerRef.current = null;
     }
 
-    const submissionId =
-      await getOrCreateSubmissionId(submissionStorageKey);
+    const submissionId = await getOrCreateSubmissionId(submissionStorageKey);
     deleteFuelDraftImage(odometerImageRef.current);
     await Promise.all([
       clearFuelDraft(submissionStorageKey, submissionId),
@@ -746,8 +744,7 @@ export const useFuel = () => {
   }, [setPreparedOdometerImage]);
 
   const pickFromGallery = useCallback(async () => {
-    const permission =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Toast.show({
         type: "error",

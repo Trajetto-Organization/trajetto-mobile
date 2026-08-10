@@ -1,28 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as Haptics from "expo-haptics";
+
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useForm } from "react-hook-form";
+
 import { AppState, type AppStateStatus } from "react-native";
 import Toast from "react-native-toast-message";
 
-import {
-  twoFactorSchema,
-  type TwoFactorFormData,
-} from "@/schemas";
+import { twoFactorSchema, type TwoFactorFormData } from "@/schemas";
 import { useAuthStore, useTwoFactorStore } from "@/store";
 
 export const useTwoFactor = () => {
   const router = useRouter();
+
   const { email: routeEmail } = useLocalSearchParams<{ email?: string }>();
   const storedEmail = useTwoFactorStore((state) => state.email);
+
   const email = routeEmail || storedEmail || undefined;
   const verifyTwoFactor = useAuthStore((state) => state.verifyTwoFactor);
+
   const resendTwoFactorCode = useAuthStore(
     (state) => state.resendTwoFactorCode,
   );
+
   const resendTimer = useTwoFactorStore((state) => state.resendTimer);
   const setResendTimer = useTwoFactorStore((state) => state.setResendTimer);
+
   const setLastResendTime = useTwoFactorStore(
     (state) => state.setLastResendTime,
   );
@@ -30,12 +35,15 @@ export const useTwoFactor = () => {
   const calculateRemainingTime = useTwoFactorStore(
     (state) => state.calculateRemainingTime,
   );
+
   const resetTimer = useTwoFactorStore((state) => state.resetTimer);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showBackModal, setShowBackModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [showBackModal, setShowBackModal] = useState<boolean>(false);
+
   const resendInFlight = useRef(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
+
   const {
     control,
     handleSubmit,
@@ -61,6 +69,7 @@ export const useTwoFactor = () => {
 
   useEffect(() => {
     if (resendTimer <= 0) return;
+
     const timer = setTimeout(syncRemainingTime, 1_000);
     return () => clearTimeout(timer);
   }, [resendTimer, syncRemainingTime]);
@@ -70,8 +79,10 @@ export const useTwoFactor = () => {
       const becameActive =
         appState.current !== "active" && nextState === "active";
       appState.current = nextState;
+
       if (becameActive) syncRemainingTime();
     });
+
     return () => subscription.remove();
   }, [syncRemainingTime]);
 
@@ -84,6 +95,7 @@ export const useTwoFactor = () => {
         position: "top",
         visibilityTime: 4_000,
       });
+
       router.replace("/login");
       return;
     }
@@ -101,6 +113,7 @@ export const useTwoFactor = () => {
           position: "top",
           visibilityTime: 3_000,
         });
+
         router.replace("/vehicles");
         return;
       }
@@ -135,6 +148,7 @@ export const useTwoFactor = () => {
       if (result.success) {
         setLastResendTime(Date.now());
         setResendTimer(15);
+
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         Toast.show({
           type: "success",

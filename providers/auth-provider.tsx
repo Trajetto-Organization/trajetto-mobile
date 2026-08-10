@@ -1,9 +1,11 @@
 import type { PropsWithChildren } from "react";
+
 import { useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { useAuthStore } from "../store";
 import { apiClient } from "../utils/api";
+
 import { logger } from "../utils/logger";
 
 let initializationPromise: Promise<void> | null = null;
@@ -43,6 +45,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
 
       if (!becameActive) return;
       const now = Date.now();
+
       if (now - lastResumeCheckAt.current < 3_000) return;
       lastResumeCheckAt.current = now;
 

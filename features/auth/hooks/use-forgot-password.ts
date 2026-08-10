@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+
 import { useForm } from "react-hook-form";
 import Toast from "react-native-toast-message";
 
-import {
-  forgotPasswordSchema,
-  type ForgotPasswordFormData,
-} from "@/schemas";
+import { forgotPasswordSchema, type ForgotPasswordFormData } from "@/schemas";
+
 import type { ForgotPasswordResponse } from "@/types";
 import { ApiError, apiClient } from "@/utils/api";
 
 export const useForgotPassword = () => {
   const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [emailMessage, setEmailMessage] = useState("");
+
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [emailSent, setEmailSent] = useState<boolean>(false);
+
+  const [emailMessage, setEmailMessage] = useState<string>("");
   const {
     control,
     handleSubmit,

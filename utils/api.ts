@@ -1,17 +1,15 @@
 import { isTokenExpired } from "./jwt";
 import { logger } from "./logger";
+
 import { updateSocketAuthToken } from "./socket";
 import { tokenStorage } from "./storage";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "");
+
 const DEFAULT_TIMEOUT_MS = 20_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
 
-export type ApiErrorCategory =
-  | "HTTP"
-  | "NETWORK"
-  | "TIMEOUT"
-  | "CONFIGURATION";
+export type ApiErrorCategory = "HTTP" | "NETWORK" | "TIMEOUT" | "CONFIGURATION";
 
 const TERMINAL_AUTH_ERROR_CODES = new Set([
   "AUTH_ACCESS_REVOKED",
@@ -131,8 +129,10 @@ const getErrorDetails = async (
 class ApiClient {
   private refreshPromise: Promise<string | null> | null = null;
   private logoutCallback: LogoutCallback | null = null;
+
   private unauthorizedPromise: Promise<void> | null = null;
   private sessionEpoch = 0;
+
   private authenticatedControllers = new Set<AbortController>();
 
   setLogoutCallback(callback: LogoutCallback | null): void {
@@ -142,8 +142,10 @@ class ApiClient {
   /** Cancels work belonging to the previous credentials. */
   invalidateSession(): number {
     this.sessionEpoch += 1;
+
     this.authenticatedControllers.forEach((controller) => controller.abort());
     this.authenticatedControllers.clear();
+
     this.refreshPromise = null;
     return this.sessionEpoch;
   }
@@ -157,6 +159,7 @@ class ApiClient {
         this.unauthorizedPromise = null;
       },
     );
+
     return this.unauthorizedPromise;
   }
 
@@ -191,6 +194,7 @@ class ApiClient {
       didTimeout: () => timedOut,
       cleanup: () => {
         clearTimeout(timeout);
+
         externalSignal?.removeEventListener("abort", abortFromExternalSignal);
         this.authenticatedControllers.delete(controller);
       },
@@ -207,10 +211,12 @@ class ApiClient {
         "TIMEOUT",
       );
     }
+
     if (error instanceof Error && error.name === "AbortError") throw error;
     if (context.signal.aborted) {
       throw createAbortError();
     }
+
     throw new ApiError(
       error instanceof Error ? error.message : "Network error",
       0,
@@ -221,8 +227,10 @@ class ApiClient {
 
   private async performRefreshToken(): Promise<string | null> {
     const requestEpoch = this.sessionEpoch;
+
     const storageEpoch = tokenStorage.getEpoch();
     const refreshToken = await tokenStorage.getRefreshToken();
+
     if (!refreshToken) return null;
     if (!API_BASE_URL) {
       throw new ApiError(
@@ -263,6 +271,7 @@ class ApiClient {
           logger.info("apiClient: refresh token rejected");
           return null;
         }
+
         throw new ApiError(
           errorDetails.message,
           response.status,
@@ -283,6 +292,7 @@ class ApiClient {
           "Invalid Refresh Response",
         );
       }
+
       if (!data.token || !data.refresh_token) {
         throw new ApiError(
           "Resposta de renovacao de sessao invalida",
@@ -300,12 +310,14 @@ class ApiClient {
         data.refresh_token,
         storageEpoch,
       );
+
       if (requestEpoch !== this.sessionEpoch) {
         throw createAbortError("Session changed during token refresh");
       }
 
       await updateSocketAuthToken(data.token);
       logger.info("apiClient: tokens refreshed successfully");
+
       return data.token;
     } catch (error) {
       return this.normalizeFetchError(error, context);
@@ -354,22 +366,24 @@ class ApiClient {
     }
 
     const requestEpoch = this.sessionEpoch;
+
     let hasAttemptedAuthRefresh = authRetryAttempted;
-    let accessToken = requiresAuth
-      ? await tokenStorage.getAccessToken()
-      : null;
+    let accessToken = requiresAuth ? await tokenStorage.getAccessToken() : null;
 
     if (requiresAuth && (!accessToken || isTokenExpired(accessToken))) {
       if (hasAttemptedAuthRefresh) {
         await this.handleUnauthorized();
         throw new ApiError("Session expired", 401, "Unauthorized");
       }
+
       hasAttemptedAuthRefresh = true;
       const refreshedToken = await this.refreshToken();
+
       if (!refreshedToken) {
         await this.handleUnauthorized();
         throw new ApiError("Session expired", 401, "Unauthorized");
       }
+
       accessToken = refreshedToken;
     }
 
@@ -466,6 +480,7 @@ class ApiClient {
           );
         }
       }
+
       return response as unknown as T;
     } catch (error) {
       return this.normalizeFetchError(error, context);
@@ -478,11 +493,19 @@ class ApiClient {
     return this.request<T>(endpoint, { method: "GET", requiresAuth });
   }
 
-  async post<T>(endpoint: string, body?: unknown, requiresAuth = true): Promise<T> {
+  async post<T>(
+    endpoint: string,
+    body?: unknown,
+    requiresAuth = true,
+  ): Promise<T> {
     return this.request<T>(endpoint, { method: "POST", body, requiresAuth });
   }
 
-  async put<T>(endpoint: string, body?: unknown, requiresAuth = true): Promise<T> {
+  async put<T>(
+    endpoint: string,
+    body?: unknown,
+    requiresAuth = true,
+  ): Promise<T> {
     return this.request<T>(endpoint, { method: "PUT", body, requiresAuth });
   }
 

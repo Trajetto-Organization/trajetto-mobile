@@ -17,6 +17,7 @@ export const useVehicles = () => {
 
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+
   const setUser = useAuthStore((state) => state.setUser);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
@@ -46,10 +47,7 @@ export const useVehicles = () => {
     hasNextPage,
     loadMore,
     refetch,
-  } = useVehicleInfiniteScroll(
-    user?.businessId || undefined,
-    debouncedSearch,
-  );
+  } = useVehicleInfiniteScroll(user?.businessId || undefined, debouncedSearch);
 
   const filteredVehicles = vehicles;
 

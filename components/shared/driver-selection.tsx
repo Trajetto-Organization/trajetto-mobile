@@ -136,9 +136,7 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
                 selectedDriverId === driver.id
                   ? "border-primary-500 bg-primary-50"
                   : "border-gray-200"
-              } ${
-                driver.status === "ACTIVE" ? "opacity-100" : "opacity-50"
-              }`}
+              } ${driver.status === "ACTIVE" ? "opacity-100" : "opacity-50"}`}
             >
               <View className="flex-row items-center justify-between">
                 <View className="flex-1">

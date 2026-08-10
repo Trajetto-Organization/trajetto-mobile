@@ -1,8 +1,11 @@
 import { useState } from "react";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as Haptics from "expo-haptics";
+
 import { useRouter } from "expo-router";
 import { useForm } from "react-hook-form";
+
 import Toast from "react-native-toast-message";
 
 import { loginSchema, type LoginFormData } from "@/schemas";
@@ -10,8 +13,10 @@ import { useAuthStore } from "@/store";
 
 export const useLogin = () => {
   const router = useRouter();
+
   const login = useAuthStore((state) => state.login);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
   const {
     control,
     handleSubmit,
@@ -35,6 +40,7 @@ export const useLogin = () => {
           position: "top",
           visibilityTime: 3_000,
         });
+
         router.replace("/vehicles");
         return;
       }
@@ -48,6 +54,7 @@ export const useLogin = () => {
           position: "top",
           visibilityTime: 5_000,
         });
+
         return;
       }
 
@@ -60,10 +67,12 @@ export const useLogin = () => {
           position: "top",
           visibilityTime: 3_000,
         });
+
         router.push({
           pathname: "/two-factor",
           params: { email: result.email || data.email },
         });
+
         return;
       }
 

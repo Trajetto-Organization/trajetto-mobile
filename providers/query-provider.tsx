@@ -1,16 +1,19 @@
 import type { PropsWithChildren } from "react";
+
 import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
+
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import {
   focusManager,
   onlineManager,
   QueryClient,
 } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { ApiError } from "../utils/api";
 
 const shouldRetryQuery = (failureCount: number, error: unknown): boolean => {
@@ -19,8 +22,10 @@ const shouldRetryQuery = (failureCount: number, error: unknown): boolean => {
     if (error.status >= 400 && error.status < 500 && error.status !== 408) {
       return false;
     }
+
     return error.isTransient && failureCount < 2;
   }
+
   return failureCount < 2;
 };
 
@@ -62,6 +67,7 @@ export const queryClient = new AppQueryClient({
 export async function clearQueryCache(): Promise<void> {
   const cancellation = queryClient.cancelQueries();
   queryClient.clear();
+
   await Promise.allSettled([cancellation, queryPersister.removeClient()]);
 }
 

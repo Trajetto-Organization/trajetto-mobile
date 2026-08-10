@@ -2,14 +2,18 @@ import "../global.css";
 
 import { useCallback, useEffect, useState } from "react";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AnimatedSplashScreen } from "../components/animated-splash-screen";
+
 import { LoadingSpinner } from "../components/ui";
+
 import { Providers } from "../providers";
 import { useAuthStore } from "../store";
 
@@ -33,6 +37,7 @@ const RootNavigator = ({
   if (showAnimatedSplash) {
     return <AnimatedSplashScreen onFinish={onSplashFinish} />;
   }
+
   if (!isInitialized) {
     return <LoadingSpinner text="Verificando sessao..." className="bg-white" />;
   }
@@ -57,7 +62,7 @@ const RootNavigator = ({
 
 const RootLayout = () => {
   const [fontsLoaded] = useFonts({});
-  const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
+  const [showAnimatedSplash, setShowAnimatedSplash] = useState<boolean>(true);
 
   useEffect(() => {
     if (fontsLoaded) void SplashScreen.hideAsync().catch(() => undefined);

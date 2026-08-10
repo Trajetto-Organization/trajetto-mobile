@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -8,6 +9,7 @@ import {
   disableSubmissionPersistence,
   enableSubmissionPersistence,
 } from "../features/submissions/submission-id";
+
 import type {
   AuthState,
   EmailVerificationResponse,
@@ -17,10 +19,13 @@ import type {
   User,
   UserMeResponse,
 } from "../types";
+
 import { ApiError, apiClient } from "../utils/api";
 import { logger } from "../utils/logger";
+
 import { validateUserAccess } from "../utils/permissions";
 import { disconnectSocket } from "../utils/socket";
+
 import { authSessionStorage, tokenStorage } from "../utils/storage";
 
 type AuthenticationResult = {
@@ -32,8 +37,10 @@ type AuthenticationResult = {
 };
 
 let authOperationEpoch = 0;
+
 let logoutPromise: Promise<void> | null = null;
 let logoutOperationEpoch: number | null = null;
+
 let checkAuthPromise: Promise<void> | null = null;
 let checkAuthOperationEpoch: number | null = null;
 
@@ -61,6 +68,7 @@ const mergeServerUser = (serverUser: User, cachedUser: User | null): User => {
       selectedBusiness: cachedUser.selectedBusiness,
     };
   }
+
   return serverUser;
 };
 
@@ -96,8 +104,10 @@ const getAuthenticationErrorMessage = (
     if (error.category === "NETWORK") {
       return "Erro de rede. Verifique sua conexao.";
     }
+
     return error.message || fallback;
   }
+
   return fallback;
 };
 
@@ -120,8 +130,10 @@ export const useAuthStore = create<AuthState>()(
 
         apiClient.invalidateSession();
         tokenStorage.invalidate();
+
         const markerEpoch = authSessionStorage.invalidate();
         disableSubmissionPersistence();
+
         disconnectSocket(false);
         setUnauthenticated(true);
 
@@ -143,11 +155,7 @@ export const useAuthStore = create<AuthState>()(
         let tokensWereStaged = false;
 
         try {
-          await tokenStorage.setTokens(
-            accessToken,
-            refreshToken,
-            storageEpoch,
-          );
+          await tokenStorage.setTokens(accessToken, refreshToken, storageEpoch);
           tokensWereStaged = true;
 
           if (!isCurrentOperation(operationEpoch)) {
@@ -158,6 +166,7 @@ export const useAuthStore = create<AuthState>()(
 
           const userMeResponse =
             await apiClient.get<UserMeResponse>("/user/me");
+
           const user = userMeResponse.user;
           const accessValidation = validateUserAccess(user);
 
@@ -279,8 +288,10 @@ export const useAuthStore = create<AuthState>()(
         verifyTwoFactor: async (email, code) => {
           const operationEpoch = beginAuthOperation();
           apiClient.invalidateSession();
+
           const storageEpoch = tokenStorage.invalidate();
           const markerEpoch = authSessionStorage.invalidate();
+
           set({ isLoading: true });
 
           try {
@@ -363,10 +374,13 @@ export const useAuthStore = create<AuthState>()(
 
           const operationEpoch = beginAuthOperation();
           logoutOperationEpoch = operationEpoch;
+
           apiClient.invalidateSession();
           tokenStorage.invalidate();
+
           const markerEpoch = authSessionStorage.invalidate();
           disableSubmissionPersistence();
+
           disconnectSocket(true);
           setUnauthenticated(true);
 
@@ -381,9 +395,9 @@ export const useAuthStore = create<AuthState>()(
             ]);
             // The remote call is deliberately best-effort. Local credential
             // cleanup failures are the ones that require diagnostics.
-            const failures = results.slice(1).filter(
-              (result) => result.status === "rejected",
-            );
+            const failures = results
+              .slice(1)
+              .filter((result) => result.status === "rejected");
             if (failures.length > 0) {
               logger.error("logout: one or more storage cleanups failed");
             }
@@ -404,6 +418,7 @@ export const useAuthStore = create<AuthState>()(
           try {
             const newAccessToken = await apiClient.refreshToken();
             if (newAccessToken) return true;
+
             await get().logout();
             return false;
           } catch (error) {
@@ -411,6 +426,7 @@ export const useAuthStore = create<AuthState>()(
               logger.info("refreshToken: transient failure, session preserved");
               return false;
             }
+
             if (!isAbortError(error)) await get().logout();
             return false;
           }
@@ -427,6 +443,7 @@ export const useAuthStore = create<AuthState>()(
 
           const operationEpoch = beginAuthOperation();
           checkAuthOperationEpoch = operationEpoch;
+
           const cachedUser = get().user;
           if (!options.background) set({ isLoading: true });
 
@@ -436,6 +453,7 @@ export const useAuthStore = create<AuthState>()(
                 authSessionStorage.wasLoggedOut(),
                 tokenStorage.getTokens(),
               ]);
+
               const accessToken = tokens?.accessToken ?? null;
               const refreshToken = tokens?.refreshToken ?? null;
 
@@ -444,13 +462,17 @@ export const useAuthStore = create<AuthState>()(
               if (wasLoggedOut || !refreshToken) {
                 apiClient.invalidateSession();
                 tokenStorage.invalidate();
+
                 disableSubmissionPersistence();
                 await Promise.allSettled([
                   tokenStorage.clearTokens(),
                   clearAllSubmissionData(),
                   clearQueryCache(),
                 ]);
-                if (isCurrentOperation(operationEpoch)) setUnauthenticated(true);
+
+                if (isCurrentOperation(operationEpoch))
+                  setUnauthenticated(true);
+
                 return;
               }
 
@@ -481,9 +503,7 @@ export const useAuthStore = create<AuthState>()(
             } catch (error) {
               if (!isCurrentOperation(operationEpoch)) return;
 
-              if (
-                error instanceof ApiError && error.isAuthenticationError
-              ) {
+              if (error instanceof ApiError && error.isAuthenticationError) {
                 await get().logout();
                 return;
               }
@@ -492,6 +512,7 @@ export const useAuthStore = create<AuthState>()(
                 logger.info(
                   "checkAuth: transient validation failure, preserving cached session",
                 );
+
                 if (cachedUser) enableSubmissionPersistence();
                 set({
                   user: cachedUser,
@@ -499,10 +520,12 @@ export const useAuthStore = create<AuthState>()(
                   isLoading: false,
                   isInitialized: true,
                 });
+
                 return;
               }
 
               if (isAbortError(error)) return;
+
               logger.error("checkAuth: non-recoverable validation failure");
               await get().logout();
             } finally {

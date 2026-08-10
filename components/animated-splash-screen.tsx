@@ -3,6 +3,7 @@ import { Animated, Dimensions, Easing, Image, Text, View } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+
 import { LinearGradient } from "expo-linear-gradient";
 import TrajettoLogo from "../assets/images/trajetto-logo.png";
 
@@ -107,261 +108,261 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
 
       // About 1.2 seconds, shown only once for each native app version.
       animation = Animated.sequence([
-      // Phase 1: Logo entrance with particles burst (0-1.2s)
-      Animated.parallel([
+        // Phase 1: Logo entrance with particles burst (0-1.2s)
         Animated.parallel([
-          Animated.timing(logoOpacity, {
+          Animated.parallel([
+            Animated.timing(logoOpacity, {
+              toValue: 1,
+              duration: 180,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.timing(logoScale, {
+              toValue: 1,
+              duration: 240,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.timing(logoY, {
+              toValue: 0,
+              duration: 240,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.delay(60),
+            Animated.parallel([
+              Animated.timing(glowScale, {
+                toValue: 1,
+                duration: 200,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }),
+              Animated.timing(glowOpacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+            ]),
+          ]),
+          Animated.sequence([
+            Animated.delay(100),
+            Animated.parallel([
+              // Particle 1 - top right
+              Animated.parallel([
+                Animated.timing(particle1Opacity, {
+                  toValue: 1,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle1Scale, {
+                  toValue: 1,
+                  duration: 150,
+                  easing: Easing.out(Easing.back(1.3)),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle1X, {
+                  toValue: 90,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle1Y, {
+                  toValue: -90,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+              ]),
+              // Particle 2 - bottom right
+              Animated.parallel([
+                Animated.timing(particle2Opacity, {
+                  toValue: 1,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle2Scale, {
+                  toValue: 1,
+                  duration: 150,
+                  easing: Easing.out(Easing.back(1.3)),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle2X, {
+                  toValue: 85,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle2Y, {
+                  toValue: 95,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+              ]),
+              // Particle 3 - top left
+              Animated.parallel([
+                Animated.timing(particle3Opacity, {
+                  toValue: 1,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle3Scale, {
+                  toValue: 1,
+                  duration: 150,
+                  easing: Easing.out(Easing.back(1.3)),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle3X, {
+                  toValue: -95,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle3Y, {
+                  toValue: -85,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+              ]),
+              // Particle 4 - bottom left
+              Animated.parallel([
+                Animated.timing(particle4Opacity, {
+                  toValue: 1,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle4Scale, {
+                  toValue: 1,
+                  duration: 150,
+                  easing: Easing.out(Easing.back(1.3)),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle4X, {
+                  toValue: -88,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(particle4Y, {
+                  toValue: 92,
+                  duration: 220,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+              ]),
+            ]),
+          ]),
+        ]),
+
+        // Phase 2: Wave rings expand (1.2-1.8s)
+        Animated.parallel([
+          Animated.sequence([
+            Animated.parallel([
+              Animated.timing(ringScale1, {
+                toValue: 2.5,
+                duration: 220,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }),
+              Animated.timing(ringOpacity1, {
+                toValue: 0,
+                duration: 220,
+                easing: Easing.out(Easing.ease),
+                useNativeDriver: true,
+              }),
+            ]),
+          ]),
+          Animated.sequence([
+            Animated.delay(50),
+            Animated.parallel([
+              Animated.timing(ringScale2, {
+                toValue: 2.5,
+                duration: 220,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }),
+              Animated.timing(ringOpacity2, {
+                toValue: 0,
+                duration: 220,
+                easing: Easing.out(Easing.ease),
+                useNativeDriver: true,
+              }),
+            ]),
+          ]),
+          Animated.sequence([
+            Animated.timing(ringOpacity1, {
+              toValue: 0.6,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+            Animated.delay(50),
+            Animated.timing(ringOpacity2, {
+              toValue: 0.6,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+
+        // Phase 3: Brand name appears (1.8-2.4s)
+        Animated.parallel([
+          Animated.timing(textOpacity, {
             toValue: 1,
             duration: 180,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-          Animated.timing(logoScale, {
+          Animated.timing(textScale, {
             toValue: 1,
-            duration: 240,
+            duration: 180,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-          Animated.timing(logoY, {
+          Animated.timing(textY, {
             toValue: 0,
-            duration: 240,
+            duration: 180,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
         ]),
-        Animated.sequence([
-          Animated.delay(60),
-          Animated.parallel([
-            Animated.timing(glowScale, {
-              toValue: 1,
-              duration: 200,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-            Animated.timing(glowOpacity, {
-              toValue: 1,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-        Animated.sequence([
-          Animated.delay(100),
-          Animated.parallel([
-            // Particle 1 - top right
-            Animated.parallel([
-              Animated.timing(particle1Opacity, {
-                toValue: 1,
-                duration: 150,
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle1Scale, {
-                toValue: 1,
-                duration: 150,
-                easing: Easing.out(Easing.back(1.3)),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle1X, {
-                toValue: 90,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle1Y, {
-                toValue: -90,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-            ]),
-            // Particle 2 - bottom right
-            Animated.parallel([
-              Animated.timing(particle2Opacity, {
-                toValue: 1,
-                duration: 150,
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle2Scale, {
-                toValue: 1,
-                duration: 150,
-                easing: Easing.out(Easing.back(1.3)),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle2X, {
-                toValue: 85,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle2Y, {
-                toValue: 95,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-            ]),
-            // Particle 3 - top left
-            Animated.parallel([
-              Animated.timing(particle3Opacity, {
-                toValue: 1,
-                duration: 150,
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle3Scale, {
-                toValue: 1,
-                duration: 150,
-                easing: Easing.out(Easing.back(1.3)),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle3X, {
-                toValue: -95,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle3Y, {
-                toValue: -85,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-            ]),
-            // Particle 4 - bottom left
-            Animated.parallel([
-              Animated.timing(particle4Opacity, {
-                toValue: 1,
-                duration: 150,
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle4Scale, {
-                toValue: 1,
-                duration: 150,
-                easing: Easing.out(Easing.back(1.3)),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle4X, {
-                toValue: -88,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-              Animated.timing(particle4Y, {
-                toValue: 92,
-                duration: 220,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-            ]),
-          ]),
-        ]),
-      ]),
 
-      // Phase 2: Wave rings expand (1.2-1.8s)
-      Animated.parallel([
-        Animated.sequence([
-          Animated.parallel([
-            Animated.timing(ringScale1, {
-              toValue: 2.5,
-              duration: 220,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-            Animated.timing(ringOpacity1, {
-              toValue: 0,
-              duration: 220,
-              easing: Easing.out(Easing.ease),
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-        Animated.sequence([
-          Animated.delay(50),
-          Animated.parallel([
-            Animated.timing(ringScale2, {
-              toValue: 2.5,
-              duration: 220,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-            Animated.timing(ringOpacity2, {
-              toValue: 0,
-              duration: 220,
-              easing: Easing.out(Easing.ease),
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-        Animated.sequence([
-          Animated.timing(ringOpacity1, {
-            toValue: 0.6,
-            duration: 0,
+        // Phase 4: Tagline slides up (2.4-2.9s)
+        Animated.parallel([
+          Animated.timing(taglineOpacity, {
+            toValue: 1,
+            duration: 120,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-          Animated.delay(50),
-          Animated.timing(ringOpacity2, {
-            toValue: 0.6,
-            duration: 0,
+          Animated.timing(taglineY, {
+            toValue: 0,
+            duration: 120,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
         ]),
-      ]),
 
-      // Phase 3: Brand name appears (1.8-2.4s)
-      Animated.parallel([
-        Animated.timing(textOpacity, {
-          toValue: 1,
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
+        // Phase 5: Shimmer effect (2.9-3.4s)
+        Animated.timing(shimmerX, {
+          toValue: width * 1.5,
+          duration: 140,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-        Animated.timing(textScale, {
-          toValue: 1,
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(textY, {
-          toValue: 0,
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]),
 
-      // Phase 4: Tagline slides up (2.4-2.9s)
-      Animated.parallel([
-        Animated.timing(taglineOpacity, {
-          toValue: 1,
-          duration: 120,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(taglineY, {
+        // Phase 6: Hold (3.4-3.7s)
+        Animated.delay(30),
+
+        // Phase 7: Fade out (3.7-4s)
+        Animated.timing(fadeOut, {
           toValue: 0,
           duration: 120,
-          easing: Easing.out(Easing.cubic),
+          easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
         }),
-      ]),
-
-      // Phase 5: Shimmer effect (2.9-3.4s)
-      Animated.timing(shimmerX, {
-        toValue: width * 1.5,
-        duration: 140,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }),
-
-      // Phase 6: Hold (3.4-3.7s)
-      Animated.delay(30),
-
-      // Phase 7: Fade out (3.7-4s)
-      Animated.timing(fadeOut, {
-        toValue: 0,
-        duration: 120,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
       ]);
 
       animation.start(({ finished }) => {

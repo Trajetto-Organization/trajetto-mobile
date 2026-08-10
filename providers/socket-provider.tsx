@@ -1,12 +1,16 @@
 import type { PropsWithChildren } from "react";
+
 import { useCallback, useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
+
 import Toast from "react-native-toast-message";
 
 import { useAuthStore } from "../store/auth-store";
 import type { UserMeResponse } from "../types";
+
 import { ApiError, apiClient } from "../utils/api";
 import { validateUserAccess } from "../utils/permissions";
+
 import {
   disconnectSocket,
   initializeSocket,
@@ -24,8 +28,7 @@ const REVOKE_MESSAGES: Record<string, string> = {
   driver_inactive:
     "Seu cadastro como motorista esta inativo. Entre em contato com o administrador.",
   no_permissions: "Seu usuario nao possui permissoes configuradas.",
-  no_vehicle_permission:
-    "Voce nao possui permissao para visualizar veiculos.",
+  no_vehicle_permission: "Voce nao possui permissao para visualizar veiculos.",
   permissions_changed:
     "Suas permissoes foram atualizadas. Faca login novamente.",
 };
@@ -33,9 +36,12 @@ const REVOKE_MESSAGES: Record<string, string> = {
 export const SocketProvider = ({ children }: PropsWithChildren) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const logout = useAuthStore((state) => state.logout);
+
   const setServerUser = useAuthStore((state) => state.setServerUser);
+
   const isHandlingLogout = useRef(false);
   const permissionsCheck = useRef<Promise<void> | null>(null);
+
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
   const handleForceLogout = useCallback(
@@ -100,6 +106,7 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
     }
 
     isHandlingLogout.current = false;
+
     let disposed = false;
     let boundSocket: Awaited<ReturnType<typeof initializeSocket>> | null = null;
 
@@ -118,9 +125,12 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
     void initializeSocket()
       .then((socket) => {
         if (disposed) return;
+
         boundSocket = socket;
+
         socket.off(SECURITY_EVENT, handleSecurityAction);
         socket.on(SECURITY_EVENT, handleSecurityAction);
+
         if (!socket.connected && !socket.active) socket.connect();
       })
       .catch(() => {
@@ -139,12 +149,14 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
       const becameActive =
         appState.current !== "active" && nextState === "active";
       appState.current = nextState;
+
       if (!useAuthStore.getState().isAuthenticated) return;
 
       if (nextState !== "active") {
         pauseSocket();
         return;
       }
+
       if (!becameActive) return;
 
       void updateSocketAuthToken()

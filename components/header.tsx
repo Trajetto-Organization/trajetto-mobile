@@ -29,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
         if (user?.driverId) {
           return "Motorista 🚗";
         }
+
         return "Colaborador ♦️";
       default:
         return "Colaborador ♦️";

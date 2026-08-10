@@ -5,8 +5,8 @@ import { Controller, useWatch } from "react-hook-form";
 
 import * as ImagePicker from "expo-image-picker";
 import { Input, DatePicker, Select } from "../../ui";
-import { ChecklistPhotoSection } from "./checklist-photo-section";
 
+import { ChecklistPhotoSection } from "./checklist-photo-section";
 import { formatMileage, parseFormattedValue } from "@/utils/formatters";
 
 interface StepData {

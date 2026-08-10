@@ -188,11 +188,7 @@ const ChecklistScreen = () => {
         {/* Navigation Buttons */}
         <View className="px-6 py-4 bg-white border-t border-gray-200">
           <View className="flex-row gap-4">
-            <Button
-              onPress={goToPrevStep}
-              variant="outline"
-              className="flex-1"
-            >
+            <Button onPress={goToPrevStep} variant="outline" className="flex-1">
               {currentStep === "branch" ? "Cancelar" : "Voltar"}
             </Button>
 

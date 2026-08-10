@@ -1,4 +1,5 @@
 import { File } from "expo-file-system";
+
 import {
   manipulateAsync,
   SaveFormat,
@@ -7,6 +8,7 @@ import {
 import type { ImagePickerAsset } from "expo-image-picker";
 
 export const MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024;
+
 export const MAX_CHECKLIST_IMAGES = 20;
 export const MAX_CHECKLIST_UPLOAD_BYTES = 5 * 1024 * 1024;
 
@@ -38,6 +40,7 @@ export async function prepareUploadImage(
     compress: JPEG_QUALITY,
     format: SaveFormat.JPEG,
   });
+
   const file = new File(result.uri);
   const baseName = (asset.fileName || "photo").replace(/\.[^.]+$/, "");
 

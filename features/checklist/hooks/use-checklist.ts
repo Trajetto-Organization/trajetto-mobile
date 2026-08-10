@@ -19,6 +19,7 @@ import { createChecklistSchema, CreateChecklistFormData } from "@/schemas";
 
 import { apiClient, ApiError } from "@/utils/api";
 import { checkChecklistPermission } from "@/utils/permissions";
+
 import {
   createImageFormDataPart,
   getImageValidationError,
@@ -31,6 +32,7 @@ import {
   createSubmissionStorageKey,
   getOrCreateSubmissionId,
 } from "@/features/submissions/submission-id";
+
 import {
   clearChecklistDraft,
   deleteChecklistDraftImage,
@@ -197,7 +199,10 @@ export const useChecklist = () => {
       const totalUploadBytes = Object.values(checklistImages).reduce(
         (total, images) =>
           total +
-          images.reduce((fieldTotal, image) => fieldTotal + (image.fileSize || 0), 0),
+          images.reduce(
+            (fieldTotal, image) => fieldTotal + (image.fileSize || 0),
+            0,
+          ),
         0,
       );
 
@@ -249,9 +254,9 @@ export const useChecklist = () => {
           },
         );
 
-        void Haptics.impactAsync(
-          Haptics.ImpactFeedbackStyle.Light,
-        ).catch(() => undefined);
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+          () => undefined,
+        );
         draftPersistenceEnabledRef.current = false;
         if (draftSaveTimerRef.current) {
           clearTimeout(draftSaveTimerRef.current);
@@ -372,8 +377,7 @@ export const useChecklist = () => {
       if (!isDraftReady || !draftPersistenceEnabledRef.current) return;
       if (!user?.id || !submissionBusinessId || !vehicleId) return;
 
-      const submissionId =
-        await getOrCreateSubmissionId(submissionStorageKey);
+      const submissionId = await getOrCreateSubmissionId(submissionStorageKey);
       await saveChecklistDraft<CreateChecklistFormData, StepData>(
         submissionStorageKey,
         {
@@ -430,10 +434,9 @@ export const useChecklist = () => {
 
     void (async () => {
       if (!user?.id || !submissionBusinessId || !vehicleId) return;
-      const draft = await loadChecklistDraft<
-        CreateChecklistFormData,
-        StepData
-      >(submissionStorageKey);
+      const draft = await loadChecklistDraft<CreateChecklistFormData, StepData>(
+        submissionStorageKey,
+      );
       if (!draft || isCancelled) return;
 
       const restoredValues = {
@@ -523,8 +526,7 @@ export const useChecklist = () => {
       draftSaveTimerRef.current = null;
     }
 
-    const submissionId =
-      await getOrCreateSubmissionId(submissionStorageKey);
+    const submissionId = await getOrCreateSubmissionId(submissionStorageKey);
     Object.values(checklistImagesRef.current).forEach((images) =>
       images.forEach(deleteChecklistDraftImage),
     );
@@ -790,8 +792,7 @@ export const useChecklist = () => {
         ) {
           const remainingMegabytes = Math.max(
             0,
-            (MAX_CHECKLIST_UPLOAD_BYTES - currentUploadBytes) /
-              (1024 * 1024),
+            (MAX_CHECKLIST_UPLOAD_BYTES - currentUploadBytes) / (1024 * 1024),
           ).toFixed(1);
           Toast.show({
             type: "error",
@@ -872,8 +873,7 @@ export const useChecklist = () => {
   }, [appendSelectedImage, currentPhotoField]);
 
   const pickFromGallery = useCallback(async () => {
-    const permission =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
       Toast.show({

@@ -14,6 +14,7 @@ export const useSelectBusiness = () => {
 
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+
   const setUser = useAuthStore((state) => state.setUser);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 

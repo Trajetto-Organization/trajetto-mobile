@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { randomUUID } from "expo-crypto";
 import { Directory, Paths } from "expo-file-system";
 
@@ -6,15 +7,19 @@ type SubmissionKind = "fuel" | "checklist";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const SUBMISSION_STORAGE_PREFIX = "@trajetto:submission:";
 const inFlightSubmissionIds = new Map<string, Promise<string>>();
+
 let submissionMutationQueue: Promise<void> = Promise.resolve();
+
 let submissionPersistenceEnabled = false;
 let submissionPersistenceEpoch = 0;
 
 const createAbortError = (): Error => {
   const error = new Error("Submission persistence is disabled");
   error.name = "AbortError";
+
   return error;
 };
 
@@ -65,15 +70,18 @@ export function getOrCreateSubmissionId(storageKey: string): Promise<string> {
   const request = enqueueSubmissionMutation(async () => {
     if (!submissionPersistenceEnabled) throw createAbortError();
     const storedId = await AsyncStorage.getItem(storageKey);
+
     if (!submissionPersistenceEnabled) throw createAbortError();
     if (storedId && UUID_PATTERN.test(storedId)) return storedId;
 
     const submissionId = randomUUID();
     await AsyncStorage.setItem(storageKey, submissionId);
+
     if (!submissionPersistenceEnabled) {
       await AsyncStorage.removeItem(storageKey);
       throw createAbortError();
     }
+
     return submissionId;
   });
 
@@ -82,6 +90,7 @@ export function getOrCreateSubmissionId(storageKey: string): Promise<string> {
     () => undefined,
     () => inFlightSubmissionIds.delete(storageKey),
   );
+
   return request;
 }
 
@@ -99,6 +108,7 @@ export async function clearAllSubmissionData(): Promise<void> {
     const submissionKeys = keys.filter((key) =>
       key.startsWith(SUBMISSION_STORAGE_PREFIX),
     );
+
     if (submissionKeys.length > 0) {
       await AsyncStorage.multiRemove(submissionKeys);
     }

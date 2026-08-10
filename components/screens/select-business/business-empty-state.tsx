@@ -19,7 +19,7 @@ export const BusinessEmptyState: React.FC<BusinessEmptyStateProps> = ({
   onClearSearch,
   onRefresh,
 }) => {
-  const [isClearing, setIsClearing] = useState(false);
+  const [isClearing, setIsClearing] = useState<boolean>(false);
 
   const handleClearSearch = () => {
     if (!onClearSearch) return;

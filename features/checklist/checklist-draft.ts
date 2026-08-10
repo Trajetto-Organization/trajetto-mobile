@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { Directory, File, Paths } from "expo-file-system";
 import { randomUUID } from "expo-crypto";
-import type { ImagePickerAsset } from "expo-image-picker";
 
+import type { ImagePickerAsset } from "expo-image-picker";
 import {
   getSubmissionPersistenceEpoch,
   isSubmissionPersistenceActive,
@@ -30,19 +31,22 @@ const enqueueDraftMutation = async <T>(
   submissionStorageKey: string,
   operation: () => Promise<T>,
 ): Promise<T> => {
-  const previous = draftMutationQueues.get(submissionStorageKey) ??
-    Promise.resolve();
+  const previous =
+    draftMutationQueues.get(submissionStorageKey) ?? Promise.resolve();
+
   const result = previous.then(operation, operation);
   const settled = result.then(
     () => undefined,
     () => undefined,
   );
+
   draftMutationQueues.set(submissionStorageKey, settled);
   await result.finally(() => {
     if (draftMutationQueues.get(submissionStorageKey) === settled) {
       draftMutationQueues.delete(submissionStorageKey);
     }
   });
+
   return result;
 };
 
@@ -58,10 +62,8 @@ export function persistChecklistDraftImage(
   directory.create({ intermediates: true, idempotent: true });
 
   const source = new File(asset.uri);
-  const destination = new File(
-    directory,
-    `${fieldName}-${randomUUID()}.jpg`,
-  );
+  const destination = new File(directory, `${fieldName}-${randomUUID()}.jpg`);
+
   source.copy(destination);
 
   try {
@@ -170,8 +172,8 @@ export async function clearChecklistDraft(
     }
 
     await AsyncStorage.removeItem(metadataKey(submissionStorageKey));
-
     if (!idToDelete) return;
+
     try {
       const directory = draftDirectory(idToDelete);
       if (directory.exists) directory.delete();

@@ -23,25 +23,32 @@ const ASYNC_KEYS = {
 
 let tokenMutationEpoch = 0;
 let tokenMutationQueue: Promise<void> = Promise.resolve();
+
 let authMarkerEpoch = 0;
 let authMarkerQueue: Promise<void> = Promise.resolve();
 
-const enqueueTokenMutation = async <T>(operation: () => Promise<T>): Promise<T> => {
+const enqueueTokenMutation = async <T>(
+  operation: () => Promise<T>,
+): Promise<T> => {
   const result = tokenMutationQueue.then(operation, operation);
   tokenMutationQueue = result.then(
     () => undefined,
     () => undefined,
   );
+
   return result;
 };
 
 const createStaleSessionError = (): Error => {
   const error = new Error("Session changed while updating credentials");
   error.name = "AbortError";
+
   return error;
 };
 
-const parseStoredTokenSession = (value: string | null): StoredTokenSession | null => {
+const parseStoredTokenSession = (
+  value: string | null,
+): StoredTokenSession | null => {
   if (!value) return null;
   try {
     const session = JSON.parse(value) as Partial<StoredTokenSession>;
@@ -57,43 +64,51 @@ const parseStoredTokenSession = (value: string | null): StoredTokenSession | nul
   } catch {
     // An invalid envelope is ignored and removed during legacy migration.
   }
+
   return null;
 };
 
-const readOrMigrateTokenSession = async (): Promise<StoredTokenSession | null> => {
-  const serializedSession = await secureStorage.getItem(SECURE_KEYS.SESSION_V1);
-  const session = parseStoredTokenSession(serializedSession);
-  if (session) return session;
+const readOrMigrateTokenSession =
+  async (): Promise<StoredTokenSession | null> => {
+    const serializedSession = await secureStorage.getItem(
+      SECURE_KEYS.SESSION_V1,
+    );
 
-  const [legacyAccessToken, legacyRefreshToken] = await Promise.all([
-    secureStorage.getItem(SECURE_KEYS.LEGACY_ACCESS_TOKEN),
-    secureStorage.getItem(SECURE_KEYS.LEGACY_REFRESH_TOKEN),
-  ]);
+    const session = parseStoredTokenSession(serializedSession);
+    if (session) return session;
 
-  if (!legacyAccessToken || !legacyRefreshToken) {
+    const [legacyAccessToken, legacyRefreshToken] = await Promise.all([
+      secureStorage.getItem(SECURE_KEYS.LEGACY_ACCESS_TOKEN),
+      secureStorage.getItem(SECURE_KEYS.LEGACY_REFRESH_TOKEN),
+    ]);
+
+    if (!legacyAccessToken || !legacyRefreshToken) {
+      await Promise.allSettled([
+        secureStorage.removeItem(SECURE_KEYS.SESSION_V1),
+        secureStorage.removeItem(SECURE_KEYS.LEGACY_ACCESS_TOKEN),
+        secureStorage.removeItem(SECURE_KEYS.LEGACY_REFRESH_TOKEN),
+      ]);
+
+      return null;
+    }
+
+    const migratedSession: StoredTokenSession = {
+      version: 1,
+      accessToken: legacyAccessToken,
+      refreshToken: legacyRefreshToken,
+    };
+
+    await secureStorage.setItem(
+      SECURE_KEYS.SESSION_V1,
+      JSON.stringify(migratedSession),
+    );
     await Promise.allSettled([
-      secureStorage.removeItem(SECURE_KEYS.SESSION_V1),
       secureStorage.removeItem(SECURE_KEYS.LEGACY_ACCESS_TOKEN),
       secureStorage.removeItem(SECURE_KEYS.LEGACY_REFRESH_TOKEN),
     ]);
-    return null;
-  }
 
-  const migratedSession: StoredTokenSession = {
-    version: 1,
-    accessToken: legacyAccessToken,
-    refreshToken: legacyRefreshToken,
+    return migratedSession;
   };
-  await secureStorage.setItem(
-    SECURE_KEYS.SESSION_V1,
-    JSON.stringify(migratedSession),
-  );
-  await Promise.allSettled([
-    secureStorage.removeItem(SECURE_KEYS.LEGACY_ACCESS_TOKEN),
-    secureStorage.removeItem(SECURE_KEYS.LEGACY_REFRESH_TOKEN),
-  ]);
-  return migratedSession;
-};
 
 const enqueueAuthMarkerMutation = async <T>(
   operation: () => Promise<T>,
@@ -103,6 +118,7 @@ const enqueueAuthMarkerMutation = async <T>(
     () => undefined,
     () => undefined,
   );
+
   return result;
 };
 
@@ -230,6 +246,7 @@ export const tokenStorage = {
         accessToken,
         refreshToken,
       };
+
       await secureStorage.setItem(
         SECURE_KEYS.SESSION_V1,
         JSON.stringify(session),
@@ -248,14 +265,14 @@ export const tokenStorage = {
   },
 
   async getAccessToken(): Promise<string | null> {
-    return enqueueTokenMutation(async () =>
-      (await readOrMigrateTokenSession())?.accessToken ?? null,
+    return enqueueTokenMutation(
+      async () => (await readOrMigrateTokenSession())?.accessToken ?? null,
     );
   },
 
   async getRefreshToken(): Promise<string | null> {
-    return enqueueTokenMutation(async () =>
-      (await readOrMigrateTokenSession())?.refreshToken ?? null,
+    return enqueueTokenMutation(
+      async () => (await readOrMigrateTokenSession())?.refreshToken ?? null,
     );
   },
 

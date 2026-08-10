@@ -1,23 +1,24 @@
 import type { PropsWithChildren, ReactNode } from "react";
+
 import { Redirect } from "expo-router";
 import { Text, View } from "react-native";
 
 import { useAuthStore } from "../store";
 import { validateUserAccess } from "../utils/permissions";
+
 import { Button, LoadingSpinner } from "./ui";
 
 interface ProtectedRouteProps extends PropsWithChildren {
   fallback?: ReactNode;
 }
 
-export const ProtectedRoute = ({
-  children,
-  fallback,
-}: ProtectedRouteProps) => {
+export const ProtectedRoute = ({ children, fallback }: ProtectedRouteProps) => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
+
   const isInitialized = useAuthStore((state) => state.isInitialized);
 
   if (!isInitialized || isLoading) {
@@ -38,7 +39,8 @@ export const ProtectedRoute = ({
     switch (accessValidation.reason) {
       case "access_revoked":
         title = "Acesso revogado";
-        message = "Seu acesso foi revogado. Entre em contato com o administrador.";
+        message =
+          "Seu acesso foi revogado. Entre em contato com o administrador.";
         break;
       case "driver_inactive":
         title = "Motorista inativo";

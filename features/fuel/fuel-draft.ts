@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { Directory, File, Paths } from "expo-file-system";
 import { randomUUID } from "expo-crypto";
-import type { ImagePickerAsset } from "expo-image-picker";
 
+import type { ImagePickerAsset } from "expo-image-picker";
 import {
   getSubmissionPersistenceEpoch,
   isSubmissionPersistenceActive,
@@ -23,6 +24,7 @@ const draftMutationQueues = new Map<string, Promise<void>>();
 const throwPersistenceAbort = (): never => {
   const error = new Error("Draft persistence is disabled");
   error.name = "AbortError";
+
   throw error;
 };
 
@@ -30,19 +32,22 @@ const enqueueDraftMutation = async <T>(
   submissionStorageKey: string,
   operation: () => Promise<T>,
 ): Promise<T> => {
-  const previous = draftMutationQueues.get(submissionStorageKey) ??
-    Promise.resolve();
+  const previous =
+    draftMutationQueues.get(submissionStorageKey) ?? Promise.resolve();
+
   const result = previous.then(operation, operation);
   const settled = result.then(
     () => undefined,
     () => undefined,
   );
+
   draftMutationQueues.set(submissionStorageKey, settled);
   await result.finally(() => {
     if (draftMutationQueues.get(submissionStorageKey) === settled) {
       draftMutationQueues.delete(submissionStorageKey);
     }
   });
+
   return result;
 };
 
@@ -58,6 +63,7 @@ export function persistFuelDraftImage(
 
   const source = new File(asset.uri);
   const destination = new File(directory, `odometer-${randomUUID()}.jpg`);
+
   source.copy(destination);
 
   try {
@@ -97,10 +103,12 @@ export async function saveFuelDraft<TFormData, TStepData>(
       if (!isSubmissionPersistenceActive(persistenceEpoch)) {
         throwPersistenceAbort();
       }
+
       await AsyncStorage.setItem(
         metadataKey(submissionStorageKey),
         JSON.stringify(draft),
       );
+
       if (!isSubmissionPersistenceActive(persistenceEpoch)) {
         await AsyncStorage.removeItem(metadataKey(submissionStorageKey));
         throwPersistenceAbort();
@@ -116,11 +124,13 @@ export async function loadFuelDraft<TFormData, TStepData>(
     const rawDraft = await AsyncStorage.getItem(
       metadataKey(submissionStorageKey),
     );
+
     if (!rawDraft) return null;
 
     try {
       const draft = JSON.parse(rawDraft) as FuelDraft<TFormData, TStepData>;
       const odometerImage = draft.odometerImage;
+
       const hasImage = odometerImage
         ? (() => {
             try {
@@ -152,11 +162,11 @@ export async function clearFuelDraft(
       const rawDraft = await AsyncStorage.getItem(
         metadataKey(submissionStorageKey),
       );
+
       if (rawDraft) {
         try {
-          idToDelete = (
-            JSON.parse(rawDraft) as FuelDraft<unknown, unknown>
-          ).submissionId;
+          idToDelete = (JSON.parse(rawDraft) as FuelDraft<unknown, unknown>)
+            .submissionId;
         } catch {
           // Corrupt metadata is still removed below.
         }
