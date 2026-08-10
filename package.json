@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "private": true,
+  "description": "Aplicativo de campo do Trajetto (React Native + Expo, Android): registro de abastecimentos e checklists veiculares com foto, localização e rascunho durável, funcionando mesmo sem conexão. Consome a trajetto-api.",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
