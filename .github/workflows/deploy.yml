@@ -17,6 +17,13 @@ on:
           - preview
           - production
 
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.profile || 'preview' }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: EAS Build
@@ -34,13 +41,20 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Setup Expo and EAS
+        if: github.event_name != 'pull_request'
         uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: 21.7.0
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Validate TypeScript, lint and Expo configuration
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run doctor
 
       - name: Build on EAS (Auto Push)
         if: github.event_name == 'push'
@@ -50,33 +64,9 @@ jobs:
       - name: Build on EAS (Manual - Production)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'production'
         run: |
-          eas build --platform android --profile production --non-interactive
+          eas build --platform android --profile production --auto-submit --auto-submit-with-profile production --non-interactive --no-wait
 
       - name: Build on EAS (Manual - Other)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile != 'production'
         run: |
           eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive --no-wait
-
-  submit:
-    name: Submit to Google Play
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'production'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Submit to Google Play (Internal Testing)
-        run: eas submit --platform android --latest --non-interactive

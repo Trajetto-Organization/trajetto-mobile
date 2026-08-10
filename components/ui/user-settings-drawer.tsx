@@ -23,7 +23,7 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
   onClose,
   onLogout,
 }) => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
 
   // Snap points para o bottom sheet
@@ -83,7 +83,7 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
     if (webUrl) {
       try {
         await Linking.openURL(webUrl);
-      } catch (error) {}
+      } catch {}
     }
   };
 

@@ -274,8 +274,8 @@ npm run clear
 # Executar linting
 npm run lint
 
-# Reset do projeto (caso de problemas)
-npm run reset-project
+# Validar tipos, lint e configuração Expo
+npm run validate
 ```
 
 ## 🚀 Builds e Deploy

@@ -1,163 +1,161 @@
-import React, { useEffect, useRef } from "react";
-
-import { useRouter } from "expo-router";
+import type { PropsWithChildren } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import Toast from "react-native-toast-message";
 
 import { useAuthStore } from "../store/auth-store";
-import { initializeSocket, disconnectSocket, getSocket } from "../utils/socket";
-
-import { apiClient } from "../utils/api";
-import { validateUserAccess } from "../utils/permissions";
-
 import type { UserMeResponse } from "../types";
+import { ApiError, apiClient } from "../utils/api";
+import { validateUserAccess } from "../utils/permissions";
+import {
+  disconnectSocket,
+  initializeSocket,
+  pauseSocket,
+  reconnectSocket,
+  updateSocketAuthToken,
+} from "../utils/socket";
 
-// The backend emits "securityAction" with a reason field:
-// - "access_revoked"       → sent directly to the specific user
-// - "permissions_changed"  → broadcast to the whole business room
 const SECURITY_EVENT = "securityAction";
 
-// Maps reason → human-readable message (mirrors the messages in auth-store)
 const REVOKE_MESSAGES: Record<string, string> = {
   access_revoked:
-    "Seu acesso foi revogado! Para acessar a plataforma novamente, por favor contate o administrador.",
-  access_denied:
-    "Sua conta foi excluída ou não está autorizada. Por favor, entre em contato com o administrador.",
+    "Seu acesso foi revogado. Entre em contato com o administrador.",
+  access_denied: "Sua conta foi excluida ou nao esta autorizada.",
   driver_inactive:
-    "Seu cadastro como motorista está inativo! Para acessar a plataforma novamente, por favor contate o administrador.",
-  no_permissions:
-    "Usuário sem perfil de acesso ou permissões configuradas! Por favor, contate o administrador.",
+    "Seu cadastro como motorista esta inativo. Entre em contato com o administrador.",
+  no_permissions: "Seu usuario nao possui permissoes configuradas.",
   no_vehicle_permission:
-    "Você não possui permissão para visualizar veículos! Por favor, contate o administrador.",
+    "Voce nao possui permissao para visualizar veiculos.",
   permissions_changed:
-    "Suas permissões de acesso foram atualizadas. Por favor, faça login novamente para continuar.",
+    "Suas permissoes foram atualizadas. Faca login novamente.",
 };
 
-interface SocketProviderProps {
-  children: React.ReactNode;
-}
-
-export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
-  const { isAuthenticated, logout, setUser } = useAuthStore();
-  const router = useRouter();
-
-  // Guard to prevent double-execution when multiple events arrive at once
+export const SocketProvider = ({ children }: PropsWithChildren) => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const logout = useAuthStore((state) => state.logout);
+  const setServerUser = useAuthStore((state) => state.setServerUser);
   const isHandlingLogout = useRef(false);
+  const permissionsCheck = useRef<Promise<void> | null>(null);
+  const appState = useRef<AppStateStatus>(AppState.currentState);
 
-  // ── Force logout ─────────────────────────────────────────────────────────
-  // Called when the backend revokes access directly (reason = "access_revoked")
-  // or when a permissions re-check confirms this user has lost access.
-  const handleForceLogout = async (reason: string) => {
-    if (isHandlingLogout.current) return;
-    isHandlingLogout.current = true;
+  const handleForceLogout = useCallback(
+    async (reason: string) => {
+      if (isHandlingLogout.current) return;
+      isHandlingLogout.current = true;
 
-    const message =
-      REVOKE_MESSAGES[reason] ??
-      "Sua sessão foi encerrada. Faça login novamente.";
+      Toast.show({
+        type: "error",
+        text1: "Acesso encerrado",
+        text2:
+          REVOKE_MESSAGES[reason] ??
+          "Sua sessao foi encerrada. Faca login novamente.",
+        position: "top",
+        visibilityTime: 6_000,
+      });
 
-    // Show the toast BEFORE navigating so the user sees it
-    Toast.show({
-      type: "error",
-      text1: "Acesso encerrado",
-      text2: message,
-      position: "top",
-      visibilityTime: 6000,
-    });
+      await logout();
+    },
+    [logout],
+  );
 
-    // Disconnect socket first (emits client_logout to server)
-    disconnectSocket();
+  const handlePermissionsChanged = useCallback(async () => {
+    if (permissionsCheck.current) return permissionsCheck.current;
 
-    // Clear all auth state
-    await logout();
+    const promise = (async () => {
+      try {
+        const response = await apiClient.get<UserMeResponse>("/user/me");
+        const accessValidation = validateUserAccess(response.user);
 
-    // Redirect to login
-    router.replace("/(auth)/login");
+        if (!accessValidation.hasAccess) {
+          await handleForceLogout(
+            accessValidation.reason ?? "permissions_changed",
+          );
+          return;
+        }
 
-    // Reset guard after navigation settles
-    setTimeout(() => {
-      isHandlingLogout.current = false;
-    }, 3000);
-  };
-
-  // ── Permissions changed ───────────────────────────────────────────────────
-  // "permissions_changed" is sent to the ENTIRE business room, so it fires
-  // for every connected user whenever anyone's permissions change.
-  // We re-fetch /user/me and re-validate to check if THIS user was affected.
-  const handlePermissionsChanged = async () => {
-    try {
-      const response = await apiClient.get<UserMeResponse>("/user/me");
-      const user = response.user;
-
-      const accessValidation = validateUserAccess(user);
-
-      if (!accessValidation.hasAccess) {
-        // This user lost access — force logout with the specific reason
-        await handleForceLogout(
-          accessValidation.reason ?? "permissions_changed",
-        );
-      } else {
-        // Access still valid — silently update user data in the store
-        // (they may have received new/updated permissions)
-        setUser(user);
+        setServerUser(response.user);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 403) {
+          await handleForceLogout("access_denied");
+        }
+        // Offline/5xx must not revoke a valid local session. A 401 is already
+        // handled centrally by ApiClient's logout callback.
       }
-    } catch {
-      // Network error: do not force logout — the user may just be offline.
-      // The API token refresh / 401 handler will deal with truly expired sessions.
-    }
-  };
+    })();
 
-  // ── Socket lifecycle ──────────────────────────────────────────────────────
+    permissionsCheck.current = promise;
+    try {
+      await promise;
+    } finally {
+      if (permissionsCheck.current === promise) {
+        permissionsCheck.current = null;
+      }
+    }
+  }, [handleForceLogout, setServerUser]);
+
   useEffect(() => {
-    // Disconnect if user logged out
     if (!isAuthenticated) {
-      disconnectSocket();
+      disconnectSocket(false);
       return;
     }
 
-    let isMounted = true;
+    isHandlingLogout.current = false;
+    let disposed = false;
+    let boundSocket: Awaited<ReturnType<typeof initializeSocket>> | null = null;
 
-    const connectAndListen = async () => {
-      try {
-        const socket = await initializeSocket();
-        if (!isMounted) return;
+    const handleSecurityAction = async (event?: { reason?: string }) => {
+      if (disposed) return;
+      const reason = event?.reason ?? "access_denied";
 
-        socket.on(SECURITY_EVENT, async (event: { reason: string }) => {
-          if (!isMounted) return;
-
-          if (event.reason === "access_revoked") {
-            // Direct revocation → immediate logout
-            await handleForceLogout("access_revoked");
-            return;
-          }
-
-          if (event.reason === "permissions_changed") {
-            // Business-wide event → re-validate this user specifically
-            await handlePermissionsChanged();
-            return;
-          }
-
-          // Any other security reason → force logout as a safe default
-          await handleForceLogout(event.reason);
-        });
-      } catch {
-        // Socket connection failed — auth continues to work normally via HTTP.
-        // The user simply won't receive real-time revocation events until
-        // the next app restart or reconnect attempt.
+      if (reason === "permissions_changed") {
+        await handlePermissionsChanged();
+        return;
       }
+
+      await handleForceLogout(reason);
     };
 
-    connectAndListen();
+    void initializeSocket()
+      .then((socket) => {
+        if (disposed) return;
+        boundSocket = socket;
+        socket.off(SECURITY_EVENT, handleSecurityAction);
+        socket.on(SECURITY_EVENT, handleSecurityAction);
+        if (!socket.connected && !socket.active) socket.connect();
+      })
+      .catch(() => {
+        // AppState and Socket.IO reconnection will retry without logging out on
+        // ordinary network failures.
+      });
 
     return () => {
-      isMounted = false;
-
-      // Remove only the listeners we added; do NOT disconnect the socket here
-      // (it may still be used for other events like push notifications)
-      const socket = getSocket();
-      if (socket) {
-        socket.off(SECURITY_EVENT);
-      }
+      disposed = true;
+      boundSocket?.off(SECURITY_EVENT, handleSecurityAction);
     };
-  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, handleForceLogout, handlePermissionsChanged]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const becameActive =
+        appState.current !== "active" && nextState === "active";
+      appState.current = nextState;
+      if (!useAuthStore.getState().isAuthenticated) return;
+
+      if (nextState !== "active") {
+        pauseSocket();
+        return;
+      }
+      if (!becameActive) return;
+
+      void updateSocketAuthToken()
+        .then(() => reconnectSocket())
+        .catch(() => {
+          // AuthProvider performs the authoritative /user/me revalidation.
+        });
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   return <>{children}</>;
 };

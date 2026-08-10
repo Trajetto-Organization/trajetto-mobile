@@ -17,7 +17,7 @@ import {
   VehicleList,
 } from "../../components/screens/vehicles";
 
-import { useVehicles } from "./hooks/use-vehicles";
+import { useVehicles } from "@/features/vehicles/hooks/use-vehicles";
 
 const VehiclesScreen = () => {
   const {

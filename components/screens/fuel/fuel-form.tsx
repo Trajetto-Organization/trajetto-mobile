@@ -8,7 +8,7 @@ import {
   InteractionManager,
 } from "react-native";
 
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Controller } from "react-hook-form";
 
 import * as ImagePicker from "expo-image-picker";

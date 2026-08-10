@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../utils/api";
@@ -7,26 +7,18 @@ import { parseNDJSON } from "../utils/parseNDJSON";
 export interface Driver {
   id: string;
   name: string;
-  birth_date: string;
   cnh: string;
-  cpf: string;
-  rg: string;
-  cep: string;
-  city: string;
-  uf: string;
-  district: string;
-  address: string;
-  complement?: string | null;
-  number: string;
+  branchId: string;
   businessId: string;
+  status: string;
   created_at: string;
-  updated_at: string;
 }
 
 interface FetchDriverParams {
   cursor?: string;
   signal?: AbortSignal;
   businessId: string;
+  search?: string;
 }
 
 interface FetchDriverResult {
@@ -41,34 +33,30 @@ const fetchDrivers = async ({
   cursor,
   signal,
   businessId,
+  search,
 }: FetchDriverParams): Promise<FetchDriverResult> => {
-  try {
-    let endpoint = `/driver/search-driver-business?limit=${DRIVER_LIMIT}&businessId=${businessId}`;
+  let endpoint = `/driver/search-driver-business?limit=${DRIVER_LIMIT}&businessId=${encodeURIComponent(businessId)}`;
 
-    if (cursor) {
-      endpoint += `&cursor=${cursor}`;
-    }
-
-    const response = await apiClient.getNDJSONResponse(endpoint, signal);
-    const { meta, data } = await parseNDJSON(response);
-
-    return {
-      data: data || [],
-      nextCursor: meta?.searchMeta?.nextCursor || null,
-      hasMore: meta?.searchMeta?.hasMore || false,
-    };
-  } catch (error: any) {
-    if (error.name === "AbortError") {
-      throw error;
-    }
-
-    throw new Error(error.message || "Erro ao carregar motoristas");
+  if (cursor) {
+    endpoint += `&cursor=${encodeURIComponent(cursor)}`;
   }
+
+  if (search) {
+    endpoint += `&search=${encodeURIComponent(search)}`;
+  }
+
+  const response = await apiClient.getNDJSONResponse(endpoint, signal);
+  const { meta, data } = await parseNDJSON(response);
+
+  return {
+    data: data || [],
+    nextCursor: meta?.searchMeta?.nextCursor || null,
+    hasMore: meta?.searchMeta?.hasMore || false,
+  };
 };
 
-export function useDriverInfiniteScroll(businessId?: string) {
-  const abortControllerRef = useRef<AbortController | null>(null);
-
+export function useDriverInfiniteScroll(businessId?: string, search = "") {
+  const normalizedSearch = search.trim();
   const {
     data,
     fetchNextPage,
@@ -79,18 +67,13 @@ export function useDriverInfiniteScroll(businessId?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["drivers", businessId],
-    queryFn: ({ pageParam }) => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-
-      abortControllerRef.current = new AbortController();
-
+    queryKey: ["drivers", businessId, normalizedSearch],
+    queryFn: ({ pageParam, signal }) => {
       return fetchDrivers({
         cursor: pageParam,
         businessId: businessId || "",
-        signal: abortControllerRef.current.signal,
+        signal,
+        search: normalizedSearch || undefined,
       });
     },
     enabled: !!businessId,
@@ -102,15 +85,14 @@ export function useDriverInfiniteScroll(businessId?: string) {
     gcTime: 10 * 60 * 1000,
   });
 
-  const drivers = data?.pages.flatMap((page) => page.data) || [];
+  const drivers = useMemo(
+    () => data?.pages.flatMap((page) => page.data) ?? [],
+    [data?.pages],
+  );
   const total = drivers.length;
 
   const handleRefetch = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    refetch();
+    return refetch();
   }, [refetch]);
 
   const loadMore = useCallback(() => {

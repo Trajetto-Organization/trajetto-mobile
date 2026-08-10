@@ -1,32 +1,59 @@
-import React, { useEffect, useRef } from "react";
-import { useAuthStore } from "../store";
+import type { PropsWithChildren } from "react";
+import { useEffect, useRef } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 
+import { useAuthStore } from "../store";
+import { apiClient } from "../utils/api";
 import { logger } from "../utils/logger";
 
-interface AuthProviderProps {
-  children: React.ReactNode;
-}
+let initializationPromise: Promise<void> | null = null;
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const { checkAuth, isInitialized, setInitialized } = useAuthStore();
+const initializeAuthentication = (): Promise<void> => {
+  if (initializationPromise) return initializationPromise;
 
-  const isCheckingAuth = useRef(false); // 🔒 Prevent duplicate calls
-  const hasInitialized = useRef(false); // 🔒 Track if we've already initialized
+  initializationPromise = (async () => {
+    try {
+      await useAuthStore.persist.rehydrate();
+    } catch {
+      logger.error("AuthProvider: persisted auth hydration failed");
+    }
+
+    await useAuthStore.getState().checkAuth();
+  })();
+
+  return initializationPromise;
+};
+
+export const AuthProvider = ({ children }: PropsWithChildren) => {
+  const appState = useRef<AppStateStatus>(AppState.currentState);
+  const lastResumeCheckAt = useRef(0);
 
   useEffect(() => {
-    // Initialize auth state when app starts (only once)
-    if (!isInitialized && !isCheckingAuth.current && !hasInitialized.current) {
-      isCheckingAuth.current = true;
-      hasInitialized.current = true;
+    apiClient.setLogoutCallback(() => useAuthStore.getState().logout());
+    void initializeAuthentication();
 
-      logger.dev("🔐 AuthProvider: Initializing auth state...");
-      checkAuth().finally(() => {
-        logger.dev("🔐 AuthProvider: Auth state initialized");
-        setInitialized(true);
-        isCheckingAuth.current = false;
-      });
-    }
-  }, [isInitialized, checkAuth, setInitialized]);
+    return () => apiClient.setLogoutCallback(null);
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const becameActive =
+        appState.current !== "active" && nextState === "active";
+      appState.current = nextState;
+
+      if (!becameActive) return;
+      const now = Date.now();
+      if (now - lastResumeCheckAt.current < 3_000) return;
+      lastResumeCheckAt.current = now;
+
+      const authState = useAuthStore.getState();
+      if (authState.isInitialized) {
+        void authState.checkAuth({ background: true });
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   return <>{children}</>;
 };

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Animated, Dimensions, Easing, Image, Text, View } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import { LinearGradient } from "expo-linear-gradient";
 import TrajettoLogo from "../assets/images/trajetto-logo.png";
 
@@ -79,71 +81,95 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
   const fadeOut = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // TOTAL DURATION: 4 seconds
-    const animation = Animated.sequence([
+    let animation: Animated.CompositeAnimation | undefined;
+    let isCancelled = false;
+
+    const startAnimation = async () => {
+      const appVersion = Constants.expoConfig?.version || "unknown";
+      const storageKey = `@trajetto:splash-seen:${appVersion}`;
+      let hasSeenCurrentVersion = false;
+
+      try {
+        hasSeenCurrentVersion =
+          (await AsyncStorage.getItem(storageKey)) === "true";
+      } catch {
+        // A storage failure must not block startup.
+      }
+
+      if (isCancelled) return;
+
+      if (hasSeenCurrentVersion) {
+        onFinish();
+        return;
+      }
+
+      void AsyncStorage.setItem(storageKey, "true").catch(() => undefined);
+
+      // About 1.2 seconds, shown only once for each native app version.
+      animation = Animated.sequence([
       // Phase 1: Logo entrance with particles burst (0-1.2s)
       Animated.parallel([
         Animated.parallel([
           Animated.timing(logoOpacity, {
             toValue: 1,
-            duration: 600,
+            duration: 180,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-          Animated.spring(logoScale, {
+          Animated.timing(logoScale, {
             toValue: 1,
-            tension: 35,
-            friction: 6,
+            duration: 240,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-          Animated.spring(logoY, {
+          Animated.timing(logoY, {
             toValue: 0,
-            tension: 35,
-            friction: 6,
+            duration: 240,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
         ]),
         Animated.sequence([
-          Animated.delay(200),
+          Animated.delay(60),
           Animated.parallel([
-            Animated.spring(glowScale, {
+            Animated.timing(glowScale, {
               toValue: 1,
-              tension: 30,
-              friction: 5,
+              duration: 200,
+              easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
             Animated.timing(glowOpacity, {
               toValue: 1,
-              duration: 400,
+              duration: 200,
               useNativeDriver: true,
             }),
           ]),
         ]),
         Animated.sequence([
-          Animated.delay(350),
+          Animated.delay(100),
           Animated.parallel([
             // Particle 1 - top right
             Animated.parallel([
               Animated.timing(particle1Opacity, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 useNativeDriver: true,
               }),
               Animated.timing(particle1Scale, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 easing: Easing.out(Easing.back(1.3)),
                 useNativeDriver: true,
               }),
               Animated.timing(particle1X, {
                 toValue: 90,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
               Animated.timing(particle1Y, {
                 toValue: -90,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
@@ -152,24 +178,24 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
             Animated.parallel([
               Animated.timing(particle2Opacity, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 useNativeDriver: true,
               }),
               Animated.timing(particle2Scale, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 easing: Easing.out(Easing.back(1.3)),
                 useNativeDriver: true,
               }),
               Animated.timing(particle2X, {
                 toValue: 85,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
               Animated.timing(particle2Y, {
                 toValue: 95,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
@@ -178,24 +204,24 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
             Animated.parallel([
               Animated.timing(particle3Opacity, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 useNativeDriver: true,
               }),
               Animated.timing(particle3Scale, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 easing: Easing.out(Easing.back(1.3)),
                 useNativeDriver: true,
               }),
               Animated.timing(particle3X, {
                 toValue: -95,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
               Animated.timing(particle3Y, {
                 toValue: -85,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
@@ -204,24 +230,24 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
             Animated.parallel([
               Animated.timing(particle4Opacity, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 useNativeDriver: true,
               }),
               Animated.timing(particle4Scale, {
                 toValue: 1,
-                duration: 400,
+                duration: 150,
                 easing: Easing.out(Easing.back(1.3)),
                 useNativeDriver: true,
               }),
               Animated.timing(particle4X, {
                 toValue: -88,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
               Animated.timing(particle4Y, {
                 toValue: 92,
-                duration: 600,
+                duration: 220,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
               }),
@@ -236,30 +262,30 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
           Animated.parallel([
             Animated.timing(ringScale1, {
               toValue: 2.5,
-              duration: 600,
+              duration: 220,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
             Animated.timing(ringOpacity1, {
               toValue: 0,
-              duration: 600,
+              duration: 220,
               easing: Easing.out(Easing.ease),
               useNativeDriver: true,
             }),
           ]),
         ]),
         Animated.sequence([
-          Animated.delay(150),
+          Animated.delay(50),
           Animated.parallel([
             Animated.timing(ringScale2, {
               toValue: 2.5,
-              duration: 600,
+              duration: 220,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
             Animated.timing(ringOpacity2, {
               toValue: 0,
-              duration: 600,
+              duration: 220,
               easing: Easing.out(Easing.ease),
               useNativeDriver: true,
             }),
@@ -271,7 +297,7 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
             duration: 0,
             useNativeDriver: true,
           }),
-          Animated.delay(150),
+          Animated.delay(50),
           Animated.timing(ringOpacity2, {
             toValue: 0.6,
             duration: 0,
@@ -284,20 +310,20 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
       Animated.parallel([
         Animated.timing(textOpacity, {
           toValue: 1,
-          duration: 600,
+          duration: 180,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-        Animated.spring(textScale, {
+        Animated.timing(textScale, {
           toValue: 1,
-          tension: 45,
-          friction: 7,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-        Animated.spring(textY, {
+        Animated.timing(textY, {
           toValue: 0,
-          tension: 45,
-          friction: 7,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
@@ -306,14 +332,14 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
       Animated.parallel([
         Animated.timing(taglineOpacity, {
           toValue: 1,
-          duration: 500,
+          duration: 120,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-        Animated.spring(taglineY, {
+        Animated.timing(taglineY, {
           toValue: 0,
-          tension: 50,
-          friction: 8,
+          duration: 120,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
@@ -321,31 +347,69 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
       // Phase 5: Shimmer effect (2.9-3.4s)
       Animated.timing(shimmerX, {
         toValue: width * 1.5,
-        duration: 650,
+        duration: 140,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
 
       // Phase 6: Hold (3.4-3.7s)
-      Animated.delay(300),
+      Animated.delay(30),
 
       // Phase 7: Fade out (3.7-4s)
       Animated.timing(fadeOut, {
         toValue: 0,
-        duration: 300,
+        duration: 120,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }),
-    ]);
+      ]);
 
-    animation.start(() => {
-      onFinish();
-    });
+      animation.start(({ finished }) => {
+        if (finished && !isCancelled) onFinish();
+      });
+    };
+
+    void startAnimation();
 
     return () => {
-      animation.stop();
+      isCancelled = true;
+      animation?.stop();
     };
-  }, []);
+  }, [
+    fadeOut,
+    glowOpacity,
+    glowScale,
+    logoOpacity,
+    logoScale,
+    logoY,
+    onFinish,
+    particle1Opacity,
+    particle1Scale,
+    particle1X,
+    particle1Y,
+    particle2Opacity,
+    particle2Scale,
+    particle2X,
+    particle2Y,
+    particle3Opacity,
+    particle3Scale,
+    particle3X,
+    particle3Y,
+    particle4Opacity,
+    particle4Scale,
+    particle4X,
+    particle4Y,
+    ringOpacity1,
+    ringOpacity2,
+    ringScale1,
+    ringScale2,
+    shimmerX,
+    taglineOpacity,
+    taglineY,
+    textOpacity,
+    textScale,
+    textY,
+  ]);
 
   return (
     <Animated.View className="flex-1" style={{ opacity: fadeOut }}>

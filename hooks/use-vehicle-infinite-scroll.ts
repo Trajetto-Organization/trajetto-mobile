@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../utils/api";
@@ -10,6 +10,7 @@ interface FetchVehicleParams {
   cursor?: string;
   signal?: AbortSignal;
   businessId: string;
+  search?: string;
 }
 
 interface FetchVehicleResult {
@@ -24,34 +25,30 @@ const fetchVehicles = async ({
   cursor,
   signal,
   businessId,
+  search,
 }: FetchVehicleParams): Promise<FetchVehicleResult> => {
-  try {
-    let endpoint = `/vehicle/search-vehicle-business?limit=${VEHICLE_LIMIT}&businessId=${businessId}`;
+  let endpoint = `/vehicle/search-vehicle-business?limit=${VEHICLE_LIMIT}&businessId=${encodeURIComponent(businessId)}`;
 
-    if (cursor) {
-      endpoint += `&cursor=${cursor}`;
-    }
-
-    const response = await apiClient.getNDJSONResponse(endpoint, signal);
-    const { meta, data } = await parseNDJSON(response);
-
-    return {
-      data: data || [],
-      nextCursor: meta?.searchMeta?.nextCursor || null,
-      hasMore: meta?.searchMeta?.hasMore || false,
-    };
-  } catch (error: any) {
-    if (error.name === "AbortError") {
-      throw error;
-    }
-
-    throw new Error(error.message || "Erro ao carregar veículos");
+  if (cursor) {
+    endpoint += `&cursor=${encodeURIComponent(cursor)}`;
   }
+
+  if (search) {
+    endpoint += `&search=${encodeURIComponent(search)}`;
+  }
+
+  const response = await apiClient.getNDJSONResponse(endpoint, signal);
+  const { meta, data } = await parseNDJSON(response);
+
+  return {
+    data: data || [],
+    nextCursor: meta?.searchMeta?.nextCursor || null,
+    hasMore: meta?.searchMeta?.hasMore || false,
+  };
 };
 
-export function useVehicleInfiniteScroll(businessId?: string) {
-  const abortControllerRef = useRef<AbortController | null>(null);
-
+export function useVehicleInfiniteScroll(businessId?: string, search = "") {
+  const normalizedSearch = search.trim();
   const {
     data,
     fetchNextPage,
@@ -62,18 +59,13 @@ export function useVehicleInfiniteScroll(businessId?: string) {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["vehicles", businessId],
-    queryFn: ({ pageParam }) => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-
-      abortControllerRef.current = new AbortController();
-
+    queryKey: ["vehicles", businessId, normalizedSearch],
+    queryFn: ({ pageParam, signal }) => {
       return fetchVehicles({
         cursor: pageParam,
         businessId: businessId || "",
-        signal: abortControllerRef.current.signal,
+        signal,
+        search: normalizedSearch || undefined,
       });
     },
     enabled: !!businessId,
@@ -85,15 +77,14 @@ export function useVehicleInfiniteScroll(businessId?: string) {
     gcTime: 10 * 60 * 1000,
   });
 
-  const vehicles = data?.pages.flatMap((page) => page.data) || [];
+  const vehicles = useMemo(
+    () => data?.pages.flatMap((page) => page.data) ?? [],
+    [data?.pages],
+  );
   const total = vehicles.length;
 
   const handleRefetch = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    refetch();
+    return refetch();
   }, [refetch]);
 
   const loadMore = useCallback(() => {

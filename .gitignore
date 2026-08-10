@@ -39,9 +39,8 @@ app-example
 /android
 
 # Environment variables
-.env
-.env.production
-.env.local
+.env*
+!.env.example
 
 # EAS credentials
 google-service-account.json

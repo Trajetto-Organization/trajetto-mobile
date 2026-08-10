@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Location from "expo-location";
 
 interface LocationPickerProps {
@@ -39,10 +39,6 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
     longitude: number;
   } | null>(null);
 
-  useEffect(() => {
-    requestLocationPermission();
-  }, []);
-
   // 📍 Notify parent whenever location changes (including when it becomes null)
   useEffect(() => {
     if (currentLocation) {
@@ -64,7 +60,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
     }
   }, [isLoading, onLoadingChange]);
 
-  const requestLocationPermission = async () => {
+  const requestLocationPermission = useCallback(async () => {
     try {
       setIsLoading(true);
       setLocationStatus("Verificando serviços de localização...");
@@ -128,7 +124,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
       setLocationStatus("Localização capturada com sucesso!");
 
       setIsLoading(false);
-    } catch (error) {
+    } catch {
       setIsLoading(false);
       setCurrentLocation(null);
 
@@ -148,7 +144,11 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         ],
       );
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void requestLocationPermission();
+  }, [requestLocationPermission]);
 
   const handleRefreshLocation = () => {
     requestLocationPermission();

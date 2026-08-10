@@ -1,118 +1,72 @@
-import { View, Text } from "react-native";
-import { useRouter } from "expo-router";
+import type { PropsWithChildren, ReactNode } from "react";
+import { Redirect } from "expo-router";
+import { Text, View } from "react-native";
 
 import { useAuthStore } from "../store";
 import { validateUserAccess } from "../utils/permissions";
+import { Button, LoadingSpinner } from "./ui";
 
-import { LoadingSpinner, Button } from "./ui";
-
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
+interface ProtectedRouteProps extends PropsWithChildren {
+  fallback?: ReactNode;
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+export const ProtectedRoute = ({
   children,
   fallback,
-}) => {
-  const router = useRouter();
-  const { user, logout, isLoading } = useAuthStore();
+}: ProtectedRouteProps) => {
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const isInitialized = useAuthStore((state) => state.isInitialized);
 
-  const handleLogin = () => {
-    router.replace("/login");
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    router.replace("/login");
-  };
-
-  if (isLoading) {
+  if (!isInitialized || isLoading) {
     return (
-      <LoadingSpinner text="Verificando permissões..." className="bg-white" />
+      <LoadingSpinner text="Verificando permissoes..." className="bg-white" />
     );
   }
 
-  if (!user) {
-    return (
-      fallback || (
-        <View
-          className="flex-1 justify-center 
-          items-center bg-white px-6"
-        >
-          <Text
-            className="text-xl font-bold 
-            text-gray-900 mb-4 text-center"
-          >
-            Acesso não autorizado
-          </Text>
-          <Text className="text-gray-600 text-center mb-8">
-            Você precisa estar logado para acessar esta tela.
-          </Text>
-          <Button onPress={handleLogin} variant="primary">
-            Fazer login
-          </Button>
-        </View>
-      )
-    );
+  if (!isAuthenticated || !user) {
+    return fallback ?? <Redirect href="/login" />;
   }
 
   const accessValidation = validateUserAccess(user);
-
   if (!accessValidation.hasAccess) {
     let title = "Acesso negado";
-    let message = "Você não tem permissão para acessar esta funcionalidade.";
+    let message = "Voce nao tem permissao para acessar esta funcionalidade.";
 
     switch (accessValidation.reason) {
       case "access_revoked":
         title = "Acesso revogado";
-        message =
-          "Seu acesso foi revogado. Entre em contato com o administrador.";
+        message = "Seu acesso foi revogado. Entre em contato com o administrador.";
         break;
       case "driver_inactive":
         title = "Motorista inativo";
         message =
-          "Seu cadastro como motorista está inativo. Entre em contato com o administrador.";
+          "Seu cadastro como motorista esta inativo. Entre em contato com o administrador.";
         break;
       case "no_permissions":
-        title = "Sem permissões";
+        title = "Sem permissoes";
         message =
-          "Você não possui permissões configuradas. Entre em contato com o administrador.";
+          "Voce nao possui permissoes configuradas. Entre em contato com o administrador.";
         break;
       case "no_vehicle_permission":
-        title = "Permissão insuficiente";
+        title = "Permissao insuficiente";
         message =
-          "Você não possui permissão para visualizar os veículos. Entre em contato com o administrador.";
+          "Voce nao possui permissao para visualizar os veiculos. Entre em contato com o administrador.";
         break;
     }
 
     return (
-      <View
-        className="flex-1 justify-center 
-        items-center bg-white px-6"
-      >
-        <View
-          className="w-20 h-20 bg-danger-100 
-          rounded-full items-center justify-center mb-6"
-        >
-          <Text className="text-danger-600 text-2xl">⚠️</Text>
+      <View className="flex-1 items-center justify-center bg-white px-6">
+        <View className="mb-6 h-20 w-20 items-center justify-center rounded-full bg-danger-100">
+          <Text className="text-2xl text-danger-600">!</Text>
         </View>
-
-        <Text
-          className="text-xl font-bold 
-          text-gray-900 mb-4 text-center"
-        >
+        <Text className="mb-4 text-center text-xl font-bold text-gray-900">
           {title}
         </Text>
-
-        <Text
-          className="text-gray-600 
-          text-center mb-8"
-        >
-          {message}
-        </Text>
-
-        <Button onPress={handleLogout} variant="danger">
+        <Text className="mb-8 text-center text-gray-600">{message}</Text>
+        <Button onPress={() => void logout()} variant="danger">
           Sair da conta
         </Button>
       </View>

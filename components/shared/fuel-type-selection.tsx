@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback } from "react";
 
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { FlatList, View, Text, TouchableOpacity } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { useFuelTypeInfiniteScroll } from "../../hooks";
+import { useDebounce, useFuelTypeInfiniteScroll } from "../../hooks";
 import type { FuelType } from "../../hooks/use-fuel-type-infinite-scroll";
 
 import { LoadingSpinner, Button, Input } from "../ui";
@@ -20,46 +20,30 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
   onSelectFuelType,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim());
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const debouncedSearch = useDebounce(searchQuery.trim());
 
   const {
     fuelTypes,
     isLoading,
+    isFetching,
     isError,
     error,
     hasNextPage,
     loadMore,
     refetch,
-  } = useFuelTypeInfiniteScroll(businessId);
+  } = useFuelTypeInfiniteScroll(businessId, debouncedSearch);
 
-  const handleRefresh = useCallback(() => {
-    refetch();
+  const handleRefresh = useCallback(async () => {
+    await refetch();
   }, [refetch]);
 
   const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isLoading) {
+    if (hasNextPage && !isFetching) {
       loadMore();
     }
-  }, [hasNextPage, isLoading, loadMore]);
+  }, [hasNextPage, isFetching, loadMore]);
 
-  // Filter fuel types locally based on search query
-  const filteredFuelTypes = useMemo(() => {
-    if (!fuelTypes) return [];
-    if (!debouncedSearch) return fuelTypes;
-
-    const searchLower = debouncedSearch.toLowerCase();
-    return fuelTypes.filter((fuelType) => {
-      const description = fuelType.description?.toLowerCase() || "";
-      return description.includes(searchLower);
-    });
-  }, [fuelTypes, debouncedSearch]);
+  const filteredFuelTypes = fuelTypes;
 
   if (isError) {
     return (
@@ -121,13 +105,26 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
           </Text>
         </View>
       ) : (
-        <ScrollView
+        <FlatList
+          data={filteredFuelTypes}
+          keyExtractor={(fuelType) => fuelType.id}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={handleLoadMore}
-        >
-          {filteredFuelTypes.map((fuelType) => (
+          keyboardShouldPersistTaps="handled"
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.35}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
+          ListFooterComponent={
+            isFetching && hasNextPage ? (
+              <View className="py-3">
+                <LoadingSpinner size="small" />
+              </View>
+            ) : null
+          }
+          renderItem={({ item: fuelType }) => (
             <TouchableOpacity
-              key={fuelType.id}
               onPress={() => onSelectFuelType(fuelType)}
               className={`bg-white rounded-lg p-4 mb-3 border ${
                 selectedFuelTypeId === fuelType.id
@@ -151,8 +148,8 @@ export const FuelTypeSelection: React.FC<FuelTypeSelectionProps> = ({
                 )}
               </View>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
     </View>
   );

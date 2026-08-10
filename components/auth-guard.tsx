@@ -1,36 +1,25 @@
-import { useEffect } from "react";
-import { useRouter, useSegments } from "expo-router";
+import type { PropsWithChildren } from "react";
+import { Redirect, useSegments } from "expo-router";
 
 import { useAuthStore } from "../store";
 import { LoadingSpinner } from "./ui";
 
-interface AuthGuardProps {
-  children: React.ReactNode;
-}
-
-export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { isAuthenticated, isLoading, isInitialized } = useAuthStore();
-
-  const router = useRouter();
+/**
+ * Compatibility guard for callers outside the root navigator. The root Stack
+ * is the source of truth and uses Stack.Protected declaratively.
+ */
+export const AuthGuard = ({ children }: PropsWithChildren) => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const isInitialized = useAuthStore((state) => state.isInitialized);
   const segments = useSegments();
 
-  useEffect(() => {
-    if (!isInitialized || isLoading) return;
-    const inAuthGroup = segments[0] === "(auth)";
-
-    if (!isAuthenticated && !inAuthGroup) {
-      // User is not authenticated and trying to access protected route
-      router.replace("/login");
-    } else if (isAuthenticated && inAuthGroup) {
-      // User is authenticated and trying to access auth routes
-      router.replace("/vehicles");
-    }
-  }, [isAuthenticated, isInitialized, isLoading, segments]);
-
-  // Show loading while initializing
   if (!isInitialized || isLoading) {
     return <LoadingSpinner text="Carregando..." className="bg-white" />;
   }
 
+  const inAuthGroup = segments[0] === "(auth)";
+  if (!isAuthenticated && !inAuthGroup) return <Redirect href="/login" />;
+  if (isAuthenticated && inAuthGroup) return <Redirect href="/vehicles" />;
   return <>{children}</>;
 };

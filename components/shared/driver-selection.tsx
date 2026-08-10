@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback } from "react";
 
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { FlatList, View, Text, TouchableOpacity } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { useDriverInfiniteScroll } from "../../hooks";
+import { useDebounce, useDriverInfiniteScroll } from "../../hooks";
 import type { Driver } from "../../hooks/use-driver-infinite-scroll";
 
 import { LoadingSpinner, Button, Input } from "../ui";
@@ -20,49 +20,30 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
   onSelectDriver,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+  const debouncedSearch = useDebounce(searchQuery.trim());
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim());
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const {
+    drivers,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    hasNextPage,
+    loadMore,
+    refetch,
+  } = useDriverInfiniteScroll(businessId, debouncedSearch);
 
-  const { drivers, isLoading, isError, error, hasNextPage, loadMore, refetch } =
-    useDriverInfiniteScroll(businessId);
-
-  const handleRefresh = useCallback(() => {
-    refetch();
+  const handleRefresh = useCallback(async () => {
+    await refetch();
   }, [refetch]);
 
   const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isLoading) {
+    if (hasNextPage && !isFetching) {
       loadMore();
     }
-  }, [hasNextPage, isLoading, loadMore]);
+  }, [hasNextPage, isFetching, loadMore]);
 
-  // Filter drivers locally based on search query
-  const filteredDrivers = useMemo(() => {
-    if (!drivers) return [];
-    if (!debouncedSearch) return drivers;
-
-    const searchLower = debouncedSearch.toLowerCase();
-    return drivers.filter((driver) => {
-      const name = driver.name?.toLowerCase() || "";
-      const cnh = driver.cnh?.toLowerCase() || "";
-
-      const cpf = driver.cpf?.toLowerCase() || "";
-      const city = driver.city?.toLowerCase() || "";
-
-      return (
-        name.includes(searchLower) ||
-        cnh.includes(searchLower) ||
-        cpf.includes(searchLower) ||
-        city.includes(searchLower)
-      );
-    });
-  }, [drivers, debouncedSearch]);
+  const filteredDrivers = drivers;
 
   if (isError) {
     return (
@@ -124,18 +105,39 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
           </Text>
         </View>
       ) : (
-        <ScrollView
+        <FlatList
+          data={filteredDrivers}
+          keyExtractor={(driver) => driver.id}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={handleLoadMore}
-        >
-          {filteredDrivers.map((driver) => (
+          keyboardShouldPersistTaps="handled"
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.35}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
+          ListFooterComponent={
+            isFetching && hasNextPage ? (
+              <View className="py-3">
+                <LoadingSpinner size="small" />
+              </View>
+            ) : null
+          }
+          renderItem={({ item: driver }) => (
             <TouchableOpacity
-              key={driver.id}
+              accessibilityRole="button"
+              accessibilityState={{
+                disabled: driver.status !== "ACTIVE",
+                selected: selectedDriverId === driver.id,
+              }}
+              disabled={driver.status !== "ACTIVE"}
               onPress={() => onSelectDriver(driver)}
               className={`bg-white rounded-lg p-4 mb-3 border ${
                 selectedDriverId === driver.id
                   ? "border-primary-500 bg-primary-50"
                   : "border-gray-200"
+              } ${
+                driver.status === "ACTIVE" ? "opacity-100" : "opacity-50"
               }`}
             >
               <View className="flex-row items-center justify-between">
@@ -147,7 +149,7 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
                     CNH: {driver.cnh}
                   </Text>
                   <Text className="text-xs text-gray-500">
-                    {driver.city}, {driver.uf}
+                    {driver.status === "ACTIVE" ? "Ativo" : "Inativo"}
                   </Text>
                 </View>
                 {selectedDriverId === driver.id && (
@@ -160,8 +162,8 @@ export const DriverSelection: React.FC<DriverSelectionProps> = ({
                 )}
               </View>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
     </View>
   );

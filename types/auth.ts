@@ -55,11 +55,6 @@ export interface UserMeResponse {
   user: User;
 }
 
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
 export interface LoginResponse {
   message: string;
   token: string;
@@ -101,9 +96,9 @@ export interface JWTPayload {
 
 export interface AuthState {
   user: User | null;
-  tokens: AuthTokens | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   login: (
     email: string,
     password: string,
@@ -123,8 +118,9 @@ export interface AuthState {
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
-  checkAuth: () => Promise<void>;
+  checkAuth: (options?: { background?: boolean }) => Promise<void>;
   setUser: (user: User) => void;
+  setServerUser: (user: User) => void;
 }
 
 export interface ForgotPasswordResponse {

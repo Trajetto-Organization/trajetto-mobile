@@ -27,11 +27,13 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
   useEffect(() => {
     // Auto-focus first input only if there is no value
     if (inputRefs.current[0] && value.length === 0) {
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         inputRefs.current[0]?.focus();
       }, 100);
+
+      return () => clearTimeout(timeout);
     }
-  }, []);
+  }, [value.length]);
 
   // Function to determine whether an input should be enabled
   const isInputEnabled = (index: number): boolean => {

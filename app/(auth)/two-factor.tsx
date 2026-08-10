@@ -10,7 +10,7 @@ import { Controller } from "react-hook-form";
 import { OtpInput } from "react-native-otp-entry";
 
 import { Button, ConfirmModal } from "../../components/ui";
-import { useTwoFactor } from "./hooks/use-two-factor";
+import { useTwoFactor } from "@/features/auth/hooks";
 
 const TwoFactorScreen = () => {
   const {

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../utils/api";
@@ -27,6 +27,7 @@ export interface Business {
 interface FetchBusinessParams {
   cursor?: string;
   signal?: AbortSignal;
+  search?: string;
 }
 
 interface FetchBusinessResult {
@@ -40,34 +41,30 @@ const BUSINESS_LIMIT = 10;
 const fetchBusinesses = async ({
   cursor,
   signal,
+  search,
 }: FetchBusinessParams): Promise<FetchBusinessResult> => {
-  try {
-    let endpoint = `/business/search-business?limit=${BUSINESS_LIMIT}`;
+  let endpoint = `/business/search-business?limit=${BUSINESS_LIMIT}`;
 
-    if (cursor) {
-      endpoint += `&cursor=${cursor}`;
-    }
-
-    const response = await apiClient.getNDJSONResponse(endpoint, signal);
-    const { meta, data } = await parseNDJSON(response);
-
-    return {
-      data: data || [],
-      nextCursor: meta?.searchMeta?.nextCursor || null,
-      hasMore: meta?.searchMeta?.hasMore || false,
-    };
-  } catch (error: any) {
-    if (error.name === "AbortError") {
-      throw error;
-    }
-
-    throw new Error(error.message || "Erro ao carregar empresas");
+  if (cursor) {
+    endpoint += `&cursor=${encodeURIComponent(cursor)}`;
   }
+
+  if (search) {
+    endpoint += `&search=${encodeURIComponent(search)}`;
+  }
+
+  const response = await apiClient.getNDJSONResponse(endpoint, signal);
+  const { meta, data } = await parseNDJSON(response);
+
+  return {
+    data: data || [],
+    nextCursor: meta?.searchMeta?.nextCursor || null,
+    hasMore: meta?.searchMeta?.hasMore || false,
+  };
 };
 
-export function useBusinessInfiniteScroll() {
-  const abortControllerRef = useRef<AbortController | null>(null);
-
+export function useBusinessInfiniteScroll(search = "") {
+  const normalizedSearch = search.trim();
   const {
     data,
     fetchNextPage,
@@ -78,17 +75,12 @@ export function useBusinessInfiniteScroll() {
     error,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["businesses"],
-    queryFn: ({ pageParam }) => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-
-      abortControllerRef.current = new AbortController();
-
+    queryKey: ["businesses", normalizedSearch],
+    queryFn: ({ pageParam, signal }) => {
       return fetchBusinesses({
         cursor: pageParam,
-        signal: abortControllerRef.current.signal,
+        signal,
+        search: normalizedSearch || undefined,
       });
     },
     getNextPageParam: (lastPage) => {
@@ -99,15 +91,14 @@ export function useBusinessInfiniteScroll() {
     gcTime: 10 * 60 * 1000,
   });
 
-  const businesses = data?.pages.flatMap((page) => page.data) || [];
+  const businesses = useMemo(
+    () => data?.pages.flatMap((page) => page.data) ?? [],
+    [data?.pages],
+  );
   const total = businesses.length;
 
   const handleRefetch = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    refetch();
+    return refetch();
   }, [refetch]);
 
   const loadMore = useCallback(() => {

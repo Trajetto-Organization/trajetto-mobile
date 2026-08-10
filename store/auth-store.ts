@@ -1,438 +1,540 @@
-import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { clearQueryCache } from "../providers/query-provider";
+import {
+  clearAllSubmissionData,
+  disableSubmissionPersistence,
+  enableSubmissionPersistence,
+} from "../features/submissions/submission-id";
 import type {
   AuthState,
-  User,
+  EmailVerificationResponse,
   LoginResponse,
   TwoFactorRequiredResponse,
-  EmailVerificationResponse,
   TwoFactorVerificationResponse,
+  User,
   UserMeResponse,
 } from "../types";
-
-import { tokenStorage, asyncStorage } from "../utils/storage";
+import { ApiError, apiClient } from "../utils/api";
 import { logger } from "../utils/logger";
-
 import { validateUserAccess } from "../utils/permissions";
-import { apiClient, ApiError } from "../utils/api";
-
 import { disconnectSocket } from "../utils/socket";
-import { queryClient } from "../providers/query-provider";
+import { authSessionStorage, tokenStorage } from "../utils/storage";
 
-interface AuthStore extends AuthState {
-  // Additional internal state
-  isInitialized: boolean;
-  setInitialized: (initialized: boolean) => void;
-}
+type AuthenticationResult = {
+  success: boolean;
+  error?: string;
+  requiresTwoFactor?: boolean;
+  requiresEmailVerification?: boolean;
+  email?: string;
+};
 
-export const useAuthStore = create<AuthStore>()(
+let authOperationEpoch = 0;
+let logoutPromise: Promise<void> | null = null;
+let logoutOperationEpoch: number | null = null;
+let checkAuthPromise: Promise<void> | null = null;
+let checkAuthOperationEpoch: number | null = null;
+
+const beginAuthOperation = (): number => {
+  authOperationEpoch += 1;
+  return authOperationEpoch;
+};
+
+const isCurrentOperation = (operationEpoch: number): boolean =>
+  operationEpoch === authOperationEpoch;
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === "AbortError";
+
+const mergeServerUser = (serverUser: User, cachedUser: User | null): User => {
+  if (
+    serverUser.role === "MASTER" &&
+    cachedUser?.role === "MASTER" &&
+    cachedUser.businessId &&
+    !serverUser.businessId
+  ) {
+    return {
+      ...serverUser,
+      businessId: cachedUser.businessId,
+      selectedBusiness: cachedUser.selectedBusiness,
+    };
+  }
+  return serverUser;
+};
+
+const getAccessErrorMessage = (reason?: string): string => {
+  switch (reason) {
+    case "session_expired":
+      return "Sua sessao expirou. Faca login novamente.";
+    case "session_not_renewed":
+      return "Nao foi possivel renovar sua sessao. Faca login novamente.";
+    case "access_revoked":
+      return "Seu acesso foi revogado. Entre em contato com o administrador.";
+    case "driver_inactive":
+      return "Seu cadastro como motorista esta inativo. Entre em contato com o administrador.";
+    case "no_permissions":
+      return "Usuario sem perfil de acesso ou permissoes configuradas.";
+    case "no_vehicle_permission":
+      return "Voce nao possui permissao para visualizar veiculos.";
+    case "access_denied":
+      return "Sua conta foi excluida ou nao esta autorizada.";
+    case "permissions_changed":
+      return "Suas permissoes foram atualizadas. Faca login novamente.";
+    default:
+      return "Acesso negado. Entre em contato com o administrador.";
+  }
+};
+
+const getAuthenticationErrorMessage = (
+  error: unknown,
+  fallback: string,
+): string => {
+  if (isAbortError(error)) return "Operacao cancelada.";
+  if (error instanceof ApiError) {
+    if (error.category === "NETWORK") {
+      return "Erro de rede. Verifique sua conexao.";
+    }
+    return error.message || fallback;
+  }
+  return fallback;
+};
+
+export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
-      user: null,
-      tokens: null,
-      isAuthenticated: false,
-      isLoading: false,
-      isInitialized: false,
-      setInitialized: (initialized: boolean) => {
-        set({ isInitialized: initialized });
-
-        // Configure apiClient logout callback when store is initialized
-        apiClient.setLogoutCallback(() => {
-          get().logout();
+    (set, get) => {
+      const setUnauthenticated = (initialized = true): void => {
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          isInitialized: initialized,
         });
-      },
-      setUser: (user: User) => {
-        set({ user });
-      },
-      login: async (email: string, password: string) => {
-        set({ isLoading: true });
+      };
+
+      const rejectStagedSession = async (
+        operationEpoch: number,
+      ): Promise<void> => {
+        if (!isCurrentOperation(operationEpoch)) return;
+
+        apiClient.invalidateSession();
+        tokenStorage.invalidate();
+        const markerEpoch = authSessionStorage.invalidate();
+        disableSubmissionPersistence();
+        disconnectSocket(false);
+        setUnauthenticated(true);
+
+        await Promise.allSettled([
+          authSessionStorage.markLoggedOut(markerEpoch),
+          tokenStorage.clearTokens(),
+          clearAllSubmissionData(),
+          clearQueryCache(),
+        ]);
+      };
+
+      const establishSession = async (
+        accessToken: string,
+        refreshToken: string,
+        operationEpoch: number,
+        storageEpoch: number,
+        markerEpoch: number,
+      ): Promise<AuthenticationResult> => {
+        let tokensWereStaged = false;
 
         try {
-          const response = await apiClient.post<
-            | LoginResponse
-            | TwoFactorRequiredResponse
-            | EmailVerificationResponse
-          >(
-            "/user/session",
-            { email, password },
-            false, // No auth required for login
+          await tokenStorage.setTokens(
+            accessToken,
+            refreshToken,
+            storageEpoch,
           );
-          set({ isLoading: false });
+          tokensWereStaged = true;
 
-          // Check if email verification is required
-          if ("emailVerification" in response && response.emailVerification) {
-            return {
-              success: false,
-              requiresEmailVerification: true,
-              email: email,
-              error: response.message,
-            };
+          if (!isCurrentOperation(operationEpoch)) {
+            throw Object.assign(new Error("Authentication superseded"), {
+              name: "AbortError",
+            });
           }
 
-          // Check if two-factor authentication is required
-          if (
-            "twoFactorVerification" in response &&
-            response.twoFactorVerification
-          ) {
-            return {
-              success: false,
-              requiresTwoFactor: true,
-              email: email,
-              error: response.message,
-            };
-          }
-
-          // If we get here, it's a normal login response
-          const loginResponse = response as LoginResponse;
-
-          // Store tokens first
-          const { token, refresh_token } = loginResponse;
-          await tokenStorage.setTokens(token, refresh_token);
-
-          // Now fetch complete user data using the token
           const userMeResponse =
             await apiClient.get<UserMeResponse>("/user/me");
           const user = userMeResponse.user;
-
-          // Validate user access
           const accessValidation = validateUserAccess(user);
-          if (!accessValidation.hasAccess) {
-            let errorMessage = "Acesso negado.";
-            switch (accessValidation.reason) {
-              case "session_expired":
-                errorMessage = "Sua sessão expirou. Faça login novamente.";
-                break;
-              case "session_not_renewed":
-                errorMessage =
-                  "Não foi possível renovar sua sessão. Faça login novamente.";
-                break;
-              case "access_revoked":
-                errorMessage =
-                  "Seu acesso foi revogado! Para acessar a plataforma novamente, por favor contate o administrador.";
-                break;
-              case "driver_inactive":
-                errorMessage =
-                  "Seu cadastro como motorista está inativo! Para acessar a plataforma novamente, por favor contate o administrador.";
-                break;
-              case "no_permissions":
-                errorMessage =
-                  "Usuário sem perfil de acesso ou permissões configuradas! Por favor, contate o administrador.";
-                break;
-              case "no_vehicle_permission":
-                errorMessage =
-                  "Você não possui permissão para visualizar veículos! Por favor, contate o administrador.";
-                break;
-              case "access_denied":
-                errorMessage =
-                  "Sua conta foi excluída ou não está autorizada. Por favor, entre em contato com o administrador.";
-                break;
-              case "permissions_changed":
-                errorMessage =
-                  "Suas permissões de acesso foram atualizadas. Por favor, faça login novamente para continuar.";
-                break;
-              default:
-                errorMessage =
-                  "Acesso negado! Por favor, contate o administrador.";
-            }
 
-            return { success: false, error: errorMessage };
+          if (!accessValidation.hasAccess) {
+            await rejectStagedSession(operationEpoch);
+            return {
+              success: false,
+              error: getAccessErrorMessage(accessValidation.reason),
+            };
           }
 
-          // Update store state
+          if (!isCurrentOperation(operationEpoch)) {
+            throw Object.assign(new Error("Authentication superseded"), {
+              name: "AbortError",
+            });
+          }
+
+          await authSessionStorage.markActive(markerEpoch);
+          if (!isCurrentOperation(operationEpoch)) {
+            throw Object.assign(new Error("Authentication superseded"), {
+              name: "AbortError",
+            });
+          }
+
+          enableSubmissionPersistence();
           set({
             user,
-            tokens: { accessToken: token, refreshToken: refresh_token },
             isAuthenticated: true,
             isLoading: false,
+            isInitialized: true,
           });
-
           return { success: true };
         } catch (error) {
-          set({ isLoading: false });
-
-          if (error instanceof ApiError) {
-            return {
-              success: false,
-              error: error.message || "Erro ao fazer login",
-            };
+          if (tokensWereStaged && isCurrentOperation(operationEpoch)) {
+            await rejectStagedSession(operationEpoch);
           }
-
           return {
             success: false,
-            error: "Erro de rede. Verifique sua conexão.",
+            error: getAuthenticationErrorMessage(
+              error,
+              "Nao foi possivel concluir a autenticacao.",
+            ),
           };
         }
-      },
-      verifyTwoFactor: async (email: string, code: string) => {
-        set({ isLoading: true });
+      };
 
-        try {
-          const response = await apiClient.post<TwoFactorVerificationResponse>(
-            "/user/two-factor-verification",
-            { email, code },
-            false, // No auth required for two-factor verification
-          );
+      return {
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        isInitialized: false,
 
-          // Store tokens first
-          const { token, refresh_token } = response;
-          await tokenStorage.setTokens(token, refresh_token);
+        setUser: (user: User) => set({ user }),
+        setServerUser: (user: User) =>
+          set((state) => ({ user: mergeServerUser(user, state.user) })),
 
-          // Now fetch complete user data using the token
-          const userMeResponse =
-            await apiClient.get<UserMeResponse>("/user/me");
-          const user = userMeResponse.user;
-
-          // Validate user access
-          const accessValidation = validateUserAccess(user);
-          if (!accessValidation.hasAccess) {
-            let errorMessage = "Acesso negado.";
-            switch (accessValidation.reason) {
-              case "session_expired":
-                errorMessage = "Sua sessão expirou. Faça login novamente.";
-                break;
-              case "session_not_renewed":
-                errorMessage =
-                  "Não foi possível renovar sua sessão. Faça login novamente.";
-                break;
-              case "access_revoked":
-                errorMessage =
-                  "Seu acesso foi revogado! Para acessar a plataforma novamente, por favor contate o administrador.";
-                break;
-              case "driver_inactive":
-                errorMessage =
-                  "Seu cadastro como motorista está inativo! Para acessar a plataforma novamente, por favor contate o administrador.";
-                break;
-              case "no_permissions":
-                errorMessage =
-                  "Usuário sem perfil de acesso ou permissões configuradas! Por favor, contate o administrador.";
-                break;
-              case "no_vehicle_permission":
-                errorMessage =
-                  "Você não possui permissão para visualizar veículos! Por favor, contate o administrador.";
-                break;
-              case "access_denied":
-                errorMessage =
-                  "Sua conta foi excluída ou não está autorizada. Por favor, entre em contato com o administrador.";
-                break;
-              case "permissions_changed":
-                errorMessage =
-                  "Suas permissões de acesso foram atualizadas. Por favor, faça login novamente para continuar.";
-                break;
-              default:
-                errorMessage =
-                  "Acesso negado! Por favor, contate o administrador.";
-            }
-
-            return { success: false, error: errorMessage };
-          }
-
-          // Update store state
-          set({
-            user,
-            tokens: { accessToken: token, refreshToken: refresh_token },
-            isAuthenticated: true,
-            isLoading: false,
-          });
-
-          return { success: true };
-        } catch (error) {
-          set({ isLoading: false });
-
-          if (error instanceof ApiError) {
-            return {
-              success: false,
-              error: error.message || "Código inválido ou expirado",
-            };
-          }
-
-          return {
-            success: false,
-            error: "Erro de rede. Verifique sua conexão.",
-          };
-        }
-      },
-      resendTwoFactorCode: async (email: string) => {
-        try {
-          // Call the resend two-factor code endpoint
-          await apiClient.post(
-            "/user/resend-two-factor-code",
-            { email },
-            false, // No auth required for resend
-          );
-
-          return { success: true };
-        } catch (error) {
-          if (error instanceof ApiError) {
-            return {
-              success: false,
-              error: error.message || "Erro ao reenviar código",
-            };
-          }
-
-          return {
-            success: false,
-            error: "Erro de rede. Verifique sua conexão.",
-          };
-        }
-      },
-      logout: async () => {
-        try {
-          // Notify server of intentional logout and close socket connection
-          disconnectSocket();
-
-          // Clear tokens from secure storage
-          await tokenStorage.clearTokens();
-
-          // Clear user data from async storage
-          await asyncStorage.clear();
-
-          // Clear all React Query cache
-          queryClient.clear();
-
-          // Reset store state
-          set({
-            user: null,
-            tokens: null,
-            isAuthenticated: false,
-            isLoading: false,
-          });
-        } catch (error) {
-          console.error("Error during logout:", error);
-          // Even if there's an error, reset the state and clear cache
-          queryClient.clear();
-          set({
-            user: null,
-            tokens: null,
-            isAuthenticated: false,
-            isLoading: false,
-          });
-        }
-      },
-      refreshToken: async () => {
-        try {
-          logger.dev("🔄 auth-store: Delegating refresh to apiClient...");
-
-          // ✅ Delegate to apiClient which has the complete refresh logic
-          const newAccessToken = await apiClient.refreshToken();
-
-          if (!newAccessToken) {
-            logger.info("❌ auth-store: Token refresh failed");
-            throw new Error("Token refresh failed");
-          }
-
-          // Get the new refresh token from storage (apiClient already saved it)
-          const newRefreshToken = await tokenStorage.getRefreshToken();
-
-          // Update store state with new tokens
-          set({
-            tokens: {
-              accessToken: newAccessToken,
-              refreshToken: newRefreshToken || "",
-            },
-          });
-
-          logger.info("✅ auth-store: Tokens refreshed successfully");
-          return true;
-        } catch {
-          logger.error("❌ auth-store: Token refresh failed");
-
-          // Clear tokens and logout
-          logger.dev("🧹 auth-store: Clearing tokens and logging out...");
-
-          await get().logout();
-          return false;
-        }
-      },
-      checkAuth: async () => {
-        set({ isLoading: true });
-
-        try {
-          const accessToken = await tokenStorage.getAccessToken();
-          const refreshToken = await tokenStorage.getRefreshToken();
-
-          logger.dev("🔐 checkAuth: Checking tokens...", {
-            hasAccessToken: !!accessToken,
-            hasRefreshToken: !!refreshToken,
-          });
-
-          // If no tokens, just mark as initialized and return (user will see login screen)
-          if (!accessToken || !refreshToken) {
-            logger.info("🔐 checkAuth: No tokens found");
-
-            set({ isLoading: false, isInitialized: true });
-            return;
-          }
-
-          // ✅ DON'T manually check expiration or refresh here!
-          // Let apiClient.get() handle token refresh automatically
-          logger.dev("🔐 checkAuth: Fetching user data...");
+        login: async (email, password) => {
+          const operationEpoch = beginAuthOperation();
+          apiClient.invalidateSession();
+          const storageEpoch = tokenStorage.invalidate();
+          const markerEpoch = authSessionStorage.invalidate();
+          set({ isLoading: true });
 
           try {
-            const response = await apiClient.get<{ user: User }>("/user/me");
-            const { user } = response;
+            const response = await apiClient.post<
+              | LoginResponse
+              | TwoFactorRequiredResponse
+              | EmailVerificationResponse
+            >("/user/session", { email, password }, false);
 
-            logger.dev("🔐 checkAuth: User data received");
-
-            // Validate user access
-            const accessValidation = validateUserAccess(user);
-            if (!accessValidation.hasAccess) {
-              logger.info("🔐 checkAuth: User access denied");
-              await get().logout();
-
-              set({ isLoading: false, isInitialized: true });
-              return;
+            if (!isCurrentOperation(operationEpoch)) {
+              return { success: false, error: "Operacao cancelada." };
             }
 
-            // Get fresh tokens from storage (apiClient may have refreshed them)
-            const freshAccessToken = await tokenStorage.getAccessToken();
-            const freshRefreshToken = await tokenStorage.getRefreshToken();
+            if ("emailVerification" in response && response.emailVerification) {
+              return {
+                success: false,
+                requiresEmailVerification: true,
+                email,
+                error: response.message,
+              };
+            }
 
-            // Update store with fresh user data and tokens
-            set({
-              user,
-              tokens: {
-                accessToken: freshAccessToken || "",
-                refreshToken: freshRefreshToken || "",
-              },
-              isAuthenticated: true,
-              isLoading: false,
-              isInitialized: true,
+            if (
+              "twoFactorVerification" in response &&
+              response.twoFactorVerification
+            ) {
+              return {
+                success: false,
+                requiresTwoFactor: true,
+                email,
+                error: response.message,
+              };
+            }
+
+            const loginResponse = response as LoginResponse;
+            return establishSession(
+              loginResponse.token,
+              loginResponse.refresh_token,
+              operationEpoch,
+              storageEpoch,
+              markerEpoch,
+            );
+          } catch (error) {
+            return {
+              success: false,
+              error: getAuthenticationErrorMessage(
+                error,
+                "Erro ao fazer login.",
+              ),
+            };
+          } finally {
+            if (isCurrentOperation(operationEpoch)) {
+              set({ isLoading: false });
+            }
+          }
+        },
+
+        verifyTwoFactor: async (email, code) => {
+          const operationEpoch = beginAuthOperation();
+          apiClient.invalidateSession();
+          const storageEpoch = tokenStorage.invalidate();
+          const markerEpoch = authSessionStorage.invalidate();
+          set({ isLoading: true });
+
+          try {
+            const response =
+              await apiClient.post<TwoFactorVerificationResponse>(
+                "/user/two-factor-verification",
+                { email, code },
+                false,
+              );
+
+            if (!isCurrentOperation(operationEpoch)) {
+              return { success: false, error: "Operacao cancelada." };
+            }
+
+            return establishSession(
+              response.token,
+              response.refresh_token,
+              operationEpoch,
+              storageEpoch,
+              markerEpoch,
+            );
+          } catch (error) {
+            return {
+              success: false,
+              error: getAuthenticationErrorMessage(
+                error,
+                "Codigo invalido ou expirado.",
+              ),
+            };
+          } finally {
+            if (isCurrentOperation(operationEpoch)) {
+              set({ isLoading: false });
+            }
+          }
+        },
+
+        resendTwoFactorCode: async (email) => {
+          try {
+            await apiClient.post(
+              "/user/resend-two-factor-code",
+              { email },
+              false,
+            );
+            return { success: true };
+          } catch (error) {
+            return {
+              success: false,
+              error: getAuthenticationErrorMessage(
+                error,
+                "Erro ao reenviar codigo.",
+              ),
+            };
+          }
+        },
+
+        logout: async () => {
+          if (
+            logoutPromise &&
+            logoutOperationEpoch !== null &&
+            logoutOperationEpoch === authOperationEpoch
+          ) {
+            return logoutPromise;
+          }
+
+          // Capture the access token before local cleanup. This request does
+          // not participate in authenticated-request cancellation, so the
+          // server can revoke every refresh-token family for this user even
+          // after the local session epoch is invalidated.
+          const serverLogoutPromise = tokenStorage
+            .getAccessToken()
+            .then((accessToken) => {
+              if (!accessToken) return;
+              return apiClient.request("/user/logout", {
+                method: "POST",
+                requiresAuth: false,
+                headers: { Authorization: `Bearer ${accessToken}` },
+                timeoutMs: 5_000,
+              });
             });
 
-            logger.info("✅ checkAuth: Authentication successful");
-          } catch (error) {
-            // ✅ Silently handle session expiration (401) - don't log as error
-            if (error instanceof ApiError && error.status === 401) {
-              logger.info("🔒 checkAuth: Session expired");
-            } else {
-              logger.error("❌ checkAuth: Unexpected error");
-            }
+          const operationEpoch = beginAuthOperation();
+          logoutOperationEpoch = operationEpoch;
+          apiClient.invalidateSession();
+          tokenStorage.invalidate();
+          const markerEpoch = authSessionStorage.invalidate();
+          disableSubmissionPersistence();
+          disconnectSocket(true);
+          setUnauthenticated(true);
 
-            // If any error occurs (including 401 after refresh attempts), logout silently
+          const promise = (async () => {
+            const results = await Promise.allSettled([
+              serverLogoutPromise,
+              authSessionStorage.markLoggedOut(markerEpoch),
+              tokenStorage.clearTokens(),
+              authSessionStorage.clearPersistedAuth(),
+              clearAllSubmissionData(),
+              clearQueryCache(),
+            ]);
+            // The remote call is deliberately best-effort. Local credential
+            // cleanup failures are the ones that require diagnostics.
+            const failures = results.slice(1).filter(
+              (result) => result.status === "rejected",
+            );
+            if (failures.length > 0) {
+              logger.error("logout: one or more storage cleanups failed");
+            }
+          })();
+
+          logoutPromise = promise;
+          try {
+            await promise;
+          } finally {
+            if (logoutPromise === promise) {
+              logoutPromise = null;
+              logoutOperationEpoch = null;
+            }
+          }
+        },
+
+        refreshToken: async () => {
+          try {
+            const newAccessToken = await apiClient.refreshToken();
+            if (newAccessToken) return true;
             await get().logout();
-            set({ isLoading: false, isInitialized: true });
+            return false;
+          } catch (error) {
+            if (error instanceof ApiError && error.isTransient) {
+              logger.info("refreshToken: transient failure, session preserved");
+              return false;
+            }
+            if (!isAbortError(error)) await get().logout();
+            return false;
           }
-        } catch (error) {
-          // ✅ Outer catch: only log truly unexpected errors
-          if (error instanceof ApiError && error.status === 401) {
-            logger.info("🔒 checkAuth: Session expired");
-          } else {
-            logger.error("❌ checkAuth: Critical error");
+        },
+
+        checkAuth: async (options = {}) => {
+          if (
+            checkAuthPromise &&
+            checkAuthOperationEpoch !== null &&
+            checkAuthOperationEpoch === authOperationEpoch
+          ) {
+            return checkAuthPromise;
           }
-          await get().logout();
-          set({ isLoading: false, isInitialized: true });
-        }
-      },
-    }),
+
+          const operationEpoch = beginAuthOperation();
+          checkAuthOperationEpoch = operationEpoch;
+          const cachedUser = get().user;
+          if (!options.background) set({ isLoading: true });
+
+          const promise = (async () => {
+            try {
+              const [wasLoggedOut, tokens] = await Promise.all([
+                authSessionStorage.wasLoggedOut(),
+                tokenStorage.getTokens(),
+              ]);
+              const accessToken = tokens?.accessToken ?? null;
+              const refreshToken = tokens?.refreshToken ?? null;
+
+              if (!isCurrentOperation(operationEpoch)) return;
+
+              if (wasLoggedOut || !refreshToken) {
+                apiClient.invalidateSession();
+                tokenStorage.invalidate();
+                disableSubmissionPersistence();
+                await Promise.allSettled([
+                  tokenStorage.clearTokens(),
+                  clearAllSubmissionData(),
+                  clearQueryCache(),
+                ]);
+                if (isCurrentOperation(operationEpoch)) setUnauthenticated(true);
+                return;
+              }
+
+              logger.dev("checkAuth: validating stored session", {
+                hasAccessToken: Boolean(accessToken),
+                hasRefreshToken: true,
+              });
+
+              const response = await apiClient.get<UserMeResponse>("/user/me");
+              if (!isCurrentOperation(operationEpoch)) return;
+
+              const accessValidation = validateUserAccess(response.user);
+              if (!accessValidation.hasAccess) {
+                await get().logout();
+                return;
+              }
+
+              await authSessionStorage.markActive();
+              if (!isCurrentOperation(operationEpoch)) return;
+
+              enableSubmissionPersistence();
+              set({
+                user: mergeServerUser(response.user, cachedUser),
+                isAuthenticated: true,
+                isLoading: false,
+                isInitialized: true,
+              });
+            } catch (error) {
+              if (!isCurrentOperation(operationEpoch)) return;
+
+              if (
+                error instanceof ApiError && error.isAuthenticationError
+              ) {
+                await get().logout();
+                return;
+              }
+
+              if (error instanceof ApiError && error.isTransient) {
+                logger.info(
+                  "checkAuth: transient validation failure, preserving cached session",
+                );
+                if (cachedUser) enableSubmissionPersistence();
+                set({
+                  user: cachedUser,
+                  isAuthenticated: Boolean(cachedUser),
+                  isLoading: false,
+                  isInitialized: true,
+                });
+                return;
+              }
+
+              if (isAbortError(error)) return;
+              logger.error("checkAuth: non-recoverable validation failure");
+              await get().logout();
+            } finally {
+              if (isCurrentOperation(operationEpoch)) {
+                set({ isLoading: false, isInitialized: true });
+              }
+            }
+          })();
+
+          checkAuthPromise = promise;
+          try {
+            await promise;
+          } finally {
+            if (checkAuthPromise === promise) {
+              checkAuthPromise = null;
+              checkAuthOperationEpoch = null;
+            }
+          }
+        },
+      };
+    },
     {
       name: "auth-store",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        // Only persist user data, not tokens (they're stored securely)
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
+      partialize: (state) => ({ user: state.user }),
+      skipHydration: true,
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<AuthState>),
+        isAuthenticated: false,
+        isLoading: false,
+        isInitialized: false,
       }),
     },
   ),

@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback } from "react";
 
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { FlatList, View, Text, TouchableOpacity } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { useBranchInfiniteScroll } from "../../hooks";
+import { useBranchInfiniteScroll, useDebounce } from "../../hooks";
 import type { Branch } from "../../hooks/use-branch-infinite-scroll";
 
 import { LoadingSpinner, Button, Input } from "../ui";
@@ -20,58 +20,30 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
   onSelectBranch,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
-
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim());
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const debouncedSearch = useDebounce(searchQuery.trim());
 
   const {
     branches,
     isLoading,
+    isFetching,
     isError,
     error,
     hasNextPage,
     loadMore,
     refetch,
-  } = useBranchInfiniteScroll(businessId);
+  } = useBranchInfiniteScroll(businessId, debouncedSearch);
 
-  const handleRefresh = useCallback(() => {
-    refetch();
+  const handleRefresh = useCallback(async () => {
+    await refetch();
   }, [refetch]);
 
   const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isLoading) {
+    if (hasNextPage && !isFetching) {
       loadMore();
     }
-  }, [hasNextPage, isLoading, loadMore]);
+  }, [hasNextPage, isFetching, loadMore]);
 
-  // Filter branches locally based on search query
-  const filteredBranches = useMemo(() => {
-    if (!branches) return [];
-    if (!debouncedSearch) return branches;
-
-    const searchLower = debouncedSearch.toLowerCase();
-    return branches.filter((branch) => {
-      const corporateReason = branch.corporate_reason?.toLowerCase() || "";
-      const fantasyName = branch.fantasy_name?.toLowerCase() || "";
-
-      const city = branch.city?.toLowerCase() || "";
-      const cnpj = branch.cnpj?.toLowerCase() || "";
-
-      return (
-        corporateReason.includes(searchLower) ||
-        fantasyName.includes(searchLower) ||
-        city.includes(searchLower) ||
-        cnpj.includes(searchLower)
-      );
-    });
-  }, [branches, debouncedSearch]);
+  const filteredBranches = branches;
 
   if (isError) {
     return (
@@ -136,13 +108,26 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
           </Text>
         </View>
       ) : (
-        <ScrollView
+        <FlatList
+          data={filteredBranches}
+          keyExtractor={(branch) => branch.id}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={handleLoadMore}
-        >
-          {filteredBranches.map((branch) => (
+          keyboardShouldPersistTaps="handled"
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.35}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
+          ListFooterComponent={
+            isFetching && hasNextPage ? (
+              <View className="py-3">
+                <LoadingSpinner size="small" />
+              </View>
+            ) : null
+          }
+          renderItem={({ item: branch }) => (
             <TouchableOpacity
-              key={branch.id}
               onPress={() => onSelectBranch(branch)}
               className={`bg-white rounded-lg p-4 mb-3 border ${
                 selectedBranchId === branch.id
@@ -174,8 +159,8 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
                 )}
               </View>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
     </View>
   );

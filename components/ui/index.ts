@@ -8,6 +8,7 @@ export { Input } from "./Input";
 export { TwoFactorInput } from "./two-factor-input";
 
 export { ConfirmModal } from "./confirm-modal";
+export { DiscardDraftModal } from "./discard-draft-modal";
 export { Select } from "./select";
 
 export { DatePicker } from "./date-picker";
