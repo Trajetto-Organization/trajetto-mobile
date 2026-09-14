@@ -1,7 +1,7 @@
 import { isTokenExpired } from "./jwt";
 import { logger } from "./logger";
 
-import { updateSocketAuthToken } from "./socket";
+import { setSocketTokenRefresher, updateSocketAuthToken } from "./socket";
 import { tokenStorage } from "./storage";
 
 import { reportApiReachable } from "@/store/connection-store";
@@ -533,4 +533,16 @@ class ApiClient {
 }
 
 const apiClient = new ApiClient();
+
+/**
+ * Hands the socket the app's one and only refresher.
+ *
+ * Registered rather than imported the other way around, because `socket.ts`
+ * cannot import this module — it is imported BY it. Going through
+ * `apiClient.refreshToken` is what keeps the guarantee that matters: the API
+ * rotates refresh tokens and reads a reused one as replay, revoking every
+ * session on the account, so there may only ever be one refresh in flight.
+ */
+setSocketTokenRefresher(() => apiClient.refreshToken());
+
 export { apiClient };

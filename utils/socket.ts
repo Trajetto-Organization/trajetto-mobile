@@ -1,6 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 
 import { tokenStorage } from "./storage";
+import { shouldRefreshCredential } from "./socket-auth-rules";
 
 let socketInstance: Socket | null = null;
 let socketGeneration = 0;
@@ -20,6 +21,25 @@ const getSocketUrl = (): string => {
   return socketUrl;
 };
 
+/**
+ * How the socket asks for a fresh access token.
+ *
+ * Registered by `apiClient` rather than imported from it, because `api.ts`
+ * already imports this module. It must stay the app's single refresher: the
+ * API rotates refresh tokens and treats a reused one as replay, revoking every
+ * session on the account. `apiClient.refreshToken` de-duplicates concurrent
+ * calls behind one promise, which is exactly what makes this safe.
+ */
+let refreshAccessToken: (() => Promise<string | null>) | null = null;
+
+function setSocketTokenRefresher(
+  refresher: () => Promise<string | null>,
+): void {
+  refreshAccessToken = refresher;
+}
+
+// Kept so a refresh that already happened can push the new token in without
+// waiting for the next handshake.
 const setSocketToken = (socket: Socket, token: string): void => {
   socket.auth = {
     ...(typeof socket.auth === "object" ? socket.auth : {}),
@@ -30,7 +50,21 @@ const setSocketToken = (socket: Socket, token: string): void => {
 const createSocket = (socketUrl: string, token: string): Socket => {
   const generation = ++socketGeneration;
   const socket = io(socketUrl, {
-    auth: { token },
+    /**
+     * A callback, so every reconnection reads storage again.
+     *
+     * The object form was only as fresh as the last `setSocketToken` push, and
+     * those fire on an HTTP 401 or on returning from background. An app left
+     * in the foreground, idle, whose token aged past fifteen minutes and whose
+     * connection then flipped (lift, tunnel, mobile→wifi) reconnected forever
+     * with the expired token, and no HTTP call was happening to notice.
+     */
+    auth: (cb: (data: object) => void) => {
+      void tokenStorage
+        .getAccessToken()
+        .then((fresh) => cb({ token: fresh ?? token }))
+        .catch(() => cb({ token }));
+    },
     autoConnect: false,
     transports: ["websocket"],
     reconnection: true,
@@ -60,6 +94,21 @@ const createSocket = (socketUrl: string, token: string): Socket => {
     connectionStatus.isConnecting = false;
     connectionStatus.hasConnectionError = true;
     connectionStatus.errorMessage = error.message;
+
+    // Reading the stored token at each attempt is not enough on its own: if
+    // the stored one is the expired one, every retry carries it. One refresh,
+    // through the single-flight refresher, is what actually breaks the loop.
+    if (!shouldRefreshCredential(error)) return;
+    if (!refreshAccessToken) return;
+
+    void refreshAccessToken()
+      .then((token) => {
+        // A null answer means the session is really gone. The auth store is
+        // already being told by the same refresh, and it owns the logout.
+        if (!token || generation !== socketGeneration) return;
+        setSocketToken(socket, token);
+      })
+      .catch(() => undefined);
   });
 
   return socket;
@@ -148,5 +197,6 @@ export {
   isSocketConnected,
   pauseSocket,
   reconnectSocket,
+  setSocketTokenRefresher,
   updateSocketAuthToken,
 };
