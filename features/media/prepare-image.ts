@@ -17,9 +17,12 @@ const JPEG_QUALITY = 0.72;
 
 /**
  * Normalizes camera/gallery output before it reaches component state.
- * The backend accepts JPEG and limits each multipart file to 5 MB, so every
- * selected image gets a bounded dimension, predictable MIME type and real
- * post-transcode byte size.
+ *
+ * Every selected image gets a bounded dimension, a predictable MIME type and a
+ * real post-transcode byte size. The size is not cosmetic: it is signed into
+ * the upload authorisation, and storage rejects a PUT whose length does not
+ * match. Re-encoding also drops EXIF, so the driver's GPS coordinates never
+ * leave the device inside the photo.
  */
 export async function prepareUploadImage(
   asset: ImagePickerAsset,
@@ -67,15 +70,4 @@ export function getImageValidationError(
   }
 
   return null;
-}
-
-export function createImageFormDataPart(
-  asset: ImagePickerAsset,
-  fallbackName: string,
-) {
-  return {
-    uri: asset.uri,
-    type: asset.mimeType || "image/jpeg",
-    name: asset.fileName || `${fallbackName}.jpg`,
-  } as any;
 }

@@ -44,6 +44,10 @@ app-example
 
 # EAS credentials
 google-service-account.json
+# Firebase Android client config: carries the project's API key and is
+# supplied to EAS as a secret file. app.config.js already guards it with
+# fs.existsSync, so a checkout without it still runs (no FCM locally).
+google-services.json
 *.cer
 
 # Local builds

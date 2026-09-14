@@ -3,6 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { randomUUID } from "expo-crypto";
 import { Directory, Paths } from "expo-file-system";
 
+import { clearOutbox } from "./outbox";
+
 type SubmissionKind = "fuel" | "checklist";
 
 const UUID_PATTERN =
@@ -102,6 +104,11 @@ export async function clearSubmissionId(storageKey: string): Promise<void> {
 /** Removes every persisted form key and photo after an explicit/forced logout. */
 export async function clearAllSubmissionData(): Promise<void> {
   disableSubmissionPersistence();
+
+  // Queued submissions go too. They carry business data belonging to the
+  // session that is ending, and nobody else who logs in on this device may see
+  // them — let alone send them under their own credentials.
+  await clearOutbox().catch(() => undefined);
 
   await enqueueSubmissionMutation(async () => {
     const keys = await AsyncStorage.getAllKeys();

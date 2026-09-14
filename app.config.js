@@ -7,6 +7,7 @@ const isLocalHost = (hostname) => {
   ) {
     return true;
   }
+
   if (
     normalized.endsWith(".localhost") ||
     normalized.endsWith(".local") ||
@@ -25,8 +26,10 @@ const isLocalHost = (hostname) => {
   }
 
   const match = normalized.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+
   if (!match) return false;
   const [, first, second] = match.map(Number);
+
   return (
     first === 0 ||
     first === 10 ||
@@ -63,11 +66,13 @@ const assertBuildApiUrl = () => {
         "EXPO_PUBLIC_API_URL nao aceita credenciais, query string ou fragmento.",
       );
     }
+
     if (apiUrl.protocol !== "https:") {
       throw new Error(
         `O perfil EAS "${buildProfile}" exige EXPO_PUBLIC_API_URL com HTTPS.`,
       );
     }
+
     if (isLocalHost(apiUrl.hostname)) {
       throw new Error(
         `O perfil EAS "${buildProfile}" não aceita API local ou de rede privada.`,
@@ -78,5 +83,20 @@ const assertBuildApiUrl = () => {
 
 module.exports = ({ config }) => {
   assertBuildApiUrl();
+
+  // FCM credentials for remote push: picked up automatically once the file
+  // exists (downloaded from the Firebase console). Referencing a missing
+  // file would break every build, so the wiring is conditional. Relative
+  // path: expo-cli and EAS always evaluate this config from the project
+  // root (and __dirname trips the eslint browser env of this repo).
+  const fs = require("fs");
+
+  if (fs.existsSync("./google-services.json")) {
+    config.android = {
+      ...config.android,
+      googleServicesFile: "./google-services.json",
+    };
+  }
+
   return config;
 };

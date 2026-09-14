@@ -114,7 +114,8 @@ export const useTwoFactor = () => {
           visibilityTime: 3_000,
         });
 
-        router.replace("/vehicles");
+        // Declarative: the Stack.Protected guard flip already navigates to
+        // the protected area — replacing again caused a remount flash.
         return;
       }
 

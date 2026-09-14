@@ -4,6 +4,8 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { useAuthStore } from "../store";
 import { Avatar, UserSettingsDrawer } from "./ui";
 
+import { NotificationBell } from "./notification-bell";
+
 interface HeaderProps {
   pageTitle: string;
   onLogout: () => void;
@@ -70,6 +72,8 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Buttons */}
           <View className="flex-row items-center space-x-3 gap-2">
+            <NotificationBell />
+
             {/* Switch Business Button - Only for MASTER users */}
             {user?.role === "MASTER" && onSwitchBusiness && (
               <TouchableOpacity

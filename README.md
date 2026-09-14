@@ -908,24 +908,6 @@ class ApiClient {
     });
   }
 
-  // Upload de arquivos
-  async uploadFile<T>(endpoint: string, formData: FormData): Promise<T> {
-    const token = await SecureStore.getItemAsync("accessToken");
-
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      method: "POST",
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new ApiError(response.status, await response.text());
-    }
-
-    return response.json();
-  }
 }
 
 // Instância global
@@ -954,28 +936,24 @@ export const useVehicles = (businessId: string) => {
 };
 
 // hooks/useFuelCreation.ts
+//
+// A foto vai direto do aparelho para o storage: a API só assina o upload e
+// depois recebe a chave. Os bytes nunca passam por ela.
 export const useFuelCreation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (fuelData: CreateFuelData) => {
-      const formData = new FormData();
-
-      // Dados do formulário
-      Object.entries(fuelData.form).forEach(([key, value]) => {
-        formData.append(key, String(value));
+      const [photo] = await uploadToStorage({
+        entries: [{ file: fuelData.odometerPhoto }],
+        uploadType: "odometerPhotos",
+        businessId: fuelData.businessId,
       });
 
-      // Foto do odômetro
-      if (fuelData.odometerPhoto) {
-        formData.append("odometerPhoto", {
-          uri: fuelData.odometerPhoto.uri,
-          type: "image/jpeg",
-          name: "odometer.jpg",
-        } as any);
-      }
-
-      return api.uploadFile<FuelResponse>("/fuel/create-fuel", formData);
+      return api.post<FuelResponse>(
+        `/fuel/create-fuel/${fuelData.businessId}`,
+        { ...fuelData.form, photo: { key: photo.key } },
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });

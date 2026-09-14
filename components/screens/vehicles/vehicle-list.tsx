@@ -94,7 +94,8 @@ export const VehicleList: React.FC<VehicleListProps> = ({
       contentContainerStyle={{
         paddingTop: 24,
         paddingBottom: 32,
-        paddingHorizontal: 16,
+        // 24 = the page gutter (px-6): cards line up with the search field.
+        paddingHorizontal: 24,
         flexGrow: 1,
       }}
       refreshControl={

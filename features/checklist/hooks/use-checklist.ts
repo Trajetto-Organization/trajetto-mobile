@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { AppState } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
 
@@ -17,28 +16,39 @@ import { useVehicleData } from "@/hooks";
 
 import { createChecklistSchema, CreateChecklistFormData } from "@/schemas";
 
-import { apiClient, ApiError } from "@/utils/api";
+import { ApiError } from "@/utils/api";
 import { checkChecklistPermission } from "@/utils/permissions";
 
 import {
-  createImageFormDataPart,
-  getImageValidationError,
   MAX_CHECKLIST_IMAGES,
   MAX_CHECKLIST_UPLOAD_BYTES,
-  prepareUploadImage,
 } from "@/features/media/prepare-image";
+
+import { useImageCapture } from "@/features/media/use-image-capture";
+import { useWizardSteps } from "@/features/submissions/use-wizard-steps";
+import { useDiscardConfirmation } from "@/features/submissions/use-discard-confirmation";
+
+import { submitOrQueue } from "@/features/submissions/submit-or-queue";
+import {
+  getPhotoTitle as getChecklistPhotoTitle,
+  isChecklistComplete,
+  REQUIRED_CHECKLIST_FIELDS,
+} from "@/features/checklist/checklist-rules";
+import { buildChecklistDefaults } from "@/features/checklist/checklist-defaults";
 import {
   clearSubmissionId,
   createSubmissionStorageKey,
   getOrCreateSubmissionId,
 } from "@/features/submissions/submission-id";
 
+import { useDraftAutosave } from "@/features/submissions/use-draft-autosave";
 import {
   clearChecklistDraft,
   deleteChecklistDraftImage,
   loadChecklistDraft,
   persistChecklistDraftImage,
   saveChecklistDraft,
+  type ChecklistDraft,
 } from "@/features/checklist/checklist-draft";
 
 interface StepData {
@@ -53,67 +63,10 @@ interface ChecklistImages {
   [fieldName: string]: ImagePicker.ImagePickerAsset[];
 }
 
-type Step = "branch" | "driver" | "form";
+/** In order; a driver skips straight to the form. */
+const CHECKLIST_STEPS = ["branch", "driver", "form"] as const;
 
-const REQUIRED_CHECKLIST_FIELDS = [
-  "checklist_date",
-  "current_mileage",
-  "tires_condition",
-  "headlights_working",
-  "taillights_working",
-  "turn_signals_working",
-  "bumpers_condition",
-  "windshield_condition",
-  "mirrors_condition",
-  "seatbelts_working",
-  "dashboard_working",
-  "steering_wheel_condition",
-  "brakes_working",
-  "clutch_working",
-  "fuel_level_adequate",
-  "oil_level_adequate",
-  "radiator_water_adequate",
-  "brake_fluid_adequate",
-  "battery_condition",
-  "driver_license_valid",
-  "vehicle_documents_valid",
-  "insurance_valid",
-  "fire_extinguisher_valid",
-  "warning_triangle_present",
-  "jack_present",
-  "spare_tire_condition",
-  "overall_condition",
-] as const;
-
-const PHOTO_TITLE_MAP: Record<string, string> = {
-  current_mileage: "Foto do Odômetro",
-  fuel_level_adequate: "Foto do Nível de Combustível",
-  tires_condition: "Foto dos Pneus",
-  brakes_working: "Foto dos Freios",
-  headlights_working: "Foto dos Faróis",
-  taillights_working: "Foto das Lanternas Traseiras",
-  turn_signals_working: "Foto das Setas",
-  steering_wheel_condition: "Foto do Volante",
-  battery_condition: "Foto da Bateria",
-  bumpers_condition: "Foto dos Para-choques",
-  windshield_condition: "Foto do Para-brisa",
-  mirrors_condition: "Foto dos Retrovisores",
-  spare_tire_condition: "Foto do Estepe",
-  oil_level_adequate: "Foto do Nível de Óleo",
-  radiator_water_adequate: "Foto do Nível de Água do Radiador",
-  brake_fluid_adequate: "Foto do Fluido de Freio",
-  windshield_washer_fluid_adequate: "Foto do Fluido do Limpador",
-  horn_working: "Foto da Buzina",
-  seatbelts_working: "Foto dos Cintos de Segurança",
-  dashboard_working: "Foto do Painel",
-  clutch_working: "Foto da Embreagem",
-  fire_extinguisher_valid: "Foto do Extintor",
-  warning_triangle_present: "Foto do Triângulo",
-  first_aid_kit_present: "Foto do Kit de Primeiros Socorros",
-  jack_and_tools_present: "Foto do Macaco e Ferramentas",
-  vehicle_exterior_condition: "Foto da Condição Externa do Veículo",
-  vehicle_interior_condition: "Foto da Condição Interna do Veículo",
-};
+type Step = (typeof CHECKLIST_STEPS)[number];
 
 export const useChecklist = () => {
   const router = useRouter();
@@ -135,21 +88,47 @@ export const useChecklist = () => {
     [submissionBusinessId, user?.id, vehicleId],
   );
 
-  const [currentStep, setCurrentStep] = useState<Step>(
-    isDriver ? "form" : "branch",
-  );
-
   const [stepData, setStepData] = useState<Partial<StepData>>({});
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Photos now travel on their own leg of the submission, which takes real
+  // time on a phone connection — long enough that a bare spinner reads as a
+  // hang.
+  const [uploadProgress, setUploadProgress] = useState<{
+    uploaded: number;
+    total: number;
+  } | null>(null);
+
   const [isDraftReady, setIsDraftReady] = useState<boolean>(false);
   const [hasDraft, setHasDraft] = useState<boolean>(false);
-  const [showDiscardDraftModal, setShowDiscardDraftModal] =
-    useState<boolean>(false);
-  const [isDiscardingDraft, setIsDiscardingDraft] = useState<boolean>(false);
-  const discardInFlightRef = useRef<boolean>(false);
+
   const submissionAbortControllerRef = useRef<AbortController | null>(null);
-  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const draftPersistenceEnabledRef = useRef<boolean>(true);
+
+  const canLeaveStep = useCallback(
+    (step: Step) => {
+      if (step === "branch") return Boolean(stepData.branchId);
+      if (step === "driver") return Boolean(stepData.driverId);
+
+      return false;
+    },
+    [stepData],
+  );
+
+  const {
+    currentStep,
+    setCurrentStep,
+    goToNextStep,
+    goToPrevStep,
+    canProceedToNext,
+  } = useWizardSteps<Step>({
+    steps: CHECKLIST_STEPS,
+    isCollapsed: isDriver,
+    canLeaveStep,
+    onExit: router.back,
+
+    // Leaving a step abandons whatever the submission was doing.
+    onNavigate: () => submissionAbortControllerRef.current?.abort(),
+  });
 
   const [showImagePickerModal, setShowImagePickerModal] =
     useState<boolean>(false);
@@ -194,6 +173,44 @@ export const useChecklist = () => {
     return baseSchema;
   }, [vehicleData?.current_mileage]);
 
+  const dynamicSchema = createDynamicChecklistSchema();
+
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    getValues,
+    reset,
+    subscribe,
+    trigger,
+  } = useForm<CreateChecklistFormData>({
+    resolver: zodResolver(dynamicSchema) as any,
+    mode: "onChange",
+    defaultValues: buildChecklistDefaults({
+      vehicleId: vehicleId || "",
+      businessId: submissionBusinessId,
+    }),
+  });
+
+  const markDraftPresent = useCallback(() => setHasDraft(true), []);
+
+  const draft = useDraftAutosave<ChecklistDraft<CreateChecklistFormData, StepData>>({
+    storageKey: submissionStorageKey,
+    isEnabled:
+      isDraftReady &&
+      Boolean(user?.id && submissionBusinessId && vehicleId),
+    save: saveChecklistDraft,
+    onSchedule: markDraftPresent,
+    buildDraft: (submissionId) => ({
+      submissionId,
+      formData: getValues(),
+      stepData: stepDataRef.current,
+      images: checklistImagesRef.current,
+      updatedAt: new Date().toISOString(),
+    }),
+  });
+
   const onSubmit: SubmitHandler<CreateChecklistFormData> = useCallback(
     async (data: CreateChecklistFormData) => {
       const totalUploadBytes = Object.values(checklistImages).reduce(
@@ -216,92 +233,123 @@ export const useChecklist = () => {
         return;
       }
 
-      const formData = new FormData();
+      const body: Record<string, unknown> = {};
 
       Object.entries(data).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
-          formData.append(key, String(value));
+          body[key] = value;
         }
       });
 
-      Object.entries(checklistImages).forEach(([fieldName, images]) => {
-        images.forEach((image, index) => {
-          const imageFile = createImageFormDataPart(
-            image,
-            `${fieldName}_${Date.now()}_${index}`,
-          );
+      // Stamp the origin: the web omits the field and takes the DB default
+      // (WEB_DASHBOARD), so this is what tells the record apart in reports.
+      body.created_from = "MOBILE_APP";
 
-          formData.append(fieldName, imageFile);
-        });
-      });
+      const entries = Object.entries(checklistImages).flatMap(
+        ([fieldName, images]) =>
+          images.map((asset) => ({ file: asset, fieldName })),
+      );
 
       setIsSubmitting(true);
       submissionAbortControllerRef.current?.abort();
       const submissionController = new AbortController();
       submissionAbortControllerRef.current = submissionController;
 
-      try {
-        const submissionId =
-          await getOrCreateSubmissionId(submissionStorageKey);
-        formData.append("client_submission_id", submissionId);
+      const endpoint = `/vehicle-checklist/create-vehicle-checklist/${submissionBusinessId}`;
+      let submissionId: string | null = null;
 
-        await apiClient.postFormData(
-          `/vehicle-checklist/create-vehicle-checklist/${submissionBusinessId}`,
-          formData,
-          {
-            signal: submissionController.signal,
-            headers: { "Idempotency-Key": submissionId },
-          },
-        );
-
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
-          () => undefined,
-        );
-        draftPersistenceEnabledRef.current = false;
-        if (draftSaveTimerRef.current) {
-          clearTimeout(draftSaveTimerRef.current);
-          draftSaveTimerRef.current = null;
-        }
+      // Stops the autosave from writing the form back to disk once it has been
+      // handed off — to the API or to the queue. Either way this checklist is
+      // finished work and the form should stop owning it.
+      const releaseDraft = () => {
+        draft.release();
         setHasDraft(false);
+      };
+
+      try {
+        submissionId = await getOrCreateSubmissionId(submissionStorageKey);
+        body.client_submission_id = submissionId;
+
+        // Progress stays at full through the request that follows the uploads,
+        // so the bar reads "saving" instead of vanishing at the moment the
+        // driver is watching it finish. The `finally` clears it on every path.
+        setUploadProgress({ uploaded: 0, total: entries.length });
+
+        const outcome = await submitOrQueue({
+          submissionId,
+          kind: "checklist",
+          endpoint,
+          body,
+          businessId: submissionBusinessId,
+          vehicleId: vehicleId || "",
+          vehicleLabel: vehicleData?.license_plate,
+          entries,
+          uploadType: "checklistPhotos",
+          photoField: "photos",
+          signal: submissionController.signal,
+          onProgress: (uploaded, total) =>
+            setUploadProgress({ uploaded, total }),
+        });
+
+        // Either way the checklist has left the form: it is on the server, or
+        // it is in the queue with its own copy of the photos.
+        releaseDraft();
         void Promise.all([
           clearChecklistDraft(submissionStorageKey, submissionId),
           clearSubmissionId(submissionStorageKey),
         ]).catch(() => undefined);
 
-        void Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["vehicles", submissionBusinessId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["vehicle", submissionBusinessId, vehicleId],
-          }),
-        ]).catch(() => undefined);
+        if (outcome === "sent") {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+            () => undefined,
+          );
 
-        Toast.show({
-          type: "success",
-          text1: "Checklist criado!",
-          text2: "O checklist veicular foi registrado com sucesso.",
-          position: "top",
-          visibilityTime: 3000,
-        });
+          void Promise.all([
+            queryClient.invalidateQueries({
+              queryKey: ["vehicles", submissionBusinessId],
+            }),
+            queryClient.invalidateQueries({
+              queryKey: ["vehicle", submissionBusinessId, vehicleId],
+            }),
+          ]).catch(() => undefined);
+        }
+
+        Toast.show(
+          outcome === "sent"
+            ? {
+                type: "success",
+                text1: "Checklist criado!",
+                text2: "O checklist veicular foi registrado com sucesso.",
+                position: "top",
+                visibilityTime: 3000,
+              }
+            : {
+                type: "info",
+                text1: "Checklist salvo no aparelho",
+                text2: "Será enviado automaticamente quando houver conexão.",
+                position: "top",
+                visibilityTime: 4000,
+              },
+        );
 
         router.replace("/vehicles");
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") return;
 
+        // Anything reaching here is the API refusing on the merits — a mileage
+        // below the vehicle's, an inactive branch. The draft stays put so the
+        // driver can fix it.
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Error,
         ).catch(() => undefined);
 
-        let errorMessage = "Ocorreu um erro inesperado. Tente novamente.";
-        if (error instanceof ApiError) {
-          errorMessage = error.message;
-        }
-
         Toast.show({
           type: "error",
           text1: "Erro ao criar checklist",
-          text2: errorMessage,
+          text2:
+            error instanceof ApiError
+              ? error.message
+              : "Ocorreu um erro inesperado. Tente novamente.",
           position: "top",
           visibilityTime: 4000,
         });
@@ -310,112 +358,18 @@ export const useChecklist = () => {
           submissionAbortControllerRef.current = null;
         }
         setIsSubmitting(false);
+        setUploadProgress(null);
       }
     },
     [
       checklistImages,
+      draft,
       submissionBusinessId,
       submissionStorageKey,
       router,
       queryClient,
       vehicleId,
-    ],
-  );
-
-  const dynamicSchema = createDynamicChecklistSchema();
-
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-    setValue,
-    getValues,
-    reset,
-    subscribe,
-    trigger,
-  } = useForm<CreateChecklistFormData>({
-    resolver: zodResolver(dynamicSchema) as any,
-    mode: "onChange",
-    defaultValues: {
-      vehicleId: vehicleId || "",
-      businessId: user?.businessId || "",
-      checklist_date: new Date().toISOString(),
-      current_mileage: undefined,
-      notes: "",
-      branchId: "",
-      driverId: "",
-      headlights_working: undefined,
-      taillights_working: undefined,
-      turn_signals_working: undefined,
-      seatbelts_working: undefined,
-      dashboard_working: undefined,
-      brakes_working: undefined,
-      clutch_working: undefined,
-      fuel_level_adequate: undefined,
-      oil_level_adequate: undefined,
-      radiator_water_adequate: undefined,
-      brake_fluid_adequate: undefined,
-      driver_license_valid: undefined,
-      vehicle_documents_valid: undefined,
-      insurance_valid: undefined,
-      fire_extinguisher_valid: undefined,
-      warning_triangle_present: undefined,
-      jack_present: undefined,
-      tires_condition: undefined,
-      bumpers_condition: undefined,
-      windshield_condition: undefined,
-      mirrors_condition: undefined,
-      steering_wheel_condition: undefined,
-      battery_condition: undefined,
-      spare_tire_condition: undefined,
-      overall_condition: undefined,
-    },
-  });
-
-  const persistChecklistDraft = useCallback(
-    async (formData: Partial<CreateChecklistFormData>) => {
-      if (!isDraftReady || !draftPersistenceEnabledRef.current) return;
-      if (!user?.id || !submissionBusinessId || !vehicleId) return;
-
-      const submissionId = await getOrCreateSubmissionId(submissionStorageKey);
-      await saveChecklistDraft<CreateChecklistFormData, StepData>(
-        submissionStorageKey,
-        {
-          submissionId,
-          formData,
-          stepData: stepDataRef.current,
-          images: checklistImagesRef.current,
-          updatedAt: new Date().toISOString(),
-        },
-      );
-    },
-    [
-      isDraftReady,
-      submissionBusinessId,
-      submissionStorageKey,
-      user?.id,
-      vehicleId,
-    ],
-  );
-
-  const scheduleChecklistDraftSave = useCallback(
-    (formData: Partial<CreateChecklistFormData>) => {
-      if (!isDraftReady || !draftPersistenceEnabledRef.current) return;
-      if (!user?.id || !submissionBusinessId || !vehicleId) return;
-
-      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
-      setHasDraft(true);
-      draftSaveTimerRef.current = setTimeout(() => {
-        draftSaveTimerRef.current = null;
-        void persistChecklistDraft(formData).catch(() => undefined);
-      }, 500);
-    },
-    [
-      isDraftReady,
-      persistChecklistDraft,
-      submissionBusinessId,
-      user?.id,
-      vehicleId,
+      vehicleData?.license_plate,
     ],
   );
 
@@ -427,32 +381,37 @@ export const useChecklist = () => {
     checklistImagesRef.current = checklistImages;
   }, [checklistImages]);
 
+  // Restores a checklist left half-filled, and lands the driver back on the
+  // step they had reached rather than at the beginning.
   useEffect(() => {
     let isCancelled = false;
     setIsDraftReady(false);
-    draftPersistenceEnabledRef.current = true;
+    draft.resume();
 
     void (async () => {
       if (!user?.id || !submissionBusinessId || !vehicleId) return;
-      const draft = await loadChecklistDraft<CreateChecklistFormData, StepData>(
-        submissionStorageKey,
-      );
-      if (!draft || isCancelled) return;
 
-      const restoredValues = {
+      const storedDraft = await loadChecklistDraft<
+        CreateChecklistFormData,
+        StepData
+      >(submissionStorageKey);
+
+      if (!storedDraft || isCancelled) return;
+
+      reset({
         ...getValues(),
-        ...draft.formData,
+        ...storedDraft.formData,
         vehicleId,
         businessId: submissionBusinessId,
-      } as CreateChecklistFormData;
-      reset(restoredValues);
-      setStepData(draft.stepData);
-      setChecklistImages(draft.images);
+      } as CreateChecklistFormData);
+
+      setStepData(storedDraft.stepData);
+      setChecklistImages(storedDraft.images);
       setHasDraft(true);
 
-      if (isDriver || draft.stepData.driverId) {
+      if (isDriver || storedDraft.stepData.driverId) {
         setCurrentStep("form");
-      } else if (draft.stepData.branchId) {
+      } else if (storedDraft.stepData.branchId) {
         setCurrentStep("driver");
       }
     })()
@@ -464,6 +423,9 @@ export const useChecklist = () => {
     return () => {
       isCancelled = true;
     };
+    // `draft` is stable across renders; re-running this on it would reload the
+    // stored draft over the driver's current answers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     getValues,
     isDriver,
@@ -478,53 +440,27 @@ export const useChecklist = () => {
     () =>
       subscribe({
         formState: { values: true },
-        callback: ({ values }) => scheduleChecklistDraftSave(values),
+        callback: () => draft.schedule(),
       }),
-    [scheduleChecklistDraftSave, subscribe],
+    [draft, subscribe],
   );
 
-  useEffect(() => {
-    const flushPendingDraft = () => {
-      if (!draftSaveTimerRef.current) return;
-      clearTimeout(draftSaveTimerRef.current);
-      draftSaveTimerRef.current = null;
-      void persistChecklistDraft(getValues()).catch(() => undefined);
-    };
-
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState !== "active") flushPendingDraft();
-    });
-
-    return () => {
-      subscription.remove();
-      flushPendingDraft();
-    };
-  }, [getValues, persistChecklistDraft]);
-
+  // Photos and the branch/driver choice live outside the form, so changing them
+  // has to trigger a save the form subscription would never see.
   useEffect(() => {
     const hasSelectedContext =
       !isDriver && Boolean(stepData.branchId || stepData.driverId);
     const hasImages = Object.values(checklistImages).some(
       (images) => images.length > 0,
     );
+
     if (!hasDraft && !hasSelectedContext && !hasImages) return;
-    scheduleChecklistDraftSave(getValues());
-  }, [
-    checklistImages,
-    getValues,
-    hasDraft,
-    isDriver,
-    scheduleChecklistDraftSave,
-    stepData,
-  ]);
+    draft.schedule();
+  }, [checklistImages, draft, hasDraft, isDriver, stepData]);
 
   const discardChecklistDraft = useCallback(async () => {
-    draftPersistenceEnabledRef.current = false;
+    draft.release();
     submissionAbortControllerRef.current?.abort();
-    if (draftSaveTimerRef.current) {
-      clearTimeout(draftSaveTimerRef.current);
-      draftSaveTimerRef.current = null;
-    }
 
     const submissionId = await getOrCreateSubmissionId(submissionStorageKey);
     Object.values(checklistImagesRef.current).forEach((images) =>
@@ -559,9 +495,11 @@ export const useChecklist = () => {
       setCurrentStep("branch");
     }
 
-    draftPersistenceEnabledRef.current = true;
+    draft.resume();
     void getOrCreateSubmissionId(submissionStorageKey).catch(() => undefined);
   }, [
+    draft,
+    setCurrentStep,
     isDriver,
     reset,
     setValue,
@@ -572,33 +510,9 @@ export const useChecklist = () => {
     vehicleData?.branchName,
   ]);
 
-  const requestDiscardDraft = useCallback(() => {
-    setShowDiscardDraftModal(true);
-  }, []);
-
-  const cancelDiscardDraft = useCallback(() => {
-    if (!discardInFlightRef.current) setShowDiscardDraftModal(false);
-  }, []);
-
-  const confirmDiscardDraft = useCallback(async () => {
-    if (discardInFlightRef.current) return;
-    discardInFlightRef.current = true;
-    setIsDiscardingDraft(true);
-    try {
-      await discardChecklistDraft();
-      setShowDiscardDraftModal(false);
-    } catch {
-      Toast.show({
-        type: "error",
-        text1: "Não foi possível descartar o rascunho",
-        text2: "Tente novamente.",
-        position: "top",
-      });
-    } finally {
-      discardInFlightRef.current = false;
-      setIsDiscardingDraft(false);
-    }
-  }, [discardChecklistDraft]);
+  const discardConfirmation = useDiscardConfirmation({
+    onDiscard: discardChecklistDraft,
+  });
 
   const requiredValues = useWatch({
     control,
@@ -606,147 +520,36 @@ export const useChecklist = () => {
     exact: true,
   });
 
-  const areAllRequiredFieldsFilled = useMemo(() => {
-    const formData = Object.fromEntries(
-      REQUIRED_CHECKLIST_FIELDS.map((fieldName, index) => [
-        fieldName,
-        requiredValues[index],
-      ]),
-    ) as Partial<CreateChecklistFormData>;
+  const areAllRequiredFieldsFilled = useMemo(
+    () =>
+      isChecklistComplete({
+        values: Object.fromEntries(
+          REQUIRED_CHECKLIST_FIELDS.map((fieldName, index) => [
+            fieldName,
+            requiredValues[index],
+          ]),
+        ) as Partial<CreateChecklistFormData>,
+        photos: checklistImages,
+        isDriver,
+        stepData,
+      }),
+    [isDriver, stepData, checklistImages, requiredValues],
+  );
 
-    if (isDriver) {
-      if (!stepData.driverId) return false;
-    } else {
-      if (!stepData.branchId || !stepData.driverId) return false;
-    }
-
-    for (const field of REQUIRED_CHECKLIST_FIELDS) {
-      const value = formData[field as keyof typeof formData];
-      if (value === undefined || value === null || value === "") return false;
-    }
-
-    if (!formData.current_mileage || formData.current_mileage <= 0)
-      return false;
-
-    const alwaysRequiredPhotos = [
-      "current_mileage",
-      "fuel_level_adequate",
-      "tires_condition",
-    ];
-
-    for (const fieldName of alwaysRequiredPhotos) {
-      const images = checklistImages[fieldName] || [];
-      if (images.length === 0) return false;
-    }
-
-    const conditionalPhotoFields = [
-      { field: "brakes_working", condition: !formData.brakes_working },
-      { field: "headlights_working", condition: !formData.headlights_working },
-      { field: "taillights_working", condition: !formData.taillights_working },
-      {
-        field: "turn_signals_working",
-        condition: !formData.turn_signals_working,
-      },
-      {
-        field: "steering_wheel_condition",
-        condition: formData.steering_wheel_condition !== "good",
-      },
-      {
-        field: "battery_condition",
-        condition: formData.battery_condition !== "good",
-      },
-      {
-        field: "bumpers_condition",
-        condition: formData.bumpers_condition !== "good",
-      },
-      {
-        field: "windshield_condition",
-        condition: formData.windshield_condition !== "good",
-      },
-      {
-        field: "mirrors_condition",
-        condition: formData.mirrors_condition !== "good",
-      },
-      {
-        field: "spare_tire_condition",
-        condition: formData.spare_tire_condition !== "good",
-      },
-      { field: "oil_level_adequate", condition: !formData.oil_level_adequate },
-      {
-        field: "radiator_water_adequate",
-        condition: !formData.radiator_water_adequate,
-      },
-      {
-        field: "brake_fluid_adequate",
-        condition: !formData.brake_fluid_adequate,
-      },
-      { field: "seatbelts_working", condition: !formData.seatbelts_working },
-      { field: "dashboard_working", condition: !formData.dashboard_working },
-      { field: "clutch_working", condition: !formData.clutch_working },
-    ];
-
-    for (const { field, condition } of conditionalPhotoFields) {
-      if (condition) {
-        const images = checklistImages[field] || [];
-        if (images.length === 0) return false;
-      }
-    }
-
-    return true;
-  }, [
-    isDriver,
-    stepData.branchId,
-    stepData.driverId,
-    checklistImages,
-    requiredValues,
-  ]);
-
-  const goToNextStep = useCallback(() => {
-    if (isDriver) return;
-
-    const stepOrder: Step[] = ["branch", "driver", "form"];
-    const currentIndex = stepOrder.indexOf(currentStep);
-
-    if (currentIndex < stepOrder.length - 1) {
-      const nextStep = stepOrder[currentIndex + 1];
-      setCurrentStep(nextStep);
-    }
-  }, [currentStep, isDriver]);
-
-  const goToPrevStep = useCallback(() => {
-    submissionAbortControllerRef.current?.abort();
-
-    if (isDriver) {
-      router.back();
-      return;
-    }
-
-    const stepOrder: Step[] = ["branch", "driver", "form"];
-    const currentIndex = stepOrder.indexOf(currentStep);
-
-    if (currentIndex > 0) {
-      const prevStep = stepOrder[currentIndex - 1];
-      setCurrentStep(prevStep);
-    } else {
-      router.back();
-    }
-  }, [currentStep, router, isDriver]);
-
-  const canProceedToNext = useCallback((): boolean => {
-    switch (currentStep) {
-      case "branch":
-        return !!stepData.branchId;
-      case "driver":
-        return !!stepData.driverId;
-      default:
-        return false;
-    }
-  }, [currentStep, stepData]);
-
+  /**
+   * Files the captured photo under the question it answers.
+   *
+   * The image arrives already transcoded and within the per-file limit; what is
+   * left is the two checklist-specific budgets — how many photos an inspection
+   * may carry, and how many bytes in total — plus moving it somewhere the OS
+   * will not evict.
+   */
   const appendSelectedImage = useCallback(
-    async (selectedAsset: ImagePicker.ImagePickerAsset) => {
-      const currentImageCount = Object.values(checklistImages).reduce(
-        (total, images) => total + images.length,
+    async (asset: ImagePicker.ImagePickerAsset) => {
+      const images = Object.values(checklistImages);
+
+      const currentImageCount = images.reduce(
+        (total, fieldImages) => total + fieldImages.length,
         0,
       );
 
@@ -757,68 +560,62 @@ export const useChecklist = () => {
           text2: `O checklist aceita no máximo ${MAX_CHECKLIST_IMAGES} fotos.`,
           position: "top",
         });
+
+        return;
+      }
+
+      const currentUploadBytes = images.reduce(
+        (total, fieldImages) =>
+          total +
+          fieldImages.reduce(
+            (fieldTotal, image) => fieldTotal + (image.fileSize || 0),
+            0,
+          ),
+        0,
+      );
+
+      if (
+        currentUploadBytes + (asset.fileSize || 0) >
+        MAX_CHECKLIST_UPLOAD_BYTES
+      ) {
+        const remainingMegabytes = Math.max(
+          0,
+          (MAX_CHECKLIST_UPLOAD_BYTES - currentUploadBytes) / (1024 * 1024),
+        ).toFixed(1);
+
+        Toast.show({
+          type: "error",
+          text1: "Limite total de fotos",
+          text2: `As fotos podem somar no máximo 5 MB. Restam ${remainingMegabytes} MB.`,
+          position: "top",
+          visibilityTime: 4000,
+        });
+
         return;
       }
 
       let persistedAsset: ImagePicker.ImagePickerAsset | null = null;
+
       try {
-        let asset = await prepareUploadImage(selectedAsset);
-        const validationError = getImageValidationError(asset);
-
-        if (validationError) {
-          Toast.show({
-            type: "error",
-            text1: "Arquivo muito grande",
-            text2: validationError,
-            position: "top",
-            visibilityTime: 4000,
-          });
-          return;
-        }
-
-        const currentUploadBytes = Object.values(checklistImages).reduce(
-          (total, images) =>
-            total +
-            images.reduce(
-              (fieldTotal, image) => fieldTotal + (image.fileSize || 0),
-              0,
-            ),
-          0,
-        );
-
-        if (
-          currentUploadBytes + (asset.fileSize || 0) >
-          MAX_CHECKLIST_UPLOAD_BYTES
-        ) {
-          const remainingMegabytes = Math.max(
-            0,
-            (MAX_CHECKLIST_UPLOAD_BYTES - currentUploadBytes) / (1024 * 1024),
-          ).toFixed(1);
-          Toast.show({
-            type: "error",
-            text1: "Limite total de fotos",
-            text2: `As fotos podem somar no máximo 5 MB. Restam ${remainingMegabytes} MB.`,
-            position: "top",
-            visibilityTime: 4000,
-          });
-          return;
-        }
-
         const submissionId =
           await getOrCreateSubmissionId(submissionStorageKey);
-        asset = persistChecklistDraftImage(
+
+        persistedAsset = persistChecklistDraftImage(
           asset,
           submissionId,
           currentPhotoField,
         );
-        persistedAsset = asset;
+
         const nextImages = {
           ...checklistImages,
           [currentPhotoField]: [
             ...(checklistImages[currentPhotoField] || []),
-            asset,
+            persistedAsset,
           ],
         };
+
+        // Written straight away rather than through the debounce: a photo is
+        // expensive to retake, and the app may not get another chance.
         await saveChecklistDraft<CreateChecklistFormData, StepData>(
           submissionStorageKey,
           {
@@ -829,12 +626,14 @@ export const useChecklist = () => {
             updatedAt: new Date().toISOString(),
           },
         );
+
         checklistImagesRef.current = nextImages;
         setChecklistImages(nextImages);
         setHasDraft(true);
       } catch (error) {
         if (persistedAsset) deleteChecklistDraftImage(persistedAsset);
         if (error instanceof Error && error.name === "AbortError") return;
+
         Toast.show({
           type: "error",
           text1: "Não foi possível preparar a foto",
@@ -846,66 +645,16 @@ export const useChecklist = () => {
     [checklistImages, currentPhotoField, getValues, submissionStorageKey],
   );
 
-  const takePhoto = useCallback(async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permission.granted) {
-      Toast.show({
-        type: "error",
-        text1: "Permissão necessária",
-        text2: "É necessário permitir acesso à câmera.",
-        position: "top",
-      });
-
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0] && currentPhotoField) {
-      await appendSelectedImage(result.assets[0]);
-    }
-  }, [appendSelectedImage, currentPhotoField]);
-
-  const pickFromGallery = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Toast.show({
-        type: "error",
-        text1: "Permissão necessária",
-        text2: "É necessário permitir acesso à galeria.",
-        position: "top",
-      });
-
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0] && currentPhotoField) {
-      await appendSelectedImage(result.assets[0]);
-    }
-  }, [appendSelectedImage, currentPhotoField]);
+  const { takePhoto, pickFromGallery } = useImageCapture({
+    onCapture: appendSelectedImage,
+  });
 
   const showImagePicker = useCallback((fieldName: string) => {
     setCurrentPhotoField(fieldName);
     setShowImagePickerModal(true);
   }, []);
 
-  const getPhotoTitle = (fieldName: string): string => {
-    return PHOTO_TITLE_MAP[fieldName] || "Foto do Checklist";
-  };
+  const getPhotoTitle = getChecklistPhotoTitle;
 
   const removeImage = useCallback((fieldName: string, imageIndex: number) => {
     setChecklistImages((previousImages) => {
@@ -993,10 +742,11 @@ export const useChecklist = () => {
     stepData,
     setStepData,
     isSubmitting,
+    uploadProgress,
     isDraftReady,
     hasDraft,
-    showDiscardDraftModal,
-    isDiscardingDraft,
+    showDiscardDraftModal: discardConfirmation.isVisible,
+    isDiscardingDraft: discardConfirmation.isDiscarding,
     showImagePickerModal,
     setShowImagePickerModal,
     currentPhotoField,
@@ -1020,8 +770,8 @@ export const useChecklist = () => {
     showImagePicker,
     getPhotoTitle,
     removeImage,
-    requestDiscardDraft,
-    cancelDiscardDraft,
-    confirmDiscardDraft,
+    requestDiscardDraft: discardConfirmation.request,
+    cancelDiscardDraft: discardConfirmation.cancel,
+    confirmDiscardDraft: discardConfirmation.confirm,
   };
 };

@@ -3,6 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ProtectedRoute } from "../../components/protected-route";
 import { Header } from "../../components/header";
+import { StatusBanners } from "../../components/status-banners";
 
 import { LogoutModal } from "../../components/ui";
 import {
@@ -45,6 +46,7 @@ const SelectBusinessScreen = () => {
       <SafeAreaView className="flex-1 bg-gray-50">
         {/* Header */}
         <Header pageTitle="Selecionar Empresa" onLogout={handleLogout} />
+        <StatusBanners />
 
         <View className="px-6 pt-2 pb-8">
           {/* Search Input */}

@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store";
 import { useBusinessInfiniteScroll, useDebounce } from "@/hooks";
 
 import { Business } from "@/hooks/use-business-infinite-scroll";
+import { refreshWithConnectionFeedback } from "@/utils/pull-to-refresh";
 
 export const useSelectBusiness = () => {
   const router = useRouter();
@@ -54,7 +55,7 @@ export const useSelectBusiness = () => {
     setIsRefreshingError(false);
 
     try {
-      await refetch();
+      await refreshWithConnectionFeedback(refetch);
     } finally {
       setRefreshing(false);
     }
@@ -64,7 +65,7 @@ export const useSelectBusiness = () => {
     setIsRefreshingError(true);
 
     try {
-      await refetch();
+      await refreshWithConnectionFeedback(refetch);
     } finally {
       setIsRefreshingError(false);
     }
@@ -129,8 +130,8 @@ export const useSelectBusiness = () => {
     setIsLoggingOut(true);
 
     try {
+      // Declarative: the Stack.Protected guard flip already lands on /login.
       await logout();
-      router.replace("/login");
     } catch {
       setIsLoggingOut(false);
     }

@@ -41,7 +41,10 @@ export const useLogin = () => {
           visibilityTime: 3_000,
         });
 
-        router.replace("/vehicles");
+        // No imperative navigation here: `login()` flipped isAuthenticated and
+        // the root Stack.Protected guard already routes to the protected area.
+        // A replace on top of that navigated TWICE and remounted the screen —
+        // the visible stutter/flash right as the success toast appeared.
         return;
       }
 
@@ -68,7 +71,9 @@ export const useLogin = () => {
           visibilityTime: 3_000,
         });
 
-        router.push({
+        // navigate (not push): a resubmit while the toast shows must not
+        // stack a second two-factor screen.
+        router.navigate({
           pathname: "/two-factor",
           params: { email: result.email || data.email },
         });
@@ -104,6 +109,7 @@ export const useLogin = () => {
     errors,
     isSubmitting,
     onSubmit,
-    navigateToForgotPassword: () => router.push("/forgot-password"),
+    // navigate (not push): double-tapping the link must not stack screens.
+    navigateToForgotPassword: () => router.navigate("/forgot-password"),
   };
 };

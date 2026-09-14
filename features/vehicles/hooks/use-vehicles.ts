@@ -12,6 +12,8 @@ import {
   checkChecklistPermission,
 } from "@/utils/permissions";
 
+import { refreshWithConnectionFeedback } from "@/utils/pull-to-refresh";
+
 export const useVehicles = () => {
   const router = useRouter();
 
@@ -66,7 +68,7 @@ export const useVehicles = () => {
     setIsRefreshingError(false);
 
     try {
-      await refetch();
+      await refreshWithConnectionFeedback(refetch);
     } finally {
       setRefreshing(false);
     }
@@ -75,7 +77,7 @@ export const useVehicles = () => {
   const handleRefreshError = useCallback(async () => {
     setIsRefreshingError(true);
     try {
-      await refetch();
+      await refreshWithConnectionFeedback(refetch);
     } finally {
       setIsRefreshingError(false);
     }
@@ -92,10 +94,13 @@ export const useVehicles = () => {
     setShowVehicleActionModal(true);
   }, []);
 
+  // navigate (not push) on every screen-opening tap: RN fires one onPress per
+  // tap and a stack happily pushes duplicates — navigate reuses the instance
+  // already on the stack, so double-taps cannot pile screens up.
   const handleFuelAction = useCallback(() => {
     if (!selectedVehicle) return;
 
-    router.push({
+    router.navigate({
       pathname: "/fuel",
       params: { vehicleId: selectedVehicle.id },
     });
@@ -104,7 +109,7 @@ export const useVehicles = () => {
   const handleChecklistAction = useCallback(() => {
     if (!selectedVehicle) return;
 
-    router.push({
+    router.navigate({
       pathname: "/checklist",
       params: { vehicleId: selectedVehicle.id },
     });
@@ -114,11 +119,14 @@ export const useVehicles = () => {
     setShowLogoutModal(true);
   };
 
+  // Logout navigation is declarative: clearing the user flips the root
+  // Stack.Protected guard, which already lands on /login. Replacing on top of
+  // that navigated twice and remounted the login screen — the flash Gabriel
+  // saw right after logging out.
   const confirmLogout = async () => {
     setIsLoggingOut(true);
     try {
       await logout();
-      router.replace("/login");
     } catch (error) {
       setIsLoggingOut(false);
     }
@@ -163,13 +171,13 @@ export const useVehicles = () => {
   }, []);
 
   const navigateToSelectBusiness = useCallback(() => {
-    router.push("/select-business");
+    router.navigate("/select-business");
   }, [router]);
 
   const handleMasterLogout = useCallback(async () => {
+    // Declarative logout navigation — see confirmLogout.
     await logout();
-    router.replace("/login");
-  }, [logout, router]);
+  }, [logout]);
 
   const isMasterWithoutBusiness = user?.role === "MASTER" && !user?.businessId;
 

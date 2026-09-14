@@ -4,10 +4,11 @@ import { logger } from "./logger";
 import { updateSocketAuthToken } from "./socket";
 import { tokenStorage } from "./storage";
 
+import { reportApiReachable } from "@/store/connection-store";
+
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "");
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-const UPLOAD_TIMEOUT_MS = 120_000;
 
 export type ApiErrorCategory = "HTTP" | "NETWORK" | "TIMEOUT" | "CONFIGURATION";
 
@@ -66,13 +67,6 @@ interface ApiRequestConfig {
   responseType?: "auto" | "text";
   timeoutMs?: number;
   authRetryAttempted?: boolean;
-}
-
-export interface ApiUploadOptions {
-  requiresAuth?: boolean;
-  signal?: AbortSignal;
-  headers?: Record<string, string>;
-  timeoutMs?: number;
 }
 
 interface RequestContext {
@@ -204,6 +198,7 @@ class ApiClient {
   private normalizeFetchError(error: unknown, context: RequestContext): never {
     if (error instanceof ApiError) throw error;
     if (context.didTimeout()) {
+      reportApiReachable(false);
       throw new ApiError(
         "A requisicao excedeu o tempo limite. Tente novamente.",
         0,
@@ -212,10 +207,14 @@ class ApiClient {
       );
     }
 
+    // Aborts are our own doing — a screen unmounting, a session changing — and
+    // say nothing about whether the server is there.
     if (error instanceof Error && error.name === "AbortError") throw error;
     if (context.signal.aborted) {
       throw createAbortError();
     }
+
+    reportApiReachable(false);
 
     throw new ApiError(
       error instanceof Error ? error.message : "Network error",
@@ -391,22 +390,22 @@ class ApiClient {
       throw createAbortError("Session changed before request");
     }
 
-    const requestHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...headers,
-    };
+    // Content-Type only when a body actually goes with it: Fastify rejects a
+    // JSON content-type with an empty body (400), which silently broke every
+    // body-less PATCH — mark-as-read being the visible one.
+    const requestHeaders: Record<string, string> = { ...headers };
+
+    if (body !== undefined && body !== null) {
+      requestHeaders["Content-Type"] = "application/json";
+    }
+
     if (requiresAuth && accessToken) {
       requestHeaders.Authorization = `Bearer ${accessToken}`;
     }
 
     const requestConfig: RequestInit = { method, headers: requestHeaders };
     if (body !== undefined && body !== null) {
-      if (body instanceof FormData) {
-        delete requestHeaders["Content-Type"];
-        requestConfig.body = body;
-      } else {
-        requestConfig.body = JSON.stringify(body);
-      }
+      requestConfig.body = JSON.stringify(body);
     }
 
     const context = this.createRequestContext(signal, requiresAuth, timeoutMs);
@@ -414,6 +413,11 @@ class ApiClient {
 
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, requestConfig);
+
+      // It answered. A 401 or a 403 is still an answer — the banner is about
+      // reachability, not about authorisation.
+      reportApiReachable(true);
+
       if (requiresAuth && requestEpoch !== this.sessionEpoch) {
         throw createAbortError("Session changed during request");
       }
@@ -511,31 +515,6 @@ class ApiClient {
 
   async delete<T>(endpoint: string, requiresAuth = true): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE", requiresAuth });
-  }
-
-  async postFormData<T>(
-    endpoint: string,
-    formData: FormData,
-    requiresAuthOrOptions: boolean | ApiUploadOptions = true,
-    options: ApiUploadOptions = {},
-  ): Promise<T> {
-    const uploadOptions =
-      typeof requiresAuthOrOptions === "boolean"
-        ? options
-        : requiresAuthOrOptions;
-    const requiresAuth =
-      typeof requiresAuthOrOptions === "boolean"
-        ? requiresAuthOrOptions
-        : (requiresAuthOrOptions.requiresAuth ?? true);
-
-    return this.request<T>(endpoint, {
-      method: "POST",
-      body: formData,
-      requiresAuth,
-      headers: uploadOptions.headers,
-      signal: uploadOptions.signal,
-      timeoutMs: uploadOptions.timeoutMs ?? UPLOAD_TIMEOUT_MS,
-    });
   }
 
   async getNDJSONResponse(

@@ -21,6 +21,7 @@ export { Avatar } from "./avatar";
 export { UserSettingsDrawer } from "./user-settings-drawer";
 
 export { ImagePickerBottomSheet } from "./image-picker-bottom-sheet";
+export { UploadProgressBar } from "./upload-progress-bar";
 export { TotalAmountDisplay } from "./total-amount-display";
 
 export { LocationPicker } from "./location-picker";

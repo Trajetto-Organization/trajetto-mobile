@@ -1,4 +1,13 @@
-import { View, Text, TouchableOpacity, Modal } from "react-native";
+import {
+  Dimensions,
+  Modal,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+import { Button } from "./button";
 
 interface ConfirmModalProps {
   visible: boolean;
@@ -7,10 +16,22 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   confirmVariant?: "primary" | "danger";
+  /** Big glyph in the header circle, like the logout modal's wave. */
+  emoji?: string;
+  /** Keeps the modal open with a spinning button while the action runs. */
+  isLoading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
+const { width } = Dimensions.get("window");
+
+/**
+ * The app's one confirmation look, mirroring the logout modal: emoji
+ * circle, bold title, a full-width action and a quiet cancel underneath.
+ * Every confirmation goes through here so none of them drifts back to the
+ * bare system-looking card.
+ */
 export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   visible,
   title,
@@ -18,122 +39,87 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   confirmText = "Confirmar",
   cancelText = "Cancelar",
   confirmVariant = "primary",
+  emoji,
+  isLoading = false,
   onConfirm,
   onCancel,
 }) => {
+  const headerEmoji = emoji ?? (confirmVariant === "danger" ? "⚠️" : "✅");
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onCancel}
+      statusBarTranslucent
+      onRequestClose={() => {
+        if (!isLoading) onCancel();
+      }}
     >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          justifyContent: "center",
-          alignItems: "center",
-          paddingHorizontal: 20,
+      <Pressable
+        className="flex-1 bg-black/50 justify-center items-center px-6"
+        onPress={() => {
+          if (!isLoading) onCancel();
         }}
       >
-        <View
-          style={{
-            backgroundColor: "#ffffff",
-            borderRadius: 16,
-            padding: 24,
-            width: "100%",
-            maxWidth: 340,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: 0.25,
-            shadowRadius: 20,
-            elevation: 10,
-          }}
+        <Pressable
+          className="bg-white rounded-3xl overflow-hidden shadow-2xl"
+          style={{ width: Math.min(width - 48, 340) }}
+          onPress={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <View style={{ marginBottom: 16 }}>
-            <Text
-              style={{
-                fontSize: 20,
-                fontWeight: "700",
-                color: "#111827",
-                textAlign: "center",
-                marginBottom: 8,
-              }}
-            >
-              {title}
-            </Text>
-            <Text
-              style={{
-                fontSize: 16,
-                color: "#6b7280",
-                textAlign: "center",
-                lineHeight: 22,
-              }}
-            >
-              {message}
-            </Text>
+          <View
+            className="bg-gradient-to-r
+            from-gray-50 to-gray-100
+            px-6 pt-6 pb-4"
+          >
+            <View className="items-center">
+              <View
+                className={`w-16 h-16 rounded-full items-center
+                justify-center mb-4 bg-gradient-to-br ${
+                  confirmVariant === "danger"
+                    ? "from-danger-100 to-danger-200"
+                    : "from-primary-100 to-primary-200"
+                }`}
+              >
+                <Text className="text-3xl">{headerEmoji}</Text>
+              </View>
+              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">
+                {title}
+              </Text>
+              <Text className="text-gray-600 text-center text-sm leading-5">
+                {message}
+              </Text>
+            </View>
           </View>
 
           {/* Actions */}
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 12,
-            }}
-          >
-            {/* Cancel Button */}
+          <View className="px-6 py-6 gap-3">
+            <Button
+              onPress={onConfirm}
+              variant={confirmVariant}
+              loading={isLoading}
+              disabled={isLoading}
+              fullWidth
+              className="shadow-sm"
+            >
+              {confirmText}
+            </Button>
             <TouchableOpacity
               onPress={onCancel}
-              style={{
-                flex: 1,
-                backgroundColor: "#f3f4f6",
-                paddingVertical: 12,
-                paddingHorizontal: 16,
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-              activeOpacity={0.7}
+              disabled={isLoading}
+              className={`py-3 bg-gray-100 rounded-lg ${isLoading ? "opacity-50" : ""}`}
             >
               <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#374151",
-                }}
+                className="text-gray-700
+                text-center font-medium"
               >
                 {cancelText}
               </Text>
             </TouchableOpacity>
-
-            {/* Confirm Button */}
-            <TouchableOpacity
-              onPress={onConfirm}
-              style={{
-                flex: 1,
-                backgroundColor:
-                  confirmVariant === "danger" ? "#ef4444" : "#3b82f6",
-                paddingVertical: 12,
-                paddingHorizontal: 16,
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#ffffff",
-                }}
-              >
-                {confirmText}
-              </Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 };

@@ -40,7 +40,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
       style={({ pressed }) => ({
         opacity: pressed && !isSelecting && !disabled ? 0.7 : 1,
       })}
-      className={`bg-white rounded-lg shadow-sm p-4 mb-3 mx-4 ${
+      className={`bg-white rounded-lg shadow-sm p-4 mb-3 ${
         isSelecting
           ? "border-2 border-primary-500"
           : disabled

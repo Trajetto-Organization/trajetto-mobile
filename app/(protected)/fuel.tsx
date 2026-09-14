@@ -8,6 +8,7 @@ import {
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ProtectedRoute } from "../../components/protected-route";
+import { StatusBanners } from "../../components/status-banners";
 
 import {
   Button,
@@ -15,6 +16,7 @@ import {
   LogoutModal,
   ImagePickerBottomSheet,
   LoadingSpinner,
+  UploadProgressBar,
 } from "../../components/ui";
 import {
   BranchSelection,
@@ -32,6 +34,7 @@ const FuelScreen = () => {
     stepData,
     setStepData,
     isSubmitting,
+    uploadProgress,
     showLogoutModal,
     setShowLogoutModal,
     showImagePickerModal,
@@ -140,6 +143,8 @@ const FuelScreen = () => {
           </View>
         </View>
 
+        <StatusBanners />
+
         {/* Step Content */}
         <KeyboardAvoidingView behavior={"height"} className="flex-1">
           {currentStep === "branch" && (
@@ -220,6 +225,8 @@ const FuelScreen = () => {
 
         {/* Navigation Buttons */}
         <View className="px-6 py-4 bg-white border-t border-gray-200">
+          <UploadProgressBar progress={uploadProgress} />
+
           <View className="flex-row gap-4">
             <Button onPress={goToPrevStep} variant="outline" className="flex-1">
               {currentStep === "branch" ? "Cancelar" : "Voltar"}

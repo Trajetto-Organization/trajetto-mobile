@@ -35,9 +35,7 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
-      ],
-      "blockedPermissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -77,6 +75,13 @@
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true
           }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2563eb",
+          "defaultChannel": "default"
         }
       ],
       "expo-font"

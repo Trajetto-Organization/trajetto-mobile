@@ -8,11 +8,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ProtectedRoute } from "../../components/protected-route";
+import { StatusBanners } from "../../components/status-banners";
 import {
   Button,
   DiscardDraftModal,
   ImagePickerBottomSheet,
   LoadingSpinner,
+  UploadProgressBar,
 } from "../../components/ui";
 
 import { BranchSelection, DriverSelection } from "../../components/shared";
@@ -28,6 +30,7 @@ const ChecklistScreen = () => {
     stepData,
     setStepData,
     isSubmitting,
+    uploadProgress,
     isDraftReady,
     hasDraft,
     showDiscardDraftModal,
@@ -129,6 +132,8 @@ const ChecklistScreen = () => {
           </View>
         </View>
 
+        <StatusBanners />
+
         {/* Step Content */}
         <KeyboardAvoidingView behavior={"height"} className="flex-1">
           {currentStep === "branch" && (
@@ -187,6 +192,8 @@ const ChecklistScreen = () => {
 
         {/* Navigation Buttons */}
         <View className="px-6 py-4 bg-white border-t border-gray-200">
+          <UploadProgressBar progress={uploadProgress} />
+
           <View className="flex-row gap-4">
             <Button onPress={goToPrevStep} variant="outline" className="flex-1">
               {currentStep === "branch" ? "Cancelar" : "Voltar"}

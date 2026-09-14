@@ -41,6 +41,8 @@ export interface User {
   avatar?: string | null;
   profileAccess?: ProfileAccess | null;
   driverId?: string | null;
+  /** Modules enabled for the user's business — rides /user/me. */
+  enabledModules?: string[];
   driver?: {
     id: string;
     status: string;

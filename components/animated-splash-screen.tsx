@@ -20,6 +20,17 @@ const colors = {
   white: "#ffffff",
 };
 
+/** Matches the gradient overlay below — the band has to clear the wordmark. */
+const SHIMMER_BAND_WIDTH = 400;
+
+/** Only used if the animation runs before the wordmark has been measured. */
+const FALLBACK_WORDMARK_WIDTH = 140;
+
+// Fast enough not to hold up a cold start, slow enough for the eye to follow
+// the light rather than just notice that something flickered.
+const SHIMMER_DURATION_MS = 700;
+const SHIMMER_HOLD_MS = 220;
+
 interface AnimatedSplashScreenProps {
   onFinish: () => void;
 }
@@ -69,8 +80,17 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
   const particle4Y = useRef(new Animated.Value(0)).current;
   const particle4Scale = useRef(new Animated.Value(0)).current;
 
-  // Shimmer effect
-  const shimmerX = useRef(new Animated.Value(-width)).current;
+  // Shimmer effect.
+  //
+  // The band only has to cross the wordmark, not the screen. Travelling a full
+  // screen width was what made it read as a blink: at any sane duration the
+  // light spent most of its time outside the clipped area, so the part anyone
+  // could actually see lasted a few frames.
+  const shimmerX = useRef(new Animated.Value(-SHIMMER_BAND_WIDTH)).current;
+
+  // Measured from the wordmark itself. Until layout runs it is a guess, which
+  // only matters if the animation somehow starts first.
+  const wordmarkWidth = useRef(FALLBACK_WORDMARK_WIDTH);
 
   // Wave rings
   const ringScale1 = useRef(new Animated.Value(0)).current;
@@ -345,16 +365,22 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
           }),
         ]),
 
-        // Phase 5: Shimmer effect (2.9-3.4s)
+        // Phase 5: Shimmer across the wordmark
         Animated.timing(shimmerX, {
-          toValue: width * 1.5,
-          duration: 140,
-          easing: Easing.inOut(Easing.ease),
+          toValue: wordmarkWidth.current,
+          duration: SHIMMER_DURATION_MS,
+
+          // Eases in and out rather than sweeping at constant speed, so the
+          // light looks like it is passing over the letters instead of being
+          // dragged across them.
+          easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
 
-        // Phase 6: Hold (3.4-3.7s)
-        Animated.delay(30),
+        // Phase 6: Let the finished wordmark stand on its own for a beat before
+        // the screen goes. Without this the shimmer runs straight into the fade
+        // and the whole thing reads as one rushed movement.
+        Animated.delay(SHIMMER_HOLD_MS),
 
         // Phase 7: Fade out (3.7-4s)
         Animated.timing(fadeOut, {
@@ -618,7 +644,12 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
             transform: [{ scale: textScale }, { translateY: textY }],
           }}
         >
-          <View style={{ overflow: "hidden" }}>
+          <View
+            style={{ overflow: "hidden" }}
+            onLayout={(event) => {
+              wordmarkWidth.current = event.nativeEvent.layout.width;
+            }}
+          >
             {/* Shimmer overlay with a smooth gradient. */}
             <Animated.View
               style={{

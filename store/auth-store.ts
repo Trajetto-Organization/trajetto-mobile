@@ -27,6 +27,10 @@ import { validateUserAccess } from "../utils/permissions";
 import { disconnectSocket } from "../utils/socket";
 
 import { authSessionStorage, tokenStorage } from "../utils/storage";
+import {
+  getRegisteredPushToken,
+  setRegisteredPushToken,
+} from "../utils/push-token";
 
 type AuthenticationResult = {
   success: boolean;
@@ -372,6 +376,27 @@ export const useAuthStore = create<AuthState>()(
               });
             });
 
+          // Best-effort: stop pushing at a device whose user just left. If
+          // this never runs (killed app, no network), the server still
+          // reassigns the token on the next login and prunes dead ones.
+          const registeredPushToken = getRegisteredPushToken();
+          const pushCleanupPromise = registeredPushToken
+            ? tokenStorage
+                .getAccessToken()
+                .then((accessToken) => {
+                  if (!accessToken) return;
+                  return apiClient.request("/notification/push-token", {
+                    method: "DELETE",
+                    requiresAuth: false,
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                    body: { token: registeredPushToken },
+                    timeoutMs: 5_000,
+                  });
+                })
+                .then(() => setRegisteredPushToken(null))
+                .catch(() => undefined)
+            : Promise.resolve();
+
           const operationEpoch = beginAuthOperation();
           logoutOperationEpoch = operationEpoch;
 
@@ -387,16 +412,18 @@ export const useAuthStore = create<AuthState>()(
           const promise = (async () => {
             const results = await Promise.allSettled([
               serverLogoutPromise,
+              pushCleanupPromise,
               authSessionStorage.markLoggedOut(markerEpoch),
               tokenStorage.clearTokens(),
               authSessionStorage.clearPersistedAuth(),
               clearAllSubmissionData(),
               clearQueryCache(),
             ]);
-            // The remote call is deliberately best-effort. Local credential
-            // cleanup failures are the ones that require diagnostics.
+            // The remote calls (server logout, push unregister) are
+            // deliberately best-effort. Local credential cleanup failures
+            // are the ones that require diagnostics.
             const failures = results
-              .slice(1)
+              .slice(2)
               .filter((result) => result.status === "rejected");
             if (failures.length > 0) {
               logger.error("logout: one or more storage cleanups failed");

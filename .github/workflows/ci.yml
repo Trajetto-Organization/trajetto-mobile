@@ -1,0 +1,45 @@
+name: CI (branches)
+
+# Fast branch gate, mirroring the web/API repos. Runs on any branch other
+# than main/master so problems surface before the PR — not later, in the
+# middle of the EAS pipeline.
+#
+# Intentionally excluded: EAS builds, submit and OTA updates. All of that is
+# handled by deploy.yml once the code reaches main. Here there is only one
+# question: is this code healthy enough to become a PR?
+on:
+  push:
+    branches-ignore: [main, master]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Lint, type-check and unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Cheapest check first — no point spending minutes on tsc if the code
+      # is not even formatted.
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      # The pure business rules (fuel/checklist) — the part of the app that
+      # must hold regardless of device or connectivity.
+      - name: Unit tests
+        run: npm test

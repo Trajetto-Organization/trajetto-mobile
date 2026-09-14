@@ -96,7 +96,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       activeOpacity={isDisabled ? 1 : 0.7}
       disabled={isDisabled}
       className={`bg-white rounded-lg
-      shadow-sm border p-4 mb-3 mx-4 ${
+      shadow-sm border p-4 mb-3 ${
         isDisabled ? "border-gray-300 opacity-60" : "border-gray-200"
       }`}
     >
