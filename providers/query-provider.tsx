@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { shouldPersistQuery } from "@/features/offline/offline-cache-rules";
 import NetInfo from "@react-native-community/netinfo";
 
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -41,24 +43,6 @@ class AppQueryClient extends QueryClient {
     void Promise.resolve(queryPersister.removeClient()).catch(() => undefined);
   }
 }
-
-/**
- * Reference data the app must still be able to show with no network.
- *
- * Everything a driver needs to fill a checklist or a refuelling is here, plus
- * the two lists a MASTER uses to reach that point. It is an allowlist and not
- * "persist everything" because the cache is written to disk on a throttle:
- * dehydrating result pages nobody reads offline would cost writes on every
- * search keystroke and buy nothing.
- */
-const OFFLINE_QUERY_KEYS = new Set([
-  "vehicles",
-  "vehicle",
-  "branches",
-  "fuelTypes",
-  "drivers",
-  "businesses",
-]);
 
 /**
  * How long the offline cache stays usable.
@@ -135,11 +119,7 @@ export const QueryProvider = ({ children }: PropsWithChildren) => {
         persister: queryPersister,
         buster: "trajetto-offline-cache-v1",
         maxAge: OFFLINE_CACHE_MAX_AGE,
-        dehydrateOptions: {
-          shouldDehydrateQuery: (query) =>
-            query.state.status === "success" &&
-            OFFLINE_QUERY_KEYS.has(String(query.queryKey[0])),
-        },
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
       }}
       onError={() => queryPersister.removeClient()}
     >
