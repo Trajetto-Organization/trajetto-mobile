@@ -9,6 +9,7 @@ import { BannerCollapse } from "@/components/ui/banner-collapse";
 import {
   selectFailedCount,
   selectPendingCount,
+  selectUnclaimedCount,
   useOutboxStore,
 } from "@/store/outbox-store";
 
@@ -31,9 +32,15 @@ const OutboxBanner = () => {
 
   const pendingCount = useOutboxStore(selectPendingCount);
   const failedCount = useOutboxStore(selectFailedCount);
+  const unclaimedCount = useOutboxStore(selectUnclaimedCount);
 
   const isProcessing = useOutboxStore((state) => state.isProcessing);
-  const total = pendingCount + failedCount;
+
+  // An unclaimed submission is grouped with the rejected ones rather than the
+  // waiting ones: both sit there until a person acts, and promising that it
+  // "will be sent once there is a connection" would be false.
+  const attentionCount = failedCount + unclaimedCount;
+  const total = pendingCount + attentionCount;
 
   // The last real content survives the exit animation — when the queue drains
   // to zero, the strip collapses still reading "Enviando…" instead of
@@ -43,12 +50,12 @@ const OutboxBanner = () => {
   if (total > 0) {
     // Something rejected on the merits outranks something merely waiting: one
     // needs the driver, the other needs only time.
-    const needsAttention = failedCount > 0;
+    const needsAttention = attentionCount > 0;
 
     lastContent.current = {
       needsAttention,
       label: needsAttention
-        ? `${failedCount} ${failedCount === 1 ? "envio precisa" : "envios precisam"} de atenção`
+        ? `${attentionCount} ${attentionCount === 1 ? "envio precisa" : "envios precisam"} de atenção`
         : isProcessing
           ? "Enviando registros pendentes…"
           : `${pendingCount} ${pendingCount === 1 ? "envio pendente" : "envios pendentes"}`,

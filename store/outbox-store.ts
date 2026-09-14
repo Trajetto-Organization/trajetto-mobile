@@ -1,5 +1,8 @@
 import { create } from "zustand";
 
+import { classifyOwnership } from "@/features/submissions/outbox-rules";
+import { getSubmissionOwner } from "@/features/submissions/submission-owner";
+
 import type { OutboxItem } from "@/features/submissions/outbox";
 
 interface OutboxState {
@@ -41,13 +44,39 @@ const useOutboxStore = create<OutboxState>((set) => ({
     set({ activeItemId, activeProgress }),
 }));
 
+/**
+ * The counts below all ask about ownership, because `items` holds two kinds of
+ * thing: this driver's queue, and submissions left by an older version of the
+ * app that never recorded whose they were. Only the first will ever leave on
+ * its own, so only the first may be described as waiting for a connection.
+ *
+ * Reading the owner from outside the store is safe here: it only ever changes
+ * alongside a `setItems`, so every selector re-runs when it does.
+ */
+const isOwn = (item: OutboxItem): boolean =>
+  classifyOwnership(item, getSubmissionOwner()) === "own";
+
 /** Waiting to be sent, or waiting to be retried. */
 const selectPendingCount = (state: OutboxState): number =>
-  state.items.filter((item) => item.status === "pending").length;
+  state.items.filter((item) => isOwn(item) && item.status === "pending").length;
 
 /** Rejected for a reason retrying will not fix — these need a person. */
 const selectFailedCount = (state: OutboxState): number =>
-  state.items.filter((item) => item.status === "failed").length;
+  state.items.filter((item) => isOwn(item) && item.status === "failed").length;
 
-export { useOutboxStore, selectPendingCount, selectFailedCount };
+/**
+ * Queued before the app recorded ownership. Nothing will send these until
+ * somebody says they are theirs, so they need a person just as a failure does.
+ */
+const selectUnclaimedCount = (state: OutboxState): number =>
+  state.items.filter(
+    (item) => classifyOwnership(item, getSubmissionOwner()) === "unclaimed",
+  ).length;
+
+export {
+  useOutboxStore,
+  selectFailedCount,
+  selectPendingCount,
+  selectUnclaimedCount,
+};
 export type { OutboxState };

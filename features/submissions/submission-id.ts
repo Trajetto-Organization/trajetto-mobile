@@ -3,7 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { randomUUID } from "expo-crypto";
 import { Directory, Paths } from "expo-file-system";
 
-import { clearOutbox } from "./outbox";
+import { detachOutbox } from "./outbox";
+import { setSubmissionOwner } from "./submission-owner";
 
 type SubmissionKind = "fuel" | "checklist";
 
@@ -36,14 +37,23 @@ const enqueueSubmissionMutation = async <T>(
   return result;
 };
 
-export function enableSubmissionPersistence(): void {
+/**
+ * Opens persistence for a session, and records whose it is.
+ *
+ * The user id is not decoration: it is what every queued submission is stamped
+ * with, and therefore what decides, after the next logout, which items the
+ * queue may still send.
+ */
+export function enableSubmissionPersistence(userId: string): void {
   submissionPersistenceEnabled = true;
+  setSubmissionOwner(userId);
 }
 
 export function disableSubmissionPersistence(): void {
   submissionPersistenceEnabled = false;
   submissionPersistenceEpoch += 1;
   inFlightSubmissionIds.clear();
+  setSubmissionOwner(null);
 }
 
 export function getSubmissionPersistenceEpoch(): number {
@@ -101,14 +111,24 @@ export async function clearSubmissionId(storageKey: string): Promise<void> {
   await enqueueSubmissionMutation(() => AsyncStorage.removeItem(storageKey));
 }
 
-/** Removes every persisted form key and photo after an explicit/forced logout. */
+/**
+ * Removes every persisted form key and photo after an explicit/forced logout.
+ *
+ * Half-filled forms go; the queue does not. The line between them is whether
+ * the driver already pressed send: a draft is work in progress, and losing it
+ * costs the minutes since the form was opened. A queued submission is work the
+ * driver considers finished and the app promised to deliver — a proof of
+ * delivery collected in a basement, sometimes the only record that the parcel
+ * ever arrived. Wiping that on logout meant a refresh token expiring on a
+ * Sunday could erase Friday's evidence, with nobody ever told.
+ *
+ * So the queue is only detached from this session's view of it. What keeps the
+ * next person to sign in from touching it is `ownerUserId`, not deletion.
+ */
 export async function clearAllSubmissionData(): Promise<void> {
   disableSubmissionPersistence();
 
-  // Queued submissions go too. They carry business data belonging to the
-  // session that is ending, and nobody else who logs in on this device may see
-  // them — let alone send them under their own credentials.
-  await clearOutbox().catch(() => undefined);
+  detachOutbox();
 
   await enqueueSubmissionMutation(async () => {
     const keys = await AsyncStorage.getAllKeys();

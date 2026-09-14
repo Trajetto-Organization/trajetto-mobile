@@ -11,13 +11,16 @@ import { ProtectedRoute } from "../../components/protected-route";
 import { StatusBanners } from "../../components/status-banners";
 import { Button, ConfirmModal } from "../../components/ui";
 
-import { useOutboxStore } from "@/store/outbox-store";
+import { useOutboxStore, selectPendingCount } from "@/store/outbox-store";
 import {
   discardOutboxItem,
   processOutbox,
   retryOutboxItem,
   type OutboxItem,
 } from "@/features/submissions/outbox";
+
+import { classifyOwnership } from "@/features/submissions/outbox-rules";
+import { getSubmissionOwner } from "@/features/submissions/submission-owner";
 
 const KIND_LABEL: Record<OutboxItem["kind"], string> = {
   checklist: "Checklist",
@@ -53,6 +56,10 @@ const PendingSubmissionsScreen = () => {
   const items = useOutboxStore((state) => state.items);
   const activeItemId = useOutboxStore((state) => state.activeItemId);
 
+  // Only this driver's own queue answers to "send now". A footer button that
+  // did nothing would be worse than no button at all.
+  const pendingCount = useOutboxStore(selectPendingCount);
+
   const activeProgress = useOutboxStore((state) => state.activeProgress);
   const isProcessing = useOutboxStore((state) => state.isProcessing);
 
@@ -78,18 +85,27 @@ const PendingSubmissionsScreen = () => {
     const isActive = item.id === activeItemId;
     const isFailed = item.status === "failed";
 
+    // Queued by a version of the app that did not record who was signed in.
+    // The queue will not send it on its own, because sending it would file it
+    // under whoever is holding the phone now. Only a person can settle that,
+    // so the item is shown with the same two choices a rejection gets.
+    const isUnclaimed =
+      classifyOwnership(item, getSubmissionOwner()) === "unclaimed";
+
+    const needsDecision = isFailed || isUnclaimed;
+
     return (
       <View className="mb-3 rounded-xl border border-gray-200 bg-white p-4">
         <View className="flex-row items-start gap-3">
           <View
             className={`h-9 w-9 items-center justify-center rounded-full ${
-              isFailed ? "bg-danger-600/10" : "bg-primary-600/10"
+              needsDecision ? "bg-danger-600/10" : "bg-primary-600/10"
             }`}
           >
             <Ionicons
               name={item.kind === "checklist" ? "clipboard-outline" : "water-outline"}
               size={18}
-              color={isFailed ? "#dc2626" : "#2563eb"}
+              color={needsDecision ? "#dc2626" : "#2563eb"}
             />
           </View>
 
@@ -108,6 +124,11 @@ const PendingSubmissionsScreen = () => {
                 Enviando… {activeProgress.uploaded} de {activeProgress.total}{" "}
                 {activeProgress.total === 1 ? "foto" : "fotos"}
               </Text>
+            ) : isUnclaimed ? (
+              <Text className="mt-2 text-xs text-danger-600">
+                Este envio ficou salvo de um acesso anterior. Confirme que é
+                seu para enviá-lo com o seu login.
+              </Text>
             ) : isFailed ? (
               <Text className="mt-2 text-xs text-danger-600">
                 {item.lastError || "O servidor recusou este envio."}
@@ -124,7 +145,7 @@ const PendingSubmissionsScreen = () => {
           </View>
         </View>
 
-        {isFailed && (
+        {needsDecision && (
           <View className="mt-4 flex-row gap-3">
             <Button
               variant="outline"
@@ -140,7 +161,7 @@ const PendingSubmissionsScreen = () => {
               className="flex-1"
               onPress={() => void retryOutboxItem(item.id)}
             >
-              Tentar de novo
+              {isUnclaimed ? "É meu, enviar" : "Tentar de novo"}
             </Button>
           </View>
         )}
@@ -196,7 +217,7 @@ const PendingSubmissionsScreen = () => {
           }
         />
 
-        {items.length > 0 && (
+        {pendingCount > 0 && (
           <View className="border-t border-gray-200 bg-white px-6 py-4">
             <Button
               onPress={() => void processOutbox()}

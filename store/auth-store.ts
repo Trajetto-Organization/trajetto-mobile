@@ -195,7 +195,7 @@ export const useAuthStore = create<AuthState>()(
             });
           }
 
-          enableSubmissionPersistence();
+          enableSubmissionPersistence(user.id);
           set({
             user,
             isAuthenticated: true,
@@ -520,7 +520,7 @@ export const useAuthStore = create<AuthState>()(
               await authSessionStorage.markActive();
               if (!isCurrentOperation(operationEpoch)) return;
 
-              enableSubmissionPersistence();
+              enableSubmissionPersistence(response.user.id);
               set({
                 user: mergeServerUser(response.user, cachedUser),
                 isAuthenticated: true,
@@ -540,7 +540,7 @@ export const useAuthStore = create<AuthState>()(
                   "checkAuth: transient validation failure, preserving cached session",
                 );
 
-                if (cachedUser) enableSubmissionPersistence();
+                if (cachedUser) enableSubmissionPersistence(cachedUser.id);
                 set({
                   user: cachedUser,
                   isAuthenticated: Boolean(cachedUser),

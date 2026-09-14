@@ -17,6 +17,15 @@ import { useConnectionStore } from "@/store/connection-store";
 
 import { queryClient } from "@/providers/query-provider";
 
+import { getSubmissionOwner } from "./submission-owner";
+import {
+  canActOn,
+  claim,
+  classifyOwnership,
+  selectSendable,
+  selectVisible,
+} from "./outbox-rules";
+
 const OUTBOX_STORAGE_KEY = "@trajetto:outbox:v1";
 const OUTBOX_DIRECTORY = "trajetto-outbox";
 
@@ -80,6 +89,14 @@ interface OutboxItem {
 
   kind: OutboxKind;
   businessId: string;
+
+  /**
+   * The driver who queued it. The queue survives logout, so this is what keeps
+   * the next person to sign in on this phone from sending it under their own
+   * credentials. Absent only on items queued before this field existed — see
+   * `classifyOwnership`.
+   */
+  ownerUserId?: string;
 
   /** Absent for delivery submissions — those belong to a delivery. */
   vehicleId?: string;
@@ -160,21 +177,38 @@ async function readItems(): Promise<OutboxItem[]> {
     const parsed = JSON.parse(raw) as OutboxItem[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
+    // The only place the queue still throws work away, and it does so because
+    // unparseable JSON leaves nothing to retry. It is at least said out loud:
+    // a driver reporting a vanished proof needs this line to exist.
+    logger.error("outbox: queue file was unreadable and had to be dropped");
+
     await AsyncStorage.removeItem(OUTBOX_STORAGE_KEY);
     return [];
   }
 }
 
+/**
+ * Disk keeps every item; the store only ever sees this session's.
+ *
+ * Both halves matter. Persisting everything is what lets a driver log back in
+ * and find their queue intact. Publishing only what belongs to whoever is
+ * signed in now is what keeps the pending screen, the badge and the banner
+ * from describing someone else's work — and, since the screen's buttons act on
+ * what it lists, from offering to send it.
+ */
 async function writeItems(items: OutboxItem[]): Promise<void> {
   await AsyncStorage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(items));
-  useOutboxStore.getState().setItems(items);
+  useOutboxStore.getState().setItems(selectVisible(items, getSubmissionOwner()));
 }
 
-/** Reads the queue from disk into the store. Called on boot. */
+/** Reads the queue from disk into the store. Called on boot and after login. */
 async function loadOutbox(): Promise<OutboxItem[]> {
   return enqueueStorageMutation(async () => {
     const items = await readItems();
-    useOutboxStore.getState().setItems(items);
+
+    useOutboxStore
+      .getState()
+      .setItems(selectVisible(items, getSubmissionOwner()));
 
     return items;
   });
@@ -247,6 +281,10 @@ async function enqueueSubmission(
     id: input.id,
     kind: input.kind,
     businessId: input.businessId,
+    // Stamped here rather than passed in by each caller, so that the identity
+    // the queue will later check against is by construction the same one the
+    // session is running under.
+    ownerUserId: getSubmissionOwner() ?? undefined,
     vehicleId: input.vehicleId,
     vehicleLabel: input.vehicleLabel,
     endpoint: input.endpoint,
@@ -419,15 +457,18 @@ async function processOutbox(): Promise<void> {
   // not gate here: sending is the only probe that can clear it.
   if (useConnectionStore.getState().isDeviceOffline) return;
 
+  // No session, nothing to send under. The items stay exactly where they are
+  // and wait for their own driver to come back.
+  const ownerUserId = getSubmissionOwner();
+  if (!ownerUserId) return;
+
   activePass = (async () => {
     const store = useOutboxStore.getState();
     store.setProcessing(true);
 
     try {
       const items = await loadOutbox();
-      const due = items.filter(
-        (item) => item.status === "pending" && item.nextAttemptAt <= Date.now(),
-      );
+      const due = selectSendable(items, ownerUserId, Date.now());
 
       for (const item of due) {
         store.setActive(item.id, { uploaded: 0, total: item.photos.length });
@@ -481,11 +522,15 @@ async function processOutbox(): Promise<void> {
  * way to know except by trying.
  */
 async function unparkOutboxItems(): Promise<void> {
+  const ownerUserId = getSubmissionOwner();
+  if (!ownerUserId) return;
+
   await enqueueStorageMutation(async () => {
     const items = await readItems();
 
     const next = items.map((item) =>
-      item.status === "parked"
+      item.status === "parked" &&
+      classifyOwnership(item, ownerUserId) === "own"
         ? { ...item, status: "pending" as const, nextAttemptAt: Date.now() }
         : item,
     );
@@ -496,46 +541,69 @@ async function unparkOutboxItems(): Promise<void> {
   await processOutbox();
 }
 
-/** Puts a failed item back in line, at the driver's request. */
+/**
+ * Puts an item back in line, at the driver's request.
+ *
+ * Also the one way an unclaimed item ever gets sent: pressing this is the
+ * person saying the submission is theirs, so it is stamped with their id here
+ * and from then on behaves like anything else they queued. An item that
+ * already has an owner keeps it, so this can never hand one driver's work to
+ * another.
+ */
 async function retryOutboxItem(itemId: string): Promise<void> {
-  await updateItem(itemId, (item) => ({
-    ...item,
-    status: "pending",
-    attempts: 0,
-    nextAttemptAt: Date.now(),
-    lastError: undefined,
-  }));
+  const ownerUserId = getSubmissionOwner();
+  if (!ownerUserId) return;
+
+  await updateItem(itemId, (item) =>
+    canActOn(item, ownerUserId)
+      ? claim(
+          {
+            ...item,
+            status: "pending" as const,
+            attempts: 0,
+            nextAttemptAt: Date.now(),
+            lastError: undefined,
+          },
+          ownerUserId,
+        )
+      : item,
+  );
 
   await processOutbox();
 }
 
 /** Throws a submission away, photos and all. Only ever user-initiated. */
 async function discardOutboxItem(itemId: string): Promise<void> {
+  const ownerUserId = getSubmissionOwner();
+
+  const items = await enqueueStorageMutation(readItems);
+  const target = items.find((item) => item.id === itemId);
+
+  // Nothing outside the UI reaches this, but the UI is not the only caller a
+  // future change could add, and the cost of being wrong here is a deleted
+  // proof of delivery belonging to someone who is not in the room.
+  if (!target || !canActOn(target, ownerUserId)) return;
+
   await removeItem(itemId);
 }
 
 /**
- * Wipes the queue. Called on logout alongside the drafts, because both hold
- * business data belonging to the session that is ending.
+ * Lets go of the queue in memory without touching the disk.
+ *
+ * Called on logout. The items stay: they are work the driver already confirmed
+ * and the app promised to deliver, and a session ending — theirs, or a refresh
+ * token that expired while the phone sat in a truck — says nothing about
+ * whether that promise still stands. What has to end is this session's view of
+ * them, so the next person to sign in starts from an empty screen.
  */
-async function clearOutbox(): Promise<void> {
-  await enqueueStorageMutation(async () => {
-    await AsyncStorage.removeItem(OUTBOX_STORAGE_KEY);
-    useOutboxStore.getState().setItems([]);
-  });
-
-  try {
-    const root = new Directory(Paths.document, OUTBOX_DIRECTORY);
-    if (root.exists) root.delete();
-  } catch {
-    logger.dev("outbox: could not delete photo root");
-  }
+function detachOutbox(): void {
+  useOutboxStore.getState().setItems([]);
 }
 
 export {
   buildPhotoPayload,
-  clearOutbox,
   classifyFailure,
+  detachOutbox,
   discardOutboxItem,
   enqueueSubmission,
   loadOutbox,
