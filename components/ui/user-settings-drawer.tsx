@@ -26,7 +26,7 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
   const user = useAuthStore((state) => state.user);
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
 
-  // Snap points para o bottom sheet
+  // Snap points for the bottom sheet
   const snapPoints = useMemo(() => ["70%"], []);
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
     }
   }, [visible]);
 
-  // Callback quando o sheet é fechado
+  // Callback for when the sheet closes
   const handleSheetChanges = useCallback(
     (index: number) => {
       if (index === -1) {
