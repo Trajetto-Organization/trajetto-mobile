@@ -47,6 +47,20 @@ describe("what survives a dead network", () => {
     expect(isOfflineQueryKey(undefined)).toBe(false);
   });
 
+  it("keeps the route on the cached path by keeping it inside my-deliveries", () => {
+    // The dispatcher's stop order reaches the driver INSIDE the my-deliveries
+    // payload, not as a query of its own — which is what makes it survive a
+    // cold start with no signal, for free.
+    //
+    // This pins the structural half of that decision: a future "route" query
+    // would render a screen that works online and goes blank in a basement,
+    // and it would do so silently, because nothing about it looks wrong until
+    // the network is gone.
+    expect(isOfflineQueryKey("my-deliveries")).toBe(true);
+    expect(isOfflineQueryKey("route")).toBe(false);
+    expect(isOfflineQueryKey("route-detail")).toBe(false);
+  });
+
   it("names exactly what it names", () => {
     // Pinned so removing an entry is a decision someone has to make on
     // purpose, rather than a line that vanishes in a refactor.
