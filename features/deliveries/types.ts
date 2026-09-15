@@ -1,5 +1,7 @@
 import type { DeliveryStatus } from "./delivery-rules";
 
+import type { DriverRouteStop } from "./delivery-rules";
+
 interface DriverDeliveryItem {
   id: string;
   description: string;
@@ -27,6 +29,16 @@ interface DriverDelivery {
   notes?: string | null;
   shipper?: { id: string; name: string } | null;
   items?: DriverDeliveryItem[];
+
+  /**
+   * The open stop, when this delivery is on a route — at most one, because the
+   * API's partial unique index allows a delivery exactly one.
+   *
+   * Optional, and not only because a delivery can be off-route: the app renders
+   * from up to seven days of cached payloads, and the rows written before this
+   * field existed have no key at all.
+   */
+  stops?: DriverRouteStop[] | null;
 }
 
 /** The driver's occurrence vocabulary — active types only. */

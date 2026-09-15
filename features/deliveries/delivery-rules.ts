@@ -38,17 +38,122 @@ function hasDeliveriesAccess(user: DeliveriesAccessInput | null): boolean {
 }
 
 /**
+ * The stop this delivery occupies on a route, when it is on one.
+ *
+ * At most one: the API's partial unique index allows a delivery exactly one
+ * open stop, so `stops[0]` is the whole story. A delivery assigned in a batch
+ * — without a route — has none, which is the ordinary case for operations
+ * that never adopted routes.
+ */
+interface DriverRouteStop {
+  id: string;
+  sequence: number;
+  status: string;
+  route: {
+    id: string;
+    code: number;
+    name: string | null;
+    status: string;
+  };
+}
+
+/**
+ * `stops` is optional on purpose, and the reason is a phone.
+ *
+ * The API always sends it now — an empty array when the delivery is on no
+ * route. But the app renders from a cache that holds up to seven days of
+ * payloads, and the ones written before this field existed have no key at
+ * all. A required field here would make those rows a type lie and, worse,
+ * `stops[0]` on them a crash on a screen a driver is using in the street.
+ */
+interface WithStops {
+  stops?: DriverRouteStop[] | null;
+}
+
+function stopOf(delivery: WithStops): DriverRouteStop | null {
+  return delivery.stops?.[0] ?? null;
+}
+
+/**
+ * The order the dispatcher chose, which until now the driver could not see.
+ *
+ * Sorting happens HERE and not on the server, and that is not an accident:
+ * this list is rendered from the seven-day offline cache, where whatever order
+ * the server sent is long gone. The sequence travels with each delivery and
+ * the app is what puts the street in order.
+ *
+ * Deliveries with no stop keep the order they arrived in, after the routed
+ * ones — they are the batch-assigned work, which has no street order to
+ * respect, and putting them first would bury the route the driver is actually
+ * running.
+ */
+function sortByRouteOrder<T>(deliveries: T[]): T[] {
+  return [...deliveries].sort((left, right) => {
+    const leftStop = stopOf(left as WithStops);
+    const rightStop = stopOf(right as WithStops);
+
+    if (leftStop && rightStop) return leftStop.sequence - rightStop.sequence;
+
+    if (leftStop) return -1;
+    if (rightStop) return 1;
+
+    return 0;
+  });
+}
+
+/**
  * In the driver's list, every PENDING delivery is designated to them by
  * definition — the API only serves their own. "Designada" is the derived
  * state the whole module speaks.
+ *
+ * Both groups come back in the dispatcher's order when there is one.
  */
 function groupDriverDeliveries<T extends { status: DeliveryStatus }>(
   deliveries: T[],
 ): { designated: T[]; inRoute: T[] } {
   return {
-    designated: deliveries.filter((entry) => entry.status === "PENDING"),
-    inRoute: deliveries.filter((entry) => entry.status === "IN_TRANSIT"),
+    designated: sortByRouteOrder(
+      deliveries.filter((entry) => entry.status === "PENDING"),
+    ),
+    inRoute: sortByRouteOrder(
+      deliveries.filter((entry) => entry.status === "IN_TRANSIT"),
+    ),
   };
+}
+
+/**
+ * The route the driver is working, read off the deliveries themselves.
+ *
+ * Null when none of them is on a route. There is no second request for this:
+ * the payload already carries it, and a phone with no signal cannot make one.
+ */
+function activeRoute<T>(deliveries: T[]): DriverRouteStop["route"] | null {
+  for (const delivery of deliveries) {
+    const stop = stopOf(delivery as WithStops);
+
+    if (stop) return stop.route;
+  }
+
+  return null;
+}
+
+/**
+ * Which position this address is, in the order the driver follows.
+ *
+ * The POSITION, not the stored sequence: sequences are spaced by ten so the
+ * dispatcher can drop a stop between two others cheaply, and telling a driver
+ * they are at address "20" of a six-stop route would be nonsense.
+ */
+function stopPosition<T>(ordered: T[], delivery: T): number | null {
+  const stop = stopOf(delivery as WithStops);
+
+  if (!stop) return null;
+
+  const index = ordered.findIndex(
+    (entry) => stopOf(entry as WithStops)?.id === stop.id,
+  );
+
+  return index === -1 ? null : index + 1;
 }
 
 /** One tap moves the whole designated block; nothing designated, no button. */
@@ -130,6 +235,7 @@ const DRIVER_DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
 export {
   DELIVERIES_MODULE,
   DRIVER_DELIVERY_STATUS_LABELS,
+  activeRoute,
   canStartRoute,
   deliveryActions,
   formatDeliveryAddress,
@@ -137,7 +243,12 @@ export {
   groupDriverDeliveries,
   hasDeliveriesAccess,
   occurrenceNeedsPhoto,
+  sortByRouteOrder,
+  stopOf,
+  stopPosition,
   wazeUrl,
 };
+
+export type { DriverRouteStop };
 
 export type { DeliveriesAccessInput, DeliveryStatus, DriverDeliveryAddress };

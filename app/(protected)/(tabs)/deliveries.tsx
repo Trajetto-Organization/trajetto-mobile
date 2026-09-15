@@ -16,7 +16,11 @@ import { useDeliveriesAccess } from "@/features/deliveries/hooks/use-deliveries-
 import { useMyDeliveries } from "@/features/deliveries/hooks/use-my-deliveries";
 
 import { useDeliveryActions } from "@/features/deliveries/hooks/use-delivery-actions";
-import { canStartRoute } from "@/features/deliveries/delivery-rules";
+import {
+  activeRoute,
+  canStartRoute,
+  stopPosition,
+} from "@/features/deliveries/delivery-rules";
 
 import { refreshWithConnectionFeedback } from "@/utils/pull-to-refresh";
 import { ApiError } from "@/utils/api";
@@ -27,6 +31,9 @@ interface ListRow {
   key: string;
   header?: string;
   delivery?: DriverDelivery;
+
+  /** Position in the dispatcher's order, when this delivery is on a route. */
+  position?: number | null;
 }
 
 /** Section headers and cards flattened into one list for the FlatList. */
@@ -38,7 +45,16 @@ const buildRows = (
 
   if (inRoute.length > 0) {
     rows.push({ key: "header-in-route", header: `Em rota (${inRoute.length})` });
-    rows.push(...inRoute.map((d) => ({ key: d.id, delivery: d })));
+
+    // The position is numbered WITHIN its group, because that is the list the
+    // driver is looking at: a route half worked would otherwise start at 4.
+    rows.push(
+      ...inRoute.map((d) => ({
+        key: d.id,
+        delivery: d,
+        position: stopPosition(inRoute, d),
+      })),
+    );
   }
 
   if (designated.length > 0) {
@@ -46,7 +62,14 @@ const buildRows = (
       key: "header-designated",
       header: `Designadas (${designated.length})`,
     });
-    rows.push(...designated.map((d) => ({ key: d.id, delivery: d })));
+
+    rows.push(
+      ...designated.map((d) => ({
+        key: d.id,
+        delivery: d,
+        position: stopPosition(designated, d),
+      })),
+    );
   }
 
   return rows;
@@ -97,6 +120,11 @@ const DeliveriesScreen = () => {
   const rows = buildRows(inRoute, designated);
   const showModuleOff = moduleDisabled || !hasAccess;
 
+  // Which route this day belongs to, read off the deliveries themselves —
+  // there is no second request for it, and a phone with no signal could not
+  // make one anyway.
+  const route = activeRoute([...inRoute, ...designated]);
+
   return (
     <ProtectedRoute>
       {/* Bottom edge left to the tab bar: it pads the gesture area itself,
@@ -111,9 +139,22 @@ const DeliveriesScreen = () => {
           >
             <Ionicons name="cube-outline" size={20} color="#7c3aed" />
           </View>
-          <Text className="flex-1 text-lg font-semibold text-gray-900">
-            Minhas Entregas
-          </Text>
+          <View className="flex-1">
+            <Text className="text-lg font-semibold text-gray-900">
+              Minhas Entregas
+            </Text>
+
+            {/* The dispatcher gave this day a shape. Saying which route the
+            driver is on is what makes the numbered stops below mean
+            something — without it they are just numbers. */}
+            {route ? (
+              <Text className="text-xs text-gray-500" numberOfLines={1}>
+                {route.name
+                  ? `${route.name} · rota ${route.code}`
+                  : `Rota ${route.code}`}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
         <StatusBanners />
@@ -148,6 +189,7 @@ const DeliveriesScreen = () => {
               ) : (
                 <DeliveryCard
                   delivery={item.delivery!}
+                  position={item.position}
                   // navigate (not push): a double-tap must not stack
                   // two copies of the detail screen.
                   onPress={() =>

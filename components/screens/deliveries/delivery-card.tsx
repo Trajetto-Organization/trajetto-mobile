@@ -25,10 +25,18 @@ const formatScheduledDate = (isoDate?: string | null): string | null => {
 interface DeliveryCardProps {
   delivery: DriverDelivery;
   onPress: () => void;
+
+  /**
+   * Which address this is in the order the dispatcher chose, or null when the
+   * delivery is not on a route. The POSITION, never the stored sequence —
+   * those are spaced by ten so a stop can be dropped between two others, and
+   * "parada 20 de 6" would be nonsense.
+   */
+  position?: number | null;
 }
 
 /** One stop of the day: who receives, where, and when it is expected. */
-const DeliveryCard = ({ delivery, onPress }: DeliveryCardProps) => {
+const DeliveryCard = ({ delivery, onPress, position }: DeliveryCardProps) => {
   const scheduled = formatScheduledDate(delivery.scheduled_date);
   const chip = STATUS_CHIP[delivery.status] ?? "bg-slate-100 text-slate-800";
 
@@ -40,6 +48,16 @@ const DeliveryCard = ({ delivery, onPress }: DeliveryCardProps) => {
       className="mb-3 rounded-xl border border-gray-200 bg-white p-4"
     >
       <View className="flex-row items-start justify-between">
+        {position ? (
+          <View
+            className="mr-3 h-7 w-7 items-center justify-center rounded-full
+            bg-blue-100"
+            accessibilityLabel={`Parada ${position} da rota`}
+          >
+            <Text className="text-xs font-bold text-blue-800">{position}</Text>
+          </View>
+        ) : null}
+
         <View className="mr-2 flex-1">
           <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
             {delivery.recipient_name}
