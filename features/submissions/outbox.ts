@@ -21,23 +21,21 @@ import { getSubmissionOwner } from "./submission-owner";
 import {
   canActOn,
   claim,
+  classifyFailure as decideFailure,
   classifyOwnership,
+  nextAfterFailure,
   selectSendable,
   selectVisible,
 } from "./outbox-rules";
 
+import type {
+  FailureDescription,
+  OutboxFailure,
+  OutboxStatus,
+} from "./outbox-rules";
+
 const OUTBOX_STORAGE_KEY = "@trajetto:outbox:v1";
 const OUTBOX_DIRECTORY = "trajetto-outbox";
-
-/**
- * Backoff between attempts after a transient failure.
- *
- * Capped rather than doubling forever: an outage that lasts a whole shift must
- * not leave the queue waiting on a timer that grew while nobody was watching.
- * Regaining signal also triggers a pass immediately, so these delays only pace
- * retries that happen while the connection looks fine but is not.
- */
-const RETRY_DELAYS_MS = [0, 15_000, 60_000, 5 * 60_000, 15 * 60_000];
 
 type OutboxKind =
   | "checklist"
@@ -60,8 +58,6 @@ type OutboxPhotoField = "photos" | "photo" | "photo-keys" | "proof";
  * `parked` waits for the DELIVERIES module to come back — retrying against
  * a disabled module would burn the backoff for nothing.
  */
-type OutboxStatus = "pending" | "failed" | "parked";
-
 interface OutboxPhoto {
   uri: string;
   fileName: string;
@@ -142,15 +138,6 @@ interface EnqueueSubmissionInput {
     uploadedKey?: string;
   }[];
 }
-
-/**
- * Why a send failed, and therefore what to do about it.
- *
- * This distinction is the whole point of the queue: no answer from the API is
- * not the same as the API saying no. The first is worth repeating forever, the
- * second never is.
- */
-type OutboxFailure = "transient" | "auth" | "permanent" | "module-disabled";
 
 // Every read-modify-write goes through here. Two screens submitting while a
 // background pass is running would otherwise interleave and drop an item.
@@ -384,55 +371,48 @@ async function sendItem(
   });
 }
 
-function classifyFailure(error: unknown): OutboxFailure {
+/**
+ * Flattens a thrown error into something the rules can read.
+ *
+ * The only part of the decision that needs to know about our error classes,
+ * kept deliberately trivial: everything that follows from the answer lives in
+ * `outbox-rules`, which imports nothing and can therefore be tested.
+ */
+function describeFailure(error: unknown): FailureDescription {
   if (error instanceof ApiError) {
-    if (error.isAuthenticationError) return "auth";
-    if (error.isTransient) return "transient";
-
-    // The whole module is off, not this item: it parks until the module
-    // comes back instead of burning retries or asking a person to decide.
-    if (error.code === "MODULE_NOT_ENABLED") return "module-disabled";
-
-    // A 4xx that is not a timeout or a rate limit is the API saying no on the
-    // merits — mileage below the vehicle's, an inactive branch. Repeating it
-    // produces the same answer forever.
-    return "permanent";
+    return {
+      source: "api",
+      isAuthenticationError: error.isAuthenticationError,
+      isTransient: error.isTransient,
+      code: error.code,
+    };
   }
 
-  // A failed PUT is network-shaped: an expired signature is re-signed on the
-  // next attempt, and everything else is the connection.
-  if (error instanceof UploadError) return "transient";
+  if (error instanceof UploadError) return { source: "upload" };
 
-  return "transient";
+  return { source: "unknown" };
 }
 
-const retryDelay = (attempts: number): number =>
-  RETRY_DELAYS_MS[Math.min(attempts, RETRY_DELAYS_MS.length - 1)];
+function classifyFailure(error: unknown): OutboxFailure {
+  return decideFailure(describeFailure(error));
+}
 
 async function recordFailure(item: OutboxItem, error: unknown): Promise<void> {
   const failure = classifyFailure(error);
   const message =
     error instanceof Error ? error.message : "Falha ao enviar o registro.";
 
-  // An expired session is not this item's fault and says nothing about whether
-  // it would be accepted. It stays exactly as it is and waits for a login.
-  if (failure === "auth") return;
+  const next = nextAfterFailure(item, failure, Date.now());
 
-  if (failure === "module-disabled") {
-    await updateItem(item.id, (current) => ({
-      ...current,
-      status: "parked",
-      lastError: message,
-    }));
-
-    return;
-  }
+  // Null means "leave it exactly as it is" — an expired session, which is not
+  // this item's fault and says nothing about whether it would be accepted.
+  if (!next) return;
 
   await updateItem(item.id, (current) => ({
     ...current,
-    attempts: current.attempts + 1,
-    nextAttemptAt: Date.now() + retryDelay(current.attempts + 1),
-    status: failure === "permanent" ? "failed" : "pending",
+    attempts: next.attempts,
+    nextAttemptAt: next.nextAttemptAt,
+    status: next.status,
     lastError: message,
   }));
 }
