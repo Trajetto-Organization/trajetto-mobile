@@ -62,8 +62,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização.",
-          "locationWhenInUsePermission": "Permitir que $(PRODUCT_NAME) acesse sua localização."
+          "locationAlwaysAndWhenInUsePermission": "O $(PRODUCT_NAME) usa sua localização para registrar a entrega no endereço e para mostrar sua rota à central enquanto ela está em andamento.",
+          "locationWhenInUsePermission": "O $(PRODUCT_NAME) usa sua localização para registrar a entrega no endereço e para mostrar sua rota à central enquanto ela está em andamento."
         }
       ],
       [
