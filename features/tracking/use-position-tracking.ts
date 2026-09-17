@@ -1,128 +1,172 @@
 import { useEffect, useRef } from "react";
 
+import Constants from "expo-constants";
 import * as Location from "expo-location";
 
-import { apiClient } from "@/utils/api";
 import { logger } from "@/utils/logger";
-
 import { asyncStorage } from "@/utils/storage";
 
 import {
   PING_DISTANCE_METRES,
   PING_INTERVAL_MS,
-  appendPing,
-  shouldFlush,
-  shouldKeepPing,
-  shouldTrack,
   type RouteBearingDelivery,
   type TrackablePing,
 } from "./position-rules";
 
-/**
- * Where the buffer lives while the app is closed.
- *
- * A driver crosses a dead zone, the OS kills the app to reclaim memory, and
- * the points collected since the last flush would be gone. They are the ones
- * covering the stretch somebody will ask about, so they are written down.
- */
-const BUFFER_KEY = "driver_position_buffer";
+import { shouldRequestBackground, trackingMode } from "./mode-rules";
+import { LOCATION_TASK, asPing } from "./background-task";
 
-interface RecordResponse {
-  data: { stored: number; rejected: number; tracking: boolean };
-}
+import { flush, ingest, isStopped, resume } from "./reporter";
+
+/** Remembered so a driver who said no is not asked on every route. */
+const ASKED_KEY = "driver_background_location_asked";
 
 /**
  * The phone reporting where it is, while a route of the driver's runs.
  *
- * Foreground only, deliberately. Background location on Android needs a
- * persistent notification and a separate Play Store review, and on iOS it is
- * the permission users refuse most — a v1 that follows the truck while the
- * driver has the app open answers the dispatcher's question ("cadê o
- * caminhão?") without asking anybody to grant always-on tracking. The
- * background upgrade is a decision for the operation to make, not one to slip
- * in.
+ * Two modes, and which one is used is not a preference:
+ *
+ * - **background**, when the build carries `ACCESS_BACKGROUND_LOCATION` and
+ *   the driver granted "all the time". A foreground service keeps reporting
+ *   with the screen off, which is how a phone in a cradle actually spends the
+ *   day. Android shows a persistent notification the whole time — that is the
+ *   deal, and it is the honest one: the driver can see they are being
+ *   followed.
+ * - **foreground**, otherwise. What this app did before, and still the right
+ *   fallback: a driver who refused "all the time", or a build without the
+ *   Play Console declaration, still puts a dot on the tower while they have
+ *   the app open.
  *
  * The API has the last word on whether to keep going: it answers
- * `tracking: false` when no route of theirs is in progress, and this stops.
- * That matters because the phone's own view of the day can be stale — the
- * dispatcher may have cancelled the route while the driver was out of signal.
+ * `tracking: false` when no route of theirs is in progress, and everything
+ * stops. That matters because the phone's own view of the day can be stale —
+ * the dispatcher may have cancelled the route while the driver was out of
+ * signal.
  */
 function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
-  const buffer = useRef<TrackablePing[]>([]);
-  const lastKept = useRef<TrackablePing | null>(null);
+  const wanted = deliveries.some((delivery) =>
+    (delivery.stops ?? []).some((stop) => stop.route.status === "IN_PROGRESS"),
+  );
 
-  const lastFlushAt = useRef<number | null>(null);
-  const flushing = useRef<boolean>(false);
+  /** Kept so the cleanup can stop whatever this run actually started. */
+  const started = useRef<"background" | "foreground" | null>(null);
 
-  /** Set when the API says to stop, so a stale list cannot restart it. */
-  const stopped = useRef<boolean>(false);
-
-  const wanted = shouldTrack(deliveries);
+  const backgroundBuild = Boolean(
+    (Constants.expoConfig?.extra as { backgroundTracking?: boolean } | undefined)
+      ?.backgroundTracking,
+  );
 
   useEffect(() => {
-    if (!wanted || stopped.current) return;
-
     let disposed = false;
     let subscription: Location.LocationSubscription | null = null;
 
-    const flush = async () => {
-      if (flushing.current || buffer.current.length === 0) return;
-
-      flushing.current = true;
-
-      // Taken before the await. Points arriving mid-request belong to the next
-      // batch — counted here they would be sent twice, dropped here they would
-      // be lost.
-      const sending = buffer.current;
-
-      buffer.current = [];
-
+    const stopBackground = async () => {
       try {
-        const response = await apiClient.post<RecordResponse>(
-          "/route/positions",
-          { pings: sending },
+        const running = await Location.hasStartedLocationUpdatesAsync(
+          LOCATION_TASK,
         );
 
-        lastFlushAt.current = Date.now();
-
-        await asyncStorage.removeItem(BUFFER_KEY);
-
-        if (!response.data.tracking) {
-          stopped.current = true;
-
-          subscription?.remove();
-          subscription = null;
-        }
+        if (running) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
       } catch (error) {
-        // Put them back at the FRONT: they are older than whatever arrived
-        // while the request was in flight, and a trail is only readable in
-        // order.
-        buffer.current = [...sending, ...buffer.current];
-
-        await asyncStorage.setItem(BUFFER_KEY, buffer.current);
-
-        logger.warn("[Tracking] Falha ao enviar posições", error);
-      } finally {
-        flushing.current = false;
+        logger.warn("[Tracking] Falha ao parar a tarefa de fundo", error);
       }
     };
 
     const start = async () => {
-      // Whatever survived a kill. Restored before the first new fix so the
-      // order stays right.
-      const saved = await asyncStorage.getItem<TrackablePing[]>(BUFFER_KEY);
+      if (!wanted) {
+        // A route that ended: send the tail and let the flag lift for the next
+        // one. Doing it here rather than in a second effect keeps one place
+        // deciding what "not tracking" means.
+        await stopBackground();
+        await flush();
 
-      if (saved?.length) buffer.current = saved;
+        return;
+      }
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      // A new route is a new day as far as the stop flag is concerned.
+      await resume();
+
+      const foreground = await Location.requestForegroundPermissionsAsync();
 
       if (disposed) return;
 
-      if (status !== Location.PermissionStatus.GRANTED) {
+      const foregroundGranted =
+        foreground.status === Location.PermissionStatus.GRANTED;
+
+      if (!foregroundGranted) {
         // Not an error the driver is shown. They refused, or the phone is
         // locked down by an MDM; either way the app still works and the map
         // simply has no dot for them.
         logger.info("[Tracking] Permissão de localização não concedida");
+        return;
+      }
+
+      let backgroundGranted = false;
+
+      if (backgroundBuild) {
+        const current = await Location.getBackgroundPermissionsAsync();
+
+        backgroundGranted =
+          current.status === Location.PermissionStatus.GRANTED;
+
+        const alreadyAsked = Boolean(
+          await asyncStorage.getItem<boolean>(ASKED_KEY),
+        );
+
+        if (
+          shouldRequestBackground({
+            wanted,
+            backgroundBuild,
+            foregroundGranted,
+            backgroundGranted,
+            alreadyAsked,
+          })
+        ) {
+          await asyncStorage.setItem(ASKED_KEY, true);
+
+          const asked = await Location.requestBackgroundPermissionsAsync();
+
+          backgroundGranted =
+            asked.status === Location.PermissionStatus.GRANTED;
+        }
+      }
+
+      if (disposed) return;
+
+      const mode = trackingMode({
+        wanted,
+        stopped: await isStopped(),
+        foregroundGranted,
+        backgroundGranted,
+        backgroundBuild,
+      });
+
+      if (disposed || mode === "off") return;
+
+      if (mode === "background") {
+        await Location.startLocationUpdatesAsync(LOCATION_TASK, {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: PING_INTERVAL_MS,
+          distanceInterval: PING_DISTANCE_METRES,
+
+          // Batched by the OS while the screen is off. Waking the process for
+          // every fix is what turns background tracking into the reason a
+          // driver uninstalls the app.
+          deferredUpdatesInterval: PING_INTERVAL_MS,
+          deferredUpdatesDistance: PING_DISTANCE_METRES,
+
+          pausesUpdatesAutomatically: false,
+
+          foregroundService: {
+            notificationTitle: "Rota em andamento",
+            notificationBody:
+              "A central acompanha sua rota enquanto ela está em andamento.",
+            notificationColor: "#2563eb",
+          },
+        });
+
+        started.current = "background";
+
         return;
       }
 
@@ -133,43 +177,13 @@ function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
           distanceInterval: PING_DISTANCE_METRES,
         },
         (position) => {
-          if (disposed || stopped.current) return;
+          if (disposed) return;
 
-          const ping: TrackablePing = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-
-            accuracy: position.coords.accuracy ?? null,
-            speed: position.coords.speed ?? null,
-            heading: position.coords.heading ?? null,
-
-            // No battery reading: the app carries no battery module, and
-            // adding a dependency for a column nothing reads yet would be a
-            // dependency to keep. The API takes null.
-            battery: null,
-
-            recorded_at: new Date(position.timestamp).toISOString(),
-          };
-
-          // A parked truck still produces a fix every fifteen seconds. Dropped
-          // here, before it costs a row or a request.
-          if (!shouldKeepPing(lastKept.current, ping)) return;
-
-          lastKept.current = ping;
-          buffer.current = appendPing(buffer.current, ping);
-
-          void asyncStorage.setItem(BUFFER_KEY, buffer.current);
-
-          if (
-            shouldFlush({
-              buffered: buffer.current.length,
-              lastFlushAt: lastFlushAt.current,
-            })
-          ) {
-            void flush();
-          }
+          void ingest([asPing(position)] as TrackablePing[]);
         },
       );
+
+      started.current = "foreground";
     };
 
     void start();
@@ -179,32 +193,16 @@ function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
 
       subscription?.remove();
 
+      if (started.current === "background") void stopBackground();
+
+      started.current = null;
+
       // One last attempt on the way out — the driver closing the app at the
-      // end of the day is exactly when the last stretch would otherwise sit
-      // in the buffer until tomorrow.
+      // end of the day is exactly when the last stretch would otherwise sit in
+      // the buffer until tomorrow.
       void flush();
     };
-  }, [wanted]);
-
-  // The route ended while the app was open: stop, and send what is left.
-  useEffect(() => {
-    if (wanted) return;
-
-    stopped.current = false;
-
-    if (buffer.current.length === 0) return;
-
-    void apiClient
-      .post<RecordResponse>("/route/positions", { pings: buffer.current })
-      .then(() => {
-        buffer.current = [];
-
-        return asyncStorage.removeItem(BUFFER_KEY);
-      })
-      .catch((error) => {
-        logger.warn("[Tracking] Falha ao enviar o último lote", error);
-      });
-  }, [wanted]);
+  }, [wanted, backgroundBuild]);
 }
 
-export { BUFFER_KEY, usePositionTracking };
+export { ASKED_KEY, usePositionTracking };

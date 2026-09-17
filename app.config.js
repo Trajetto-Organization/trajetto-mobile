@@ -81,8 +81,58 @@ const assertBuildApiUrl = () => {
   }
 };
 
+/**
+ * Whether THIS BUILD may follow a driver with the screen off.
+ *
+ * Off unless the build environment says otherwise, and the switch touches the
+ * MANIFEST, not just the runtime. Android grants only what the manifest
+ * declares, and the manifest is what Google reviews: shipping
+ * `ACCESS_BACKGROUND_LOCATION` without the Play Console declaration and its
+ * demo video gets an app removed from the store. So the code is here and
+ * ready, and turning it on is a deliberate act by whoever answers for the
+ * listing — see `docs/PENDENCIAS-DO-USUARIO.md`.
+ */
+const backgroundTrackingEnabled = () =>
+  process.env.EXPO_PUBLIC_BACKGROUND_TRACKING === "true";
+
 module.exports = ({ config }) => {
   assertBuildApiUrl();
+
+  const background = backgroundTrackingEnabled();
+
+  // Read by the app to decide whether to ask for the permission at all.
+  config.extra = { ...config.extra, backgroundTracking: background };
+
+  if (background) {
+    config.android = {
+      ...config.android,
+      permissions: [
+        ...(config.android?.permissions ?? []),
+
+        // The three Android wants together: the location itself, the service
+        // that keeps the process alive, and the declaration of what that
+        // service is for.
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+      ],
+    };
+
+    config.plugins = (config.plugins ?? []).map((plugin) => {
+      if (!Array.isArray(plugin) || plugin[0] !== "expo-location") {
+        return plugin;
+      }
+
+      return [
+        plugin[0],
+        {
+          ...plugin[1],
+          isAndroidBackgroundLocationEnabled: true,
+          isAndroidForegroundServiceEnabled: true,
+        },
+      ];
+    });
+  }
 
   // FCM credentials for remote push: picked up automatically once the file
   // exists (downloaded from the Firebase console). Referencing a missing

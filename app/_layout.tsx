@@ -1,5 +1,17 @@
 import "../global.css";
 
+/**
+ * Side-effect import, and it has to be here.
+ *
+ * `TaskManager.defineTask` must run before the OS looks the task up by name,
+ * and the launch that matters is the HEADLESS one: the app was killed, the
+ * driver's phone is in a cradle, and Android wakes the process with a batch of
+ * locations and no screen. Nothing under `(protected)` is imported in that
+ * launch — only this file is — so registering the task from the tracking hook
+ * would register it exactly when it is not needed.
+ */
+import "../features/tracking/background-task";
+
 import { useCallback, useEffect, useState } from "react";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 
