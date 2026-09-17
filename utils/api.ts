@@ -1,3 +1,4 @@
+import { ApiError, isTerminalAuthFailure } from "./api-error";
 import { isTokenExpired } from "./jwt";
 import { logger } from "./logger";
 
@@ -10,53 +11,13 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "");
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
-export type ApiErrorCategory = "HTTP" | "NETWORK" | "TIMEOUT" | "CONFIGURATION";
-
-const TERMINAL_AUTH_ERROR_CODES = new Set([
-  "AUTH_ACCESS_REVOKED",
-  "AUTH_BRANCH_INACTIVE",
-  "AUTH_BUSINESS_INACTIVE",
-  "AUTH_BUSINESS_REQUIRED",
-  "AUTH_DRIVER_INACTIVE",
-  "AUTH_DRIVER_TENANT_MISMATCH",
-  "AUTH_PROFILE_NOT_CONFIGURED",
-  "AUTH_REFRESH_INVALID",
-  "AUTH_REFRESH_REUSED",
-  "AUTH_SESSION_INVALID",
-  "AUTH_SESSION_INVALIDATED",
-  "AUTH_TOKEN_INVALID",
-  "AUTH_TOKEN_MISSING",
-]);
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public statusText: string,
-    public category: ApiErrorCategory = "HTTP",
-    public code?: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-
-  get isAuthenticationError(): boolean {
-    return (
-      this.status === 401 ||
-      (this.code !== undefined && TERMINAL_AUTH_ERROR_CODES.has(this.code))
-    );
-  }
-
-  get isTransient(): boolean {
-    return (
-      this.category === "NETWORK" ||
-      this.category === "TIMEOUT" ||
-      this.status === 408 ||
-      this.status === 429 ||
-      this.status >= 500
-    );
-  }
-}
+/**
+ * Re-exported so every existing `from "@/utils/api"` keeps working. The class
+ * itself lives in `api-error.ts`, which imports nothing and can therefore be
+ * tested without the socket client, the token storage or the connection store.
+ */
+export { ApiError } from "./api-error";
+export type { ApiErrorCategory } from "./api-error";
 
 interface ApiRequestConfig {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -261,10 +222,10 @@ class ApiClient {
 
       if (!response.ok) {
         const errorDetails = await getErrorDetails(response);
-        const refreshWasRejected =
-          response.status === 401 ||
-          (errorDetails.code !== undefined &&
-            TERMINAL_AUTH_ERROR_CODES.has(errorDetails.code));
+        const refreshWasRejected = isTerminalAuthFailure(
+          response.status,
+          errorDetails.code,
+        );
 
         if (refreshWasRejected) {
           logger.info("apiClient: refresh token rejected");
