@@ -8,11 +8,16 @@ import {
 
 import {
   buildPhotoPayload,
-  classifyFailure,
+  describeFailure,
   enqueueSubmission,
   type OutboxKind,
   type OutboxPhotoField,
 } from "@/features/submissions/outbox";
+
+import {
+  decideSubmissionFailure,
+  photosForQueue,
+} from "@/features/submissions/queue-decision";
 
 interface SubmitOrQueueInput {
   /** Idempotency key. The same value identifies the queued item. */
@@ -92,9 +97,18 @@ async function submitOrQueue({
 
     return "sent";
   } catch (error) {
-    // A cancelled submission is the user's doing and must not be queued.
-    if (error instanceof Error && error.name === "AbortError") throw error;
-    if (classifyFailure(error) !== "transient") throw error;
+    /*
+      The decision itself is in `queue-decision`, where a test can read it.
+      This function cannot be tested without mocking an HTTP client and a
+      storage upload, and the rule it was hiding is the one that decides
+      whether a driver's afternoon survives.
+    */
+    const outcome = decideSubmissionFailure({
+      isAbort: error instanceof Error && error.name === "AbortError",
+      description: describeFailure(error),
+    });
+
+    if (outcome !== "queued") throw error;
 
     await enqueueSubmission({
       id: submissionId,
@@ -106,14 +120,7 @@ async function submitOrQueue({
       body,
       uploadType,
       photoField,
-      photos: entries.map(({ file, fieldName, uploadedKey }, index) => ({
-        uri: file.uri,
-        fileName: file.fileName,
-        fileSize: file.fileSize,
-        mimeType: file.mimeType,
-        fieldName,
-        uploadedKey: uploadedKey ?? landedKeys.get(index),
-      })),
+      photos: photosForQueue(entries, landedKeys),
     });
 
     return "queued";

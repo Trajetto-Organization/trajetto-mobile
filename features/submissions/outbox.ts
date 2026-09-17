@@ -583,6 +583,7 @@ function detachOutbox(): void {
 export {
   buildPhotoPayload,
   classifyFailure,
+  describeFailure,
   detachOutbox,
   discardOutboxItem,
   enqueueSubmission,
