@@ -8,6 +8,7 @@ import { usePushNotifications } from "@/features/notifications/use-push-notifica
 
 import { useChatRealtime } from "@/features/chat/use-chat-realtime";
 import { useDeliveryRealtime } from "@/features/deliveries/use-delivery-realtime";
+import { useRouteRealtime } from "@/features/deliveries/use-route-realtime";
 
 import { useMyDeliveries } from "@/features/deliveries/hooks/use-my-deliveries";
 import { usePositionTracking } from "@/features/tracking/use-position-tracking";
@@ -28,6 +29,12 @@ const ProtectedLayout = () => {
   // sync with nothing said. Mounted here and not on the deliveries screen: the
   // driver is usually somewhere else in the app when it happens.
   useDeliveryRealtime();
+
+  // The route itself changing: released in the morning, cancelled at noon.
+  // The API has sent both to the driver's own room since routes existed and
+  // nothing listened — a driver looking at the screen saw an empty list until
+  // they pulled to refresh.
+  useRouteRealtime();
 
   // Where the truck is, while a route of theirs is running — and only then.
   // Mounted here rather than on the deliveries screen because a driver spends

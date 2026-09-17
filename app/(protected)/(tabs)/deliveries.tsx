@@ -97,7 +97,20 @@ const DeliveriesScreen = () => {
   const rejectionMessage =
     error instanceof ApiError && !error.isTransient ? error.message : null;
 
-  const actions = useDeliveryActions(businessId);
+  /**
+   * Which route this day belongs to, read off the deliveries themselves —
+   * there is no second request for it, and a phone with no signal could not
+   * make one anyway.
+   *
+   * Computed here rather than further down because the departure acts on it:
+   * `startRoute` posts to the ROUTE now, which is what moves it to
+   * IN_PROGRESS and therefore what starts the GPS trail. Null is the work
+   * assigned before assignments created routes, and for that the whole-day
+   * departure is still the only thing that moves anything.
+   */
+  const route = activeRoute([...inRoute, ...designated]);
+
+  const actions = useDeliveryActions(businessId, route?.id ?? null);
 
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [isStartConfirmOpen, setIsStartConfirmOpen] = useState<boolean>(false);
@@ -119,11 +132,6 @@ const DeliveriesScreen = () => {
 
   const rows = buildRows(inRoute, designated);
   const showModuleOff = moduleDisabled || !hasAccess;
-
-  // Which route this day belongs to, read off the deliveries themselves —
-  // there is no second request for it, and a phone with no signal could not
-  // make one anyway.
-  const route = activeRoute([...inRoute, ...designated]);
 
   return (
     <ProtectedRoute>

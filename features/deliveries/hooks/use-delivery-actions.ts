@@ -94,7 +94,20 @@ const sentToast = (title: string, body: string) => {
  * client_submission_id the API anchors in the database, so a resend after
  * a dead network is a no-op instead of a duplicate.
  */
-function useDeliveryActions(businessId: string) {
+function useDeliveryActions(
+  businessId: string,
+
+  /**
+   * The route this driver is expected to be working, when there is one.
+   *
+   * "Iniciar rota" acts on the ROUTE now, which is what the architecture plan
+   * always said it should: the departure is what puts the load on the street,
+   * starts the GPS trail and tells everybody downstream that the truck left.
+   *
+   * Null has a meaning rather than being a missing argument — see `startRoute`.
+   */
+  routeId?: string | null,
+) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const [uploadProgress, setUploadProgress] = useState<{
@@ -126,10 +139,25 @@ function useDeliveryActions(businessId: string) {
     setIsSubmitting(true);
 
     try {
+      /**
+       * Two endpoints, and the fallback is a migration rather than a hedge.
+       *
+       * The batch assignment creates a route now, so nearly every driver has
+       * one and the departure belongs to it — that is the call that moves the
+       * route to IN_PROGRESS, which is what makes position recording start
+       * and what tells the tower and the customer that the truck left.
+       *
+       * Deliveries assigned BEFORE that change have no route and never will.
+       * For them the old whole-day departure is still the only thing that
+       * moves them to IN_TRANSIT, and taking it away would strand whatever
+       * was dispatched the day the API was deployed.
+       */
       const outcome = await submitOrQueue({
         submissionId: randomUUID(),
         kind: "delivery-start-route",
-        endpoint: `/delivery/start-route/${businessId}`,
+        endpoint: routeId
+          ? `/route/start-route/${routeId}/business/${businessId}`
+          : `/delivery/start-route/${businessId}`,
         body: {},
         businessId,
         vehicleLabel: "Início de rota",
