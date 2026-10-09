@@ -1,0 +1,20 @@
+# The driver's day as one ordered suite (docs/testes.md, Maestro section): each flow continues
+# the state the previous one left (session, started route, queue), so the
+# order is fixed and a failure stops the run.
+flows:
+  - "*.yaml"
+executionOrder:
+  continueOnFailure: false
+  flowsOrder:
+    - 00-login
+    - 01-rota-chegada-comprovante
+    - 02-ocorrencia-com-formulario
+    - 03-offline-fila-sincronizacao
+    - 04-frota-abastecimento
+    - 04b-frota-checklist
+    - 05-logout-e-novo-login
+    - 06-modulo-frota-desligado
+    - 07-troca-de-usuario-com-pendencias
+    - 08-chat-mensagem-de-texto
+    - 09-dois-fatores-login
+    - 09b-dois-fatores-codigo

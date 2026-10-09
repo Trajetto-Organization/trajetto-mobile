@@ -1,0 +1,17 @@
+# One of the photos every checklist owes (current_mileage, tires_condition,
+# fuel_level_adequate — features/checklist/checklist-rules.ts), from the
+# emulator's camera.
+appId: com.trajetto.fleetmanager
+---
+- scrollUntilVisible:
+    element:
+      id: checklist-photo-${FIELD}
+    direction: DOWN
+    # Centred: at the bottom edge the element sits under the sticky footer
+    # (Voltar / Criar Checklist), and the tap lands on the footer instead.
+    centerElement: true
+- tapOn:
+    id: checklist-photo-${FIELD}
+- tapOn:
+    id: image-picker-camera
+- runFlow: take-photo.yaml

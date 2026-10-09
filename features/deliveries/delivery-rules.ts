@@ -7,6 +7,11 @@
  * outbox that the server would refuse on the merits.
  */
 
+import {
+  DELIVERIES_MODULE,
+  hasDeliveriesAccess,
+} from "@/features/access/module-rules";
+
 type DeliveryStatus =
   | "PENDING"
   | "IN_TRANSIT"
@@ -21,20 +26,23 @@ interface DriverDeliveryAddress {
   city: string;
   uf: string;
   cep?: string | null;
+
+  /**
+   * Where the address is, when the dispatcher pinned it or it was geocoded
+   * (decision 14.7). Optional: cached payloads and older APIs have none.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
+/**
+ * The input `hasDeliveriesAccess` reads. The rule itself lives once, in
+ * `module-rules`, next to the fleet's (decision 4.2 — one source); it is
+ * re-exported here because the delivery screens already import it from here.
+ */
 interface DeliveriesAccessInput {
   driverId?: string | null;
   enabledModules?: string[] | null;
-}
-
-const DELIVERIES_MODULE = "DELIVERIES";
-
-/** The Deliveries entry only exists for a driver with the module on. */
-function hasDeliveriesAccess(user: DeliveriesAccessInput | null): boolean {
-  if (!user?.driverId) return false;
-
-  return (user.enabledModules ?? []).includes(DELIVERIES_MODULE);
 }
 
 /**
@@ -49,11 +57,38 @@ interface DriverRouteStop {
   id: string;
   sequence: number;
   status: string;
+
+  /**
+   * When the driver arrived, once the stop is ARRIVED. Optional: payloads
+   * cached before the API served it have no key, and the screen then says
+   * "Chegada registrada" without the time.
+   */
+  arrived_at?: string | null;
+
+  /**
+   * The stop's latest "a caminho" mark (decision 6.4), once the API serves
+   * it in this payload (contract: not yet). Until then the app knows its own
+   * marks from the queue and on-the-way-store.
+   */
+  on_the_way_at?: string | null;
+
   route: {
     id: string;
     code: number;
     name: string | null;
     status: string;
+
+    /**
+     * The route's destination and planned window (decision 6.5), once the
+     * API serves them in this payload. Optional for the same reason as
+     * `arrived_at`: cached payloads, and API versions, without the keys.
+     */
+    destination?: string | null;
+    planned_departure_at?: string | null;
+    planned_arrival_at?: string | null;
+
+    /** The route's day, date-only at UTC midnight (decision 14.4). */
+    scheduled_date?: string | null;
   };
 }
 
@@ -122,22 +157,6 @@ function groupDriverDeliveries<T extends { status: DeliveryStatus }>(
 }
 
 /**
- * The route the driver is working, read off the deliveries themselves.
- *
- * Null when none of them is on a route. There is no second request for this:
- * the payload already carries it, and a phone with no signal cannot make one.
- */
-function activeRoute<T>(deliveries: T[]): DriverRouteStop["route"] | null {
-  for (const delivery of deliveries) {
-    const stop = stopOf(delivery as WithStops);
-
-    if (stop) return stop.route;
-  }
-
-  return null;
-}
-
-/**
  * Which position this address is, in the order the driver follows.
  *
  * The POSITION, not the stored sequence: sequences are spaced by ten so the
@@ -156,11 +175,230 @@ function stopPosition<T>(ordered: T[], delivery: T): number | null {
   return index === -1 ? null : index + 1;
 }
 
-/** One tap moves the whole designated block; nothing designated, no button. */
-function canStartRoute(
-  deliveries: Array<{ status: DeliveryStatus }>,
-): boolean {
-  return deliveries.some((entry) => entry.status === "PENDING");
+type DriverRoute = DriverRouteStop["route"];
+
+/**
+ * What "Iniciar rota" does for one group of designated deliveries.
+ *
+ * `routeId: null` is the whole-day departure of the work assigned before
+ * assignments created routes (`/delivery/start-route`), which moves only the
+ * loose deliveries.
+ */
+interface StartRouteTarget {
+  routeId: string | null;
+  routeCode: number | null;
+  count: number;
+}
+
+/** One block of the day's list: a route (or the loose work), and its state. */
+interface DeliverySection<T> {
+  key: string;
+  group: "in-route" | "designated";
+
+  /** Null for deliveries on no route. */
+  route: DriverRoute | null;
+
+  deliveries: T[];
+
+  /** Only designated sections of a released route (or loose work) start. */
+  start: StartRouteTarget | null;
+
+  /** Why a designated section has no button, in words for the driver. */
+  notice: string | null;
+}
+
+const LOOSE_SECTION_KEY = "loose";
+
+/**
+ * Why a designated route cannot be started from the phone.
+ *
+ * The API moves only RELEASED → IN_PROGRESS. A planned route is the
+ * dispatcher's draft; one already running took its deliveries along when it
+ * left, so designated work on it is the dispatcher's to sort out — and
+ * "starting" it again would answer success and move nothing (MOB-04).
+ */
+function startNotice(route: DriverRoute): string | null {
+  if (route.status === "PLANNED") {
+    return "Rota ainda não liberada pelo despachante.";
+  }
+
+  if (route.status === "IN_PROGRESS") {
+    return "Esta rota já está em andamento. Fale com o despachante para incluir estas entregas.";
+  }
+
+  return null;
+}
+
+/**
+ * Why a released route cannot leave while another of the driver's routes is
+ * on the street. The API refuses that departure (409 ROUTE_DRIVER_BUSY, one
+ * route per driver on the street); the button would only queue a refusal.
+ * Same sentence as the API's, so the pending screen and the list agree.
+ */
+function busyNotice(running: DriverRoute): string {
+  return `Você já está com a Rota ${running.code} em andamento. Conclua essa rota (ou peça ao despachante para cancelá-la) antes de iniciar outra.`;
+}
+
+/** The driver's route on the street, if the day's list shows one. */
+function runningRouteOf<T>(deliveries: T[]): DriverRoute | null {
+  for (const delivery of deliveries) {
+    const route = stopOf(delivery as WithStops)?.route;
+
+    if (route?.status === "IN_PROGRESS") return route;
+  }
+
+  return null;
+}
+
+function sectionsOf<T>(
+  deliveries: T[],
+  group: DeliverySection<T>["group"],
+  running: DriverRoute | null = null,
+): DeliverySection<T>[] {
+  const byRoute = new Map<string, { route: DriverRoute | null; items: T[] }>();
+
+  for (const delivery of deliveries) {
+    const route = stopOf(delivery as WithStops)?.route ?? null;
+    const key = route?.id ?? LOOSE_SECTION_KEY;
+
+    const bucket = byRoute.get(key) ?? { route, items: [] };
+    bucket.items.push(delivery);
+    byRoute.set(key, bucket);
+  }
+
+  // Oldest route first (codes grow with time), the loose work last: it has no
+  // street order and must not bury a route the driver is running.
+  const ordered = [...byRoute.entries()].sort(([, left], [, right]) => {
+    if (!left.route) return 1;
+    if (!right.route) return -1;
+
+    return left.route.code - right.route.code;
+  });
+
+  return ordered.map(([key, { route, items }]) => {
+    const sorted = sortByRouteOrder(items);
+
+    // A released route waits for the running one to end. The loose work
+    // keeps its button: its departure (`/delivery/start-route`) is not
+    // refused while a route runs.
+    const blockedBy =
+      group === "designated" &&
+      route?.status === "RELEASED" &&
+      running &&
+      running.id !== route.id
+        ? running
+        : null;
+
+    const startable =
+      group === "designated" &&
+      !blockedBy &&
+      (!route || route.status === "RELEASED");
+
+    let notice: string | null = null;
+
+    if (blockedBy) notice = busyNotice(blockedBy);
+    else if (group === "designated" && route) notice = startNotice(route);
+
+    return {
+      key: `${group}:${key}`,
+      group,
+      route,
+      deliveries: sorted,
+      start: startable
+        ? {
+            routeId: route?.id ?? null,
+            routeCode: route?.code ?? null,
+            count: sorted.length,
+          }
+        : null,
+      notice,
+    };
+  });
+}
+
+/**
+ * The day's list, one section per route.
+ *
+ * Each assignment creates its own route, so a driver already on the street
+ * can be handed a second one. The old screen read "the" route off the first
+ * delivery it found — the running one — and its single "Iniciar rota" posted
+ * to it: the API answered the resend as success, the phone said "Rota
+ * iniciada!", and the new deliveries stayed Designadas with nothing the
+ * driver could do (MOB-04). Now every route is its own section with its own
+ * button, and a button only exists where pressing it moves something — which
+ * rules out a second route while one is on the street (FLEET-ASSIGN-3).
+ */
+function deliverySections<T extends { status: DeliveryStatus }>(
+  inRoute: T[],
+  designated: T[],
+): DeliverySection<T>[] {
+  const running = runningRouteOf(inRoute) ?? runningRouteOf(designated);
+
+  return [
+    ...sectionsOf(inRoute, "in-route"),
+    ...sectionsOf(designated, "designated", running),
+  ];
+}
+
+/** The route the header names, when the day has exactly one. */
+function headerRoute<T>(sections: DeliverySection<T>[]): DriverRoute | null {
+  const routes = new Map<string, DriverRoute>();
+
+  for (const section of sections) {
+    if (section.route) routes.set(section.route.id, section.route);
+  }
+
+  return routes.size === 1 ? [...routes.values()][0] : null;
+}
+
+/** "Rota 42 · Zona Sul", or "Rota 42" when the route has no name. */
+function routeLabel(route: DriverRoute): string {
+  return route.name ? `Rota ${route.code} · ${route.name}` : `Rota ${route.code}`;
+}
+
+/** What the section header says: "Designadas · Rota 42 (3)". */
+function sectionTitle<T>(section: DeliverySection<T>): string {
+  const group = section.group === "in-route" ? "Em rota" : "Designadas";
+  const where = section.route ? routeLabel(section.route) : "sem rota";
+
+  return `${group} · ${where} (${section.deliveries.length})`;
+}
+
+const isInstant = (value: string | null | undefined): value is string =>
+  typeof value === "string" && !Number.isNaN(Date.parse(value));
+
+/**
+ * "Destino: CD Campinas · Saída prevista 07:30 · Retorno previsto 18:00",
+ * with whatever of it the route has; null when it has none. The times are
+ * instants, shown on the phone's clock (decision 1.4).
+ */
+function routePlan(
+  route: DriverRoute,
+  formatTime: (iso: string) => string = formatClock,
+): string | null {
+  const parts: string[] = [];
+
+  const destination = route.destination?.trim();
+  if (destination) parts.push(`Destino: ${destination}`);
+
+  if (isInstant(route.planned_departure_at)) {
+    parts.push(`Saída prevista ${formatTime(route.planned_departure_at)}`);
+  }
+
+  if (isInstant(route.planned_arrival_at)) {
+    parts.push(`Retorno previsto ${formatTime(route.planned_arrival_at)}`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** The button of one section: "Iniciar rota 42 (3 entregas)". */
+function startRouteLabel(target: StartRouteTarget): string {
+  const count = `${target.count} entrega${target.count > 1 ? "s" : ""}`;
+
+  return target.routeCode !== null
+    ? `Iniciar rota ${target.routeCode} (${count})`
+    : `Iniciar entregas sem rota (${count})`;
 }
 
 /**
@@ -180,6 +418,120 @@ function deliveryActions(status: DeliveryStatus): {
     canProve: inRoute,
     canReportOccurrence: inRoute,
   };
+}
+
+/** An outbox item, as far as the arrival rule needs to read it. */
+interface QueuedSubmission {
+  kind: string;
+  status: string;
+  endpoint: string;
+  body: Record<string, unknown>;
+  createdAt: string;
+}
+
+/**
+ * When an arrival for this delivery is waiting in the queue, the moment the
+ * driver tapped it. A failed item does not count: the driver has to decide
+ * about it, and "Cheguei" must stay available to record the arrival again.
+ */
+function queuedArrivalAt(
+  items: readonly QueuedSubmission[],
+  deliveryId: string,
+): string | null {
+  const prefix = `/delivery/arrival/${deliveryId}/`;
+
+  const item = items.find(
+    (entry) =>
+      entry.kind === "delivery-arrival" &&
+      entry.status !== "failed" &&
+      entry.endpoint.startsWith(prefix),
+  );
+
+  if (!item) return null;
+
+  const tapped = item.body.occurred_at;
+
+  return typeof tapped === "string" ? tapped : item.createdAt;
+}
+
+interface ArrivalState {
+  arrived: boolean;
+
+  /** When, if known. */
+  at: string | null;
+
+  /** Recorded on the phone, not yet on the server. */
+  queued: boolean;
+}
+
+/**
+ * Whether the driver already said "Cheguei" at this stop.
+ *
+ * The API accepts more than one arrival — a redelivery arrives again — so a
+ * second tap used to write a second ARRIVAL event for the same visit
+ * (MOB-19). The stop's own status says it once the server has it; the queue
+ * says it while the phone is offline.
+ */
+function arrivalState(
+  delivery: WithStops,
+  queuedAt: string | null,
+): ArrivalState {
+  const stop = stopOf(delivery);
+
+  if (stop?.status === "ARRIVED") {
+    return { arrived: true, at: stop.arrived_at ?? null, queued: false };
+  }
+
+  if (queuedAt) return { arrived: true, at: queuedAt, queued: true };
+
+  return { arrived: false, at: null, queued: false };
+}
+
+const formatClock = (iso: string): string =>
+  new Date(iso).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+/** "Chegada registrada às 14:05", or without the time when it is unknown. */
+function arrivalLabel(
+  state: ArrivalState,
+  formatTime: (iso: string) => string = formatClock,
+): string {
+  const time =
+    state.at && !Number.isNaN(Date.parse(state.at))
+      ? ` às ${formatTime(state.at)}`
+      : "";
+
+  return state.queued
+    ? `Chegada salva no aparelho${time}`
+    : `Chegada registrada${time}`;
+}
+
+/**
+ * The list with this delivery's stop marked ARRIVED, right after the tap.
+ *
+ * The refetch that follows a sent arrival can fail on a flaky network, and
+ * until it lands the cached stop still says PENDING — which put "Cheguei"
+ * back on screen for a second tap.
+ */
+function withStopArrived<T extends { id: string } & WithStops>(
+  deliveries: T[],
+  deliveryId: string,
+  arrivedAt: string,
+): T[] {
+  return deliveries.map((delivery) => {
+    const stop = stopOf(delivery);
+
+    if (delivery.id !== deliveryId || !stop || stop.status !== "PENDING") {
+      return delivery;
+    }
+
+    return {
+      ...delivery,
+      stops: [{ ...stop, status: "ARRIVED", arrived_at: arrivedAt }],
+    };
+  });
 }
 
 /** The switch's promise: a photo-required type refuses a bare report. */
@@ -208,6 +560,21 @@ const destinationQuery = (address: DriverDeliveryAddress): string =>
   );
 
 /**
+ * The delivery's point as "lat,lng", or null when it has no usable one. The
+ * point beats the written address (route design §6.6): it is what the
+ * dispatcher placed on the map, while the text may not geocode at all.
+ */
+function pointQuery(address: DriverDeliveryAddress): string | null {
+  const { latitude, longitude } = address;
+
+  if (typeof latitude !== "number" || typeof longitude !== "number") return null;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+
+  return encodeURIComponent(`${latitude},${longitude}`);
+}
+
+/**
  * Navigation is a deep-link into the app the driver already trusts. Plain
  * URLs — no API key, no billing: the universal Google Maps link opens the
  * installed app when there is one, and Waze does the same.
@@ -215,12 +582,16 @@ const destinationQuery = (address: DriverDeliveryAddress): string =>
 function googleMapsUrl(address: DriverDeliveryAddress): string {
   return (
     "https://www.google.com/maps/dir/?api=1&destination=" +
-    destinationQuery(address)
+    (pointQuery(address) ?? destinationQuery(address))
   );
 }
 
 function wazeUrl(address: DriverDeliveryAddress): string {
-  return `https://waze.com/ul?q=${destinationQuery(address)}&navigate=yes`;
+  const point = pointQuery(address);
+
+  return point
+    ? `https://waze.com/ul?ll=${point}&navigate=yes`
+    : `https://waze.com/ul?q=${destinationQuery(address)}&navigate=yes`;
 }
 
 /** PENDING reads as "Designada" here: the driver only ever sees their own. */
@@ -235,20 +606,36 @@ const DRIVER_DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
 export {
   DELIVERIES_MODULE,
   DRIVER_DELIVERY_STATUS_LABELS,
-  activeRoute,
-  canStartRoute,
+  arrivalLabel,
+  arrivalState,
   deliveryActions,
+  deliverySections,
+  formatClock,
   formatDeliveryAddress,
   googleMapsUrl,
   groupDriverDeliveries,
   hasDeliveriesAccess,
+  headerRoute,
   occurrenceNeedsPhoto,
+  queuedArrivalAt,
+  routeLabel,
+  routePlan,
+  sectionTitle,
   sortByRouteOrder,
+  startRouteLabel,
   stopOf,
   stopPosition,
   wazeUrl,
+  withStopArrived,
 };
 
-export type { DriverRouteStop };
+export type {
+  ArrivalState,
+  DeliverySection,
+  DriverRoute,
+  DriverRouteStop,
+  QueuedSubmission,
+  StartRouteTarget,
+};
 
 export type { DeliveriesAccessInput, DeliveryStatus, DriverDeliveryAddress };

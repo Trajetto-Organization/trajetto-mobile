@@ -21,11 +21,15 @@ import {
 } from "../../ui";
 
 import {
+  formatKmReading,
   formatMileage,
   formatLiters,
-  formatCurrency,
   parseFormattedValue,
 } from "@/utils/formatters";
+import { nextPricePerLiterText } from "@/features/fuel/fuel-rules";
+import type { FieldFocus } from "@/features/forms/use-field-focus";
+import { FieldAnchor } from "../../forms/field-anchor";
+import { useThemeColors } from "@/hooks/use-theme";
 
 interface StepData {
   branchId?: string;
@@ -49,6 +53,12 @@ interface FuelFormProps {
   vehicleData: any;
   isLoadingVehicle: boolean;
   trigger: any;
+
+  /** Where a failed submit scrolls to and focuses (decision 16.700). */
+  fieldFocus?: FieldFocus;
+
+  /** The missing-photo message, once it should show. */
+  odometerPhotoError?: string;
   isDriver?: boolean; // Flag to hide summary for drivers
   // 📍 GEOLOCATION
   onLocationChange: (
@@ -62,6 +72,9 @@ interface FuelFormProps {
   ) => void;
   onLocationLoadingChange?: (isLoading: boolean) => void; // 🔄 Loading state callback
   locationError?: string;
+
+  /** The phone's pre-check warning about the photo (decision 14.2), if any. */
+  precheckNotice?: React.ReactNode;
 }
 
 export const FuelForm: React.FC<FuelFormProps> = ({
@@ -76,15 +89,23 @@ export const FuelForm: React.FC<FuelFormProps> = ({
   vehicleData,
   isLoadingVehicle,
   trigger,
+  fieldFocus,
+  odometerPhotoError,
   isDriver = false,
   onLocationChange,
+  precheckNotice,
   onLocationLoadingChange,
   locationError,
 }) => {
   const [isFormReady, setIsFormReady] = useState<boolean>(false);
+  const colors = useThemeColors();
 
-  const litersInputRef = useRef<TextInput>(null);
-  const priceInputRef = useRef<TextInput>(null);
+  const ownLitersInputRef = useRef<TextInput>(null);
+  const ownPriceInputRef = useRef<TextInput>(null);
+
+  // The same refs the submit focuses, when the screen passes them.
+  const litersInputRef = fieldFocus?.inputRef("liters_amount") ?? ownLitersInputRef;
+  const priceInputRef = fieldFocus?.inputRef("price_per_liter") ?? ownPriceInputRef;
 
   // Defer heavy form rendering until after step transition completes
   useEffect(() => {
@@ -145,7 +166,7 @@ export const FuelForm: React.FC<FuelFormProps> = ({
   if (!isFormReady) {
     return (
       <View className="flex-1 justify-center items-center py-20">
-        <Text className="text-gray-500 text-base">
+        <Text className="text-muted text-base">
           Carregando formulário...
         </Text>
       </View>
@@ -157,18 +178,18 @@ export const FuelForm: React.FC<FuelFormProps> = ({
       {/* Selected Items Summary - Hidden for drivers */}
       {!isDriver && (
         <View
-          className="bg-white rounded-lg
-          p-4 mb-6 border border-gray-200"
+          className="bg-card rounded-lg
+          p-4 mb-6 border border-border"
         >
-          <Text className="font-bold text-gray-900 mb-3">
+          <Text className="font-bold text-ink mb-3">
             📋 Resumo da Seleção
           </Text>
 
           <View className="space-y-3">
             <View className="flex-row">
-              <Text className="text-sm text-gray-600">Filial:</Text>
+              <Text className="text-sm text-muted">Filial:</Text>
               <Text
-                className="text-sm text-gray-900 flex-1 font-medium"
+                className="text-sm text-ink flex-1 font-medium"
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -178,9 +199,9 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             </View>
 
             <View className="flex-row">
-              <Text className="text-sm text-gray-600">Motorista:</Text>
+              <Text className="text-sm text-muted">Motorista:</Text>
               <Text
-                className="text-sm text-gray-900 flex-1 font-medium"
+                className="text-sm text-ink flex-1 font-medium"
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -191,9 +212,9 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             </View>
 
             <View className="flex-row">
-              <Text className="text-sm text-gray-600">Combustível:</Text>
+              <Text className="text-sm text-muted">Combustível:</Text>
               <Text
-                className="text-sm text-gray-900 flex-1 font-medium"
+                className="text-sm text-ink flex-1 font-medium"
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -207,25 +228,25 @@ export const FuelForm: React.FC<FuelFormProps> = ({
 
       {/* Important Information */}
       <View
-        className="bg-blue-50 rounded-lg 
-        p-4 mb-6 border border-blue-200"
+        className="bg-primary-soft rounded-lg 
+        p-4 mb-6 border border-primary/40"
       >
         <Text
           className="font-bold 
-          text-blue-900 mb-3"
+          text-primary mb-3"
         >
           ℹ️ Informações importantes:
         </Text>
         <View className="space-y-2">
-          <Text className="text-sm text-blue-800">
+          <Text className="text-sm text-primary">
             • Informe a quilometragem atual do veículo no momento do
             reabastecimento
           </Text>
-          <Text className="text-sm text-blue-800">
+          <Text className="text-sm text-primary">
             • Não é possível informar uma quilometragem menor que a atual do
             veículo
           </Text>
-          <Text className="text-sm text-blue-800">
+          <Text className="text-sm text-primary">
             • O valor total será calculado automaticamente (litros × preço por
             litro)
           </Text>
@@ -235,26 +256,26 @@ export const FuelForm: React.FC<FuelFormProps> = ({
       {/* Vehicle Data */}
       {vehicleData && !isLoadingVehicle && (
         <View
-          className="bg-green-50 rounded-lg 
-          p-4 mb-6 border border-green-200"
+          className="bg-success-soft rounded-lg 
+          p-4 mb-6 border border-success/40"
         >
-          <Text className="font-bold text-green-900 mb-3">
+          <Text className="font-bold text-success mb-3">
             🚗 Dados do Veículo Selecionado:
           </Text>
           <View className="space-y-1">
-            <Text className="text-sm text-green-800">
+            <Text className="text-sm text-success">
               Quilometragem atual:{" "}
-              {vehicleData.current_mileage?.toLocaleString() || "N/A"} km
+              {formatKmReading(vehicleData.current_mileage) ?? "N/A"} km
             </Text>
-            <Text className="text-sm text-green-800">
+            <Text className="text-sm text-success">
               Intervalo de manutenção:{" "}
-              {vehicleData.maintenance_interval_km?.toLocaleString() || "N/A"}{" "}
+              {formatKmReading(vehicleData.maintenance_interval_km) ?? "N/A"}{" "}
               km
             </Text>
             {vehicleData.last_maintenance_mileage && (
-              <Text className="text-sm text-green-800">
+              <Text className="text-sm text-success">
                 Última manutenção:{" "}
-                {vehicleData.last_maintenance_mileage.toLocaleString()} km
+                {formatKmReading(vehicleData.last_maintenance_mileage)} km
               </Text>
             )}
           </View>
@@ -264,12 +285,12 @@ export const FuelForm: React.FC<FuelFormProps> = ({
       {/* Loading Vehicle Data */}
       {isLoadingVehicle && (
         <View
-          className="bg-gray-50 rounded-lg 
-          p-4 mb-6 border border-gray-200"
+          className="bg-subtle rounded-lg 
+          p-4 mb-6 border border-border"
         >
           <Text
             className="text-sm 
-            text-gray-600 text-center"
+            text-muted text-center"
           >
             Carregando dados do veículo...
           </Text>
@@ -279,6 +300,7 @@ export const FuelForm: React.FC<FuelFormProps> = ({
       {/* Form Fields with improved spacing */}
       <View className="gap-4">
         {/* Date */}
+        <FieldAnchor name="refueling_date" focus={fieldFocus}>
         <Controller
           control={control}
           name="refueling_date"
@@ -287,20 +309,30 @@ export const FuelForm: React.FC<FuelFormProps> = ({
               label="Data do Abastecimento"
               required
               value={value ? new Date(value) : new Date()}
-              onDateChange={(date) => onChange(date.toISOString())}
+              onDateChange={(date) => {
+                onChange(date.toISOString());
+
+                // The km rule depends on the date (decision 16.703): a shown
+                // km message is re-checked against the new one.
+                if (errors.current_mileage) trigger("current_mileage");
+              }}
               error={errors.refueling_date?.message}
               maximumDate={new Date()}
             />
           )}
         />
+        </FieldAnchor>
 
         {/* Current Mileage */}
+        <FieldAnchor name="current_mileage" focus={fieldFocus}>
         <Controller
           control={control}
           name="current_mileage"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
               label="Quilometragem Atual (km)"
+              testID="fuel-mileage"
+              inputRef={fieldFocus?.inputRef("current_mileage")}
               required
               placeholder="Ex: 50.000"
               value={formattedMileage}
@@ -311,17 +343,16 @@ export const FuelForm: React.FC<FuelFormProps> = ({
                 const numValue = parseFormattedValue(formatted);
                 onChange(numValue || undefined);
               }}
-              onBlur={() => {
-                onBlur();
-                trigger("current_mileage");
-              }}
+              onBlur={onBlur}
               error={errors.current_mileage?.message}
               keyboardType="numeric"
             />
           )}
         />
+        </FieldAnchor>
 
         {/* Liters */}
+        <FieldAnchor name="liters_amount" focus={fieldFocus}>
         <Controller
           control={control}
           name="liters_amount"
@@ -329,6 +360,7 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             <Input
               inputRef={litersInputRef}
               label="Quantidade de Litros"
+              testID="fuel-liters"
               required
               placeholder="Ex: 45,500"
               value={formattedLiters}
@@ -358,17 +390,16 @@ export const FuelForm: React.FC<FuelFormProps> = ({
 
                 updateTotal(formatted, formattedPrice);
               }}
-              onBlur={() => {
-                onBlur();
-                trigger("liters_amount");
-              }}
+              onBlur={onBlur}
               error={errors.liters_amount?.message}
               keyboardType="numeric"
             />
           )}
         />
+        </FieldAnchor>
 
         {/* Price per Liter */}
+        <FieldAnchor name="price_per_liter" focus={fieldFocus}>
         <Controller
           control={control}
           name="price_per_liter"
@@ -376,31 +407,22 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             <Input
               inputRef={priceInputRef}
               label="Preço por Litro"
+              testID="fuel-price"
               required
               placeholder="Ex: R$ 5,999"
               value={formattedPrice}
               onChangeText={(text) => {
-                // Block input if decimal part already has 3 digits
-                const cleanText = text.replace(/^R\$\s*/, "");
-                const separatorIdx = Math.max(
-                  cleanText.lastIndexOf(","),
-                  cleanText.lastIndexOf("."),
-                );
+                // Two integer digits and three decimals at most
+                // (nextPricePerLiterText): a refused keystroke keeps the text.
+                const formatted = nextPricePerLiterText(text);
 
-                if (separatorIdx !== -1) {
-                  const decimalDigits = cleanText
-                    .substring(separatorIdx + 1)
-                    .replace(/\D/g, "");
-
-                  if (decimalDigits.length > 3) {
-                    priceInputRef.current?.setNativeProps({
-                      text: formattedPrice,
-                    });
-                    return;
-                  }
+                if (formatted === null) {
+                  priceInputRef.current?.setNativeProps({
+                    text: formattedPrice,
+                  });
+                  return;
                 }
 
-                const formatted = formatCurrency(text);
                 setFormattedPrice(formatted);
 
                 const numValue = parseFormattedValue(formatted);
@@ -426,27 +448,27 @@ export const FuelForm: React.FC<FuelFormProps> = ({
                   }
                 }
                 onBlur();
-                trigger("price_per_liter");
               }}
               error={errors.price_per_liter?.message}
               keyboardType="numeric"
             />
           )}
         />
+        </FieldAnchor>
 
         {/* Total Amount Display */}
         <TotalAmountDisplay amount={calculatedTotal} />
 
         {/* Odometer Photo */}
-        <View className="mb-6">
-          <Text className="text-gray-700 font-medium mb-2">
-            Foto do Odômetro <Text className="text-red-500">*</Text>
+        <FieldAnchor name="odometer_photo" focus={fieldFocus} className="mb-6">
+          <Text className="text-ink-soft font-medium mb-2">
+            Foto do Odômetro <Text className="text-destructive">*</Text>
           </Text>
 
           {odometerImage ? (
             <View
-              className="border border-green-300 
-              rounded-lg p-3 bg-green-50"
+              className="border border-success/40 
+              rounded-lg p-3 bg-success-soft"
             >
               <Image
                 source={{ uri: odometerImage.uri }}
@@ -475,35 +497,59 @@ export const FuelForm: React.FC<FuelFormProps> = ({
           ) : (
             <TouchableOpacity
               onPress={onImagePicker}
-              className="border-2 border-dashed 
-              border-gray-300 rounded-lg p-6 items-center"
+              testID="fuel-odometer-photo"
+              accessibilityRole="button"
+              accessibilityLabel={
+                odometerPhotoError
+                  ? `Adicionar foto do odômetro, obrigatório. ${odometerPhotoError}`
+                  : "Adicionar foto do odômetro, obrigatório"
+              }
+              // Neutral until the photo is actually missing (decision 16.700).
+              className={`border-2 border-dashed rounded-lg p-6 items-center ${
+                odometerPhotoError
+                  ? "border-destructive bg-destructive-soft"
+                  : "border-input"
+              }`}
             >
-              <Ionicons name="camera" size={48} color="#9ca3af" />
-              <Text className="text-gray-600 mt-2 font-medium">
+              <Ionicons
+                name="camera"
+                size={48}
+                color={odometerPhotoError ? colors.destructive : colors.muted}
+              />
+              <Text className="text-muted mt-2 font-medium">
                 Adicionar Foto do Odômetro
               </Text>
-              <Text className="text-gray-500 text-sm mt-1">
+              <Text className="text-muted text-sm mt-1">
                 Toque para tirar foto ou selecionar da galeria
               </Text>
-              <Text className="mt-3 text-gray-500">(máx. 5MB)</Text>
+              <Text className="mt-3 text-muted">(máx. 5MB)</Text>
             </TouchableOpacity>
           )}
-        </View>
+          {!odometerImage && odometerPhotoError ? (
+            <Text className="text-destructive text-sm mt-1">{odometerPhotoError}</Text>
+          ) : null}
+        </FieldAnchor>
+
+        {odometerImage ? precheckNotice : null}
 
         {/* 📍 GEOLOCATION: Location Picker */}
-        <LocationPicker
-          onLocationChange={onLocationChange}
-          onLoadingChange={onLocationLoadingChange}
-          error={locationError}
-        />
+        <FieldAnchor name="latitude" focus={fieldFocus}>
+          <LocationPicker
+            onLocationChange={onLocationChange}
+            onLoadingChange={onLocationLoadingChange}
+            error={locationError}
+          />
+        </FieldAnchor>
 
         {/* Notes - Smaller field */}
+        <FieldAnchor name="notes" focus={fieldFocus}>
         <Controller
           control={control}
           name="notes"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
               label="Observações (Opcional)"
+              inputRef={fieldFocus?.inputRef("notes")}
               placeholder="Digite observações sobre o abastecimento..."
               value={value || ""}
               onChangeText={onChange}
@@ -515,6 +561,7 @@ export const FuelForm: React.FC<FuelFormProps> = ({
             />
           )}
         />
+        </FieldAnchor>
       </View>
 
       {/* Bottom Spacing */}

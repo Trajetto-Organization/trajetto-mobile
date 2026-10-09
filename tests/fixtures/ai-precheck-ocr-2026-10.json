@@ -1,0 +1,1351 @@
+{
+ "source": "Text-only copy of trajetto-api tests/unitaires/ai/fixtures/ocr-combo-2026-10.json (benchmark 05/10/2026, synthetic photos read by RapidOCR). No image, no box, no score: only what the phone rules compare.",
+ "items": [
+  {
+   "id": "P01",
+   "kind": "proof",
+   "description": "Canhoto correto, plano, boa luz",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: R$ 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "NF-e",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "DATA DE RECEBIMENTO",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "N° 000.045.181",
+    "SÉRIE 1",
+    "27/09/2026"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_good"
+   }
+  },
+  {
+   "id": "P02",
+   "kind": "proof",
+   "description": "Canhoto correto, girado, sombra da mão, leve desfoque",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORA ALIANÇA DE ALIMENTOS LIDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTAFISCAL ELETRÔNICA",
+    "INDICADAAO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTALTDA- AV. DAS AMOREIRAS, 1450 -",
+    "JARDIMPROFESSORATARCILIA-CAMPINAS SP",
+    "DATA DE RECEBDUENTO",
+    "IDENTIFICAÇÃO E ASSINATURADO RECEBEDOR",
+    "27/09/2026",
+    "NF-e",
+    "N° 000.045.181",
+    "SÉRIE 1"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_good"
+   }
+  },
+  {
+   "id": "P03",
+   "kind": "proof",
+   "description": "Canhoto correto ainda preso à DANFE, em perspectiva",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "NF-e",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "N° 000.045.181",
+    "DATA DE RECEBIMENTO",
+    "SÉRIE 1",
+    "27/09/2026",
+    "Almeid",
+    "DANFE",
+    "IDENTIFICAÇÃO DO EMITENTE",
+    "Documento Auxiliar da Nota Fiscal Eletrônica",
+    "DISTRIBUIDORA ALIANÇA DE ALIMENTOS LTDA",
+    "0 - ENTRADA",
+    "1 - SAÍDA1",
+    "CHAVE DE ACESSO",
+    "RUA DOS BANDEIRANTES, 820 - GALPÃO 3",
+    "3526 0912 3456 7800 0190 5500 1000 0045 1811 0004 5181 1",
+    "DISTRITO INDUSTRIAL - CAMPINAS - SP - CEP 13054-000",
+    "N° 000.045.181",
+    "Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da",
+    "Fone: (19) 3232-4455",
+    "SÉRIE 1",
+    "Sefaz Autorizadora",
+    "FOLHA 1/1",
+    "PROTOCOLO DE AUTORIZAÇÃO DE USO",
+    "135260912345678 - 25/09/2026 14:12:55",
+    "NATUREZA DA OPERAÇÃO",
+    "VENDA DE MERCADORIA ADQUIRIDA DE TERCEIROS",
+    "CNPJ",
+    "INSC. EST. SUBST. TRIB.",
+    "12.345.678/0001-90",
+    "INSCRIÇÃO ESTADUAL",
+    "244.118.902.110",
+    "DATA DA EMISSÃO",
+    "DESTINATÁRIO / REMETENTE",
+    "CNPJ/ CPF",
+    "25/09/2026",
+    "98.765.432/0001-10",
+    "NOME / RAZÃO SOCIAL",
+    "DATA DA SAÍDA",
+    "MERCADO BOA VISTA LTDA",
+    "BAIRRO /DISTRITO",
+    "26/09/2026",
+    "JD. PROF. TARCÍLIA",
+    "ENDEREÇO",
+    "AV. DAS AMOREIRAS, 1450"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_good"
+   }
+  },
+  {
+   "id": "P04",
+   "kind": "proof",
+   "description": "Canhoto correto, pouca luz e papel amassado",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇADE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADAAO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: R$ 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "DATA DE RECEBIMENTO",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "NF-e",
+    "27/09/26",
+    "N° 000.045.181",
+    "SÉRIE 1"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_good"
+   }
+  },
+  {
+   "id": "P05",
+   "kind": "proof",
+   "description": "Canhoto correto, data curta e nome legível",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "NF-e",
+    "INDICADAAO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "Nº 000.045.181",
+    "SÉRIE 1",
+    "DATA DE RECEBIMENTO",
+    "27/09/26",
+    "Jopé Peretra"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_good"
+   }
+  },
+  {
+   "id": "P06",
+   "kind": "proof",
+   "description": "Número trocado (045.118 em vez de 045.181)",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: R$ 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "DATA DE RECEBIMENTO",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "NF-e",
+    "27/09/2026",
+    "N° 000.045.118",
+    "SÉRIE 1",
+    "CArla M. Souiza"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "no",
+    "printedNumber": "45118",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P07",
+   "kind": "proof",
+   "description": "Outra nota (000.112.907), DANFE inteira",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: R$ 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "DATA DE RECEBIMENTO",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "NF-e",
+    "N° 000.112.907",
+    "27/09/2026",
+    "SÉRIE 1",
+    "IDENTIFICAÇÃO DO EMITENTE",
+    "DANFE",
+    "DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA",
+    "Documento Auxiliar da Nota Fiscal Eletrônica",
+    "RUA DOS BANDEIRANTES, 820 - GALPÃO 3",
+    "0 - ENTRADA",
+    "Fone: (19) 3232-4455",
+    "DISTRITO INDUSTRIAL - CAMPINAS - SP - CEP 13054-000",
+    "N° 000.112.907",
+    "1 - SAÍDA1",
+    "3526 0912 3456 7800 0190 5500 1000 0112 9071 0011 2907 3",
+    "CHAVE DE ACESSO",
+    "SÉRIE 1",
+    "Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov:br/portal ou no site da",
+    "FOLHA 1/1",
+    "Sefaz Autorizadora",
+    "NATUREZA DA OPERAÇÃO",
+    "VENDA DE MERCADORIA ADQUIRIDA DE TERCEIROS",
+    "PROTOCOLO DE AUTORIZAÇÃO DE USO",
+    "135260912345678 - 25/09/2026 14:12:55",
+    "INSCRIÇÃO ESTADUAL",
+    "244.118.902.110",
+    "INSC. EST. SUBST. TRIB.",
+    "CNPJ",
+    "12.345.678/0001-90",
+    "DESTINATÁRIO / REMETENTE",
+    "NOME / RAZÃO SOCIAL",
+    "MERCADO BOA VISTA LTDA",
+    "CNPJ/ CPF",
+    "DATA DA EMISSÃO",
+    "98.765.432/0001-10",
+    "25/09/2026",
+    "ENDEREÇO",
+    "AV. DAS AMOREIRAS, 1450",
+    "BAIRRO / DISTRITO",
+    "DATADA SAÍDA",
+    "JD. PROF. TARCÍLIA",
+    "26/09/2026"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "no",
+    "printedNumber": "112907",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P08",
+   "kind": "proof",
+   "description": "Sem data de recebimento",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORA ALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "NF-e",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "Nº 000.045.181",
+    "DATA DE RECEBIMENTO",
+    "SÉRIE 1"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "no",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P09",
+   "kind": "proof",
+   "description": "Sem data, DANFE inteira",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇADE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "NF-e",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA- CAMPINAS/SP",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "N° 000.045.181",
+    "SÉRIE 1",
+    "DATA DE RECEBIMENTO",
+    "DANFE",
+    "IDENTIFICAÇÃO DO EMITENTE",
+    "Documento Auxiliar da Nota Fiscal Eletrônica",
+    "DISTRIBUIDORA ALIANÇA DE ALIMENTOS LTDA",
+    "0 - ENTRADA",
+    "1 - SAÍDA1",
+    "CHAVE DE ACESSO",
+    "3526 0912 3456 7800 0190 5500 1000 0045 1811 0004 5181 1",
+    "RUA DOS BANDEIRANTES, 820 - GALPÃO 3",
+    "N° 000.045.181",
+    "Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda. gov:br/portal ou no site da",
+    "DISTRITO INDUSTRIAL - CAMPINAS - SP - CEP 13054-000",
+    "SÉRIE 1",
+    "Sefaz Autorizadora",
+    "Fone: (19) 3232-4455",
+    "FOLHA 1/1",
+    "PROTOCOLO DE AUTORIZAÇÃO DE USO",
+    "135260912345678 - 25/09/2026 14:12:55",
+    "NATUREZA DA OPERAÇÃO",
+    "CNPJ",
+    "VENDA DE MERCADORIA ADQUIRIDA DE TERCEIROS",
+    "INSC. EST. SUBST. TRIB.",
+    "12.345.678/0001-90",
+    "INSCRIÇÃO ESTADUAL",
+    "244.118.902.110",
+    "DATA DA EMISSÃO",
+    "CNPJ / CPF",
+    "25/09/2026",
+    "DESTINATÁRIO / REMETENTE",
+    "98.765.432/0001-10",
+    "DATADA SAÍDA",
+    "NOME / RAZÃO SOCIAL",
+    "BAIRRO / DISTRITO",
+    "26/09/2026",
+    "MERCADO BOA VISTA LTDA",
+    "JD. PROF. TARCÍLIA",
+    "ENDEREÇO",
+    "AV. DAS AMOREIRAS, 1450"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "no",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P10",
+   "kind": "proof",
+   "description": "Sem assinatura (só a data)",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "DATA DE RECEBIMENTO",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "NF-e",
+    "N° 000.045.181",
+    "27/09/2026",
+    "SÉRIE 1"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "no",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P11",
+   "kind": "proof",
+   "description": "Sem assinatura, girado e desfocado",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: R$ 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA- CAMPINAS/SP",
+    "DATA DE RECEBIMENTO",
+    "27/09/2026",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "NF-e",
+    "N° 000.045.181",
+    "SÉRIE 1"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "no",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P12",
+   "kind": "proof",
+   "description": "Canhoto em branco (sem data e sem assinatura)",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADAAO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "NF-e",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "DATA DE RECEBIMENTO",
+    "N° 000.045.181",
+    "SÉRIE 1"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "no",
+    "dateVisible": "no",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P13",
+   "kind": "proof",
+   "description": "Canhoto correto mas ilegível (tremido e escuro)",
+   "lines": [],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "no",
+    "hasSignature": null,
+    "dateVisible": null,
+    "documentMatches": null,
+    "printedNumber": null,
+    "expected": "not_good"
+   }
+  },
+  {
+   "id": "P14",
+   "kind": "proof",
+   "description": "Não é canhoto: etiqueta da caixa (traz NF 45181)",
+   "lines": [
+    "REMETENTE",
+    "DISTRIBUIDORA ALIANÇA DE ALIMENTOS LTDA",
+    "DESTINATÁRIO",
+    "MERCADO BOA VISTA LTDA",
+    "18,4 kg",
+    "AV. DAS AMOREIRAS, 1450 - CAMPINAS/SP",
+    "VOLUME 1/3",
+    "NF 45181",
+    "FRÁGIL",
+    "↑↑ ESTE LADO PARA CIMA"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "no",
+    "legible": null,
+    "hasSignature": "no",
+    "dateVisible": "no",
+    "documentMatches": null,
+    "printedNumber": null,
+    "expected": "not_good"
+   }
+  },
+  {
+   "id": "P15",
+   "kind": "proof",
+   "description": "Não é canhoto: cupom NFC-e de supermercado",
+   "lines": [
+    "SUPERMERCADO BOM PRECO LTDA",
+    "CNPJ 11.222.333/0001-44 IE 123.456.789.000",
+    "R. XV DE NOVEMBRO, 300 - CENTRO - CAMPINAS SP",
+    "DOCUMENTO AUXILIAR DA NOTA FISCAL",
+    "DE CONSUMIDOR ELETRONICA",
+    "12 UN x 5,49 = 65,88",
+    "7891000100103 LEITE UHT INTEGRAL 1L",
+    "2 UN x 27,90 = 55,80",
+    "7896005800018 ARROZ TIPO 1 5KG",
+    "6 UN x 4,79 = 28,74",
+    "7891910000197 ACUCAR REFINADO 1KG",
+    "3 UN x 18,99 = 56,97",
+    "7896036090245 CAFE TORRADO MOIDO 500G",
+    "4 UN x 7,45 = 29,80",
+    "7891149103102 OLEO DE SOJA 900ML",
+    "237,19",
+    "237,19",
+    "VALOR TOTAL RS",
+    "Cartao de Debito",
+    "NFC-e n. 000812 Serie 003 27/09/2026 10:42:13",
+    "Consulte pela Chave de Acesso em",
+    "www.nfce.fazenda.sp.gov.br/consulta",
+    "3526 0911 2223 3300 0144 6500 3000 0008 1210 0081 2104",
+    "CONSUMIDOR NAO IDENTIFICADO"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "no",
+    "legible": null,
+    "hasSignature": "no",
+    "dateVisible": null,
+    "documentMatches": "no",
+    "printedNumber": null,
+    "expected": "not_good"
+   }
+  },
+  {
+   "id": "O01",
+   "kind": "odometer",
+   "description": "Painel digital LCD, leitura clara",
+   "lines": [
+    "100 120",
+    "4",
+    "80",
+    "140",
+    "07:42",
+    "24°℃",
+    "3",
+    "5",
+    "60",
+    "km/h",
+    "160",
+    "x1000 r/min",
+    "2",
+    "6",
+    "3456",
+    "TRIP A",
+    "km",
+    "40",
+    "180",
+    "ODO",
+    "1",
+    "20",
+    "200",
+    "084312",
+    "220",
+    "8",
+    "km"
+   ],
+   "input": {
+    "reportedMileage": 84312
+   },
+   "truth": {
+    "reading": 84312,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O02",
+   "kind": "odometer",
+   "description": "Painel âmbar em ângulo; informado 5 km acima",
+   "lines": [
+    "一",
+    "4",
+    "80",
+    "100 120",
+    "140",
+    "18:05",
+    "24℃",
+    "3",
+    "5",
+    "60",
+    "km/h",
+    "160",
+    "2",
+    "x1000 r/min",
+    "6",
+    "3456",
+    "TRIP A",
+    "km",
+    "40",
+    "180",
+    "ODO",
+    "1",
+    "20",
+    "200",
+    "127845",
+    "220",
+    "8",
+    "km"
+   ],
+   "input": {
+    "reportedMileage": 127850
+   },
+   "truth": {
+    "reading": 127845,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O03",
+   "kind": "odometer",
+   "description": "Odômetro mecânico de tambor",
+   "lines": [
+    "80",
+    "100",
+    "60",
+    "120",
+    "km/h",
+    "40",
+    "140",
+    "20",
+    "5671",
+    "9",
+    "0",
+    "160",
+    "0",
+    "3",
+    "4",
+    "5",
+    "TRIP"
+   ],
+   "input": {
+    "reportedMileage": 56719
+   },
+   "truth": {
+    "reading": 56719,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O04",
+   "kind": "odometer",
+   "description": "Trip em destaque, ODO pequeno (distrator)",
+   "lines": [
+    "100 120",
+    "4",
+    "80",
+    "140",
+    "06:58",
+    "24℃",
+    "3",
+    "5",
+    "60",
+    "km/h",
+    "160",
+    "TRIP A",
+    "2",
+    "x1000 r/min",
+    "6",
+    "3456",
+    "40",
+    "180",
+    "km",
+    "1",
+    "20",
+    "200",
+    "ODO",
+    "203118",
+    "220",
+    "8"
+   ],
+   "input": {
+    "reportedMileage": 203118
+   },
+   "truth": {
+    "reading": 203118,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O05",
+   "kind": "odometer",
+   "description": "LCD com reflexo e inclinação",
+   "lines": [
+    "4",
+    "5",
+    "3",
+    "24℃",
+    "100 120",
+    "140",
+    "12:31",
+    "x1000 r/min",
+    "6",
+    "80",
+    "2",
+    "160",
+    "3456",
+    "60",
+    "km/h",
+    "TRIP A",
+    "km",
+    "180",
+    "1",
+    "40",
+    "ODO",
+    "200",
+    "098765",
+    "8",
+    "20",
+    "220",
+    "km"
+   ],
+   "input": {
+    "reportedMileage": 98765
+   },
+   "truth": {
+    "reading": 98765,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O06",
+   "kind": "odometer",
+   "description": "Leitura 84.312, informado 94.312 (divergente)",
+   "lines": [
+    "100 120",
+    "4",
+    "80",
+    "140",
+    "09:14",
+    "24°℃",
+    "3",
+    "5",
+    "60",
+    "km/h",
+    "160",
+    "x1000 r/min",
+    "3456",
+    "2",
+    "6",
+    "TRIP A",
+    "40",
+    "180",
+    "km",
+    "ODO",
+    "1",
+    "7",
+    "20",
+    "200",
+    "084312",
+    "220",
+    "km"
+   ],
+   "input": {
+    "reportedMileage": 94312
+   },
+   "truth": {
+    "reading": 84312,
+    "expected": [
+     "mismatch"
+    ]
+   }
+  },
+  {
+   "id": "O07",
+   "kind": "odometer",
+   "description": "Tambor 145.002, informado 154.002 (divergente)",
+   "lines": [
+    "80",
+    "60",
+    "100",
+    "40",
+    "km/h",
+    "120",
+    "20",
+    "140",
+    "145002",
+    "160",
+    "1",
+    "TRIP"
+   ],
+   "input": {
+    "reportedMileage": 154002
+   },
+   "truth": {
+    "reading": 145002,
+    "expected": [
+     "mismatch"
+    ]
+   }
+  },
+  {
+   "id": "O08",
+   "kind": "odometer",
+   "description": "Painel de caminhão âmbar",
+   "lines": [
+    "_",
+    "60",
+    "80",
+    "4",
+    "05:47",
+    "24℃",
+    "3",
+    "5",
+    "40",
+    "100",
+    "km/h",
+    "x1000 r/min",
+    "3456",
+    "2",
+    "TRIP A",
+    "km",
+    "20",
+    "120–",
+    "ODO",
+    "1",
+    "412530",
+    "140",
+    "8",
+    "km"
+   ],
+   "input": {
+    "reportedMileage": 412530
+   },
+   "truth": {
+    "reading": 412530,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O09",
+   "kind": "odometer",
+   "description": "Foto de tela (galeria de outro celular) — fraude",
+   "lines": [
+    "87%",
+    "14:32",
+    "IMG_20260912_074211.jpg",
+    "4",
+    "5",
+    "3",
+    "24℃",
+    "80",
+    "100 120",
+    "140",
+    "07:42",
+    "2",
+    "x1000 r/min",
+    "6",
+    "160",
+    "3456",
+    "60",
+    "km/h",
+    "TRIP A",
+    "km",
+    "180",
+    "1",
+    "40",
+    "ODO",
+    "200",
+    "076540",
+    "20",
+    "220",
+    "km",
+    "Excluir",
+    "Editar",
+    "Compartilhar"
+   ],
+   "input": {
+    "reportedMileage": 76540
+   },
+   "truth": {
+    "reading": 76540,
+    "expected": [
+     "fraud"
+    ]
+   }
+  },
+  {
+   "id": "O10",
+   "kind": "odometer",
+   "description": "Tremida demais para ler",
+   "lines": [],
+   "input": {
+    "reportedMileage": 61288
+   },
+   "truth": {
+    "reading": null,
+    "expected": [
+     "unreadable"
+    ]
+   }
+  },
+  {
+   "id": "O11",
+   "kind": "odometer",
+   "description": "Noite, painel azul com pouca luz",
+   "lines": [
+    "100 120",
+    "80",
+    "140",
+    "22:16",
+    "24℃",
+    "4",
+    "3",
+    "5",
+    "60",
+    "km/h",
+    "160",
+    "40",
+    "TRIP A",
+    "3456",
+    "2",
+    "x1000 r/min",
+    "6",
+    "180",
+    "km",
+    "20",
+    "200",
+    "031207",
+    "ODO",
+    "1",
+    "220",
+    "8",
+    "km"
+   ],
+   "input": {
+    "reportedMileage": 31207
+   },
+   "truth": {
+    "reading": 31207,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "K01",
+   "kind": "odometer",
+   "description": "Odômetro do checklist, confere",
+   "lines": [
+    "100 120",
+    "4",
+    "80",
+    "140",
+    "06:40",
+    "24°℃",
+    "3",
+    "5",
+    "60",
+    "km/h",
+    "160",
+    "x1000 r/min",
+    "2",
+    "6",
+    "3456",
+    "TRIP A",
+    "km",
+    "40",
+    "180",
+    "ODO",
+    "1",
+    "20",
+    "200",
+    "150233",
+    "220",
+    "8",
+    "km"
+   ],
+   "input": {
+    "fieldName": "current_mileage",
+    "fieldValue": 150233
+   },
+   "truth": {
+    "expectedMatch": true,
+    "reading": 150233
+   }
+  },
+  {
+   "id": "K02",
+   "kind": "odometer",
+   "description": "Odômetro do checklist, informado 105.233 (não confere)",
+   "lines": [
+    "4",
+    "_",
+    "5",
+    "3",
+    "100 120",
+    "06:44",
+    "24℃",
+    "140",
+    "80",
+    "x1000 r/min",
+    "6",
+    "2",
+    "160",
+    "60",
+    "km/h",
+    "3456",
+    "TRIP A",
+    "km",
+    "180",
+    "40",
+    "ODO",
+    "200",
+    "150233",
+    "20",
+    "8",
+    "220",
+    "km"
+   ],
+   "input": {
+    "fieldName": "current_mileage",
+    "fieldValue": 105233
+   },
+   "truth": {
+    "expectedMatch": false,
+    "reading": 150233
+   }
+  },
+  {
+   "id": "P16",
+   "kind": "proof",
+   "description": "Canhoto correto, outra letra, muito inclinado, pouca luz e tremido",
+   "lines": [
+    "AFISCALELETRÓNICA",
+    "NF-e",
+    "AS AMOREIRAS, 1450",
+    "N° 000.045.181",
+    "SÉRIE 1",
+    "ALOR TOTAL. RS 3.482.90 DESTIN",
+    "RECEBEMOS DE DISTRIBUIDORA ALIANÇADE ALIMENTOS LIDA OS PROE",
+    "INDICADAAOLADO EMISSÃO:",
+    "JARDIMPROFESSORATARCILIA-CAMPINASSP",
+    "27/09/26"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_good"
+   }
+  },
+  {
+   "id": "P17",
+   "kind": "proof",
+   "description": "Canhoto correto, data com hífen, só a rubrica, reflexo de flash e leve desfoque",
+   "lines": [
+    "NF-e",
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "N° 000.045.181",
+    "INDICADAAO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482.90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "SÉRIE 1",
+    "JARDIM PROFESSORA TARCILIA- CAMPINAS/SP",
+    "mm",
+    "DATA DE RECEBIMENTO",
+    "27-09-2026"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_good"
+   }
+  },
+  {
+   "id": "P18",
+   "kind": "proof",
+   "description": "Data de recebimento de outro dia (20/09/2026)",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "INDICADA AO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "DATA DE RECEBIMENTO",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "NF-e",
+    "20/09/2026",
+    "MM",
+    "N° 000.045.181",
+    "SÉRIE 1",
+    "Caila M. Souza"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "no",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P19",
+   "kind": "proof",
+   "description": "Só a assinatura, sem data, pouca luz",
+   "lines": [
+    "RECEBEMOS DE DISTRIBUIDORAALIANÇA DE ALIMENTOS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA",
+    "NF-e",
+    "INDICADAAO LADO. EMISSÃO: 25/09/2026 VALOR TOTAL: RS 3.482.90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDIM PROFESSORA TARCÍLIA - CAMPINAS/SP",
+    "IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR",
+    "Nº 000.045.181",
+    "SÉRIE 1",
+    "DATA DE RECEBIMENTO",
+    "√X"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "no",
+    "documentMatches": "yes",
+    "printedNumber": "45181",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "P20",
+   "kind": "proof",
+   "description": "Número trocado (045.811), perspectiva forte e desfoque",
+   "lines": [
+    "INDICADAAO LADO. EMISSÃO: 25:092026 VALOR TOTAL: RS 3.482,90 DESTINATÁRIO: MERCADO BOA VISTA LTDA - AV. DAS AMOREIRAS, 1450 -",
+    "JARDD PROFESSORA TARCILIA- CAMPINAS SP",
+    "NF-e",
+    "DACA DE REEBOMENTO",
+    "M",
+    "N° 000.045.811",
+    "27109/2026",
+    "SÉRIE 1",
+    "R. Almeida"
+   ],
+   "input": {
+    "expectedDocument": "45181",
+    "expectedRecipient": "Mercado Boa Vista Ltda",
+    "provenOn": "2026-09-27"
+   },
+   "truth": {
+    "isReceipt": "yes",
+    "legible": "yes",
+    "hasSignature": "yes",
+    "dateVisible": "yes",
+    "documentMatches": "no",
+    "printedNumber": "45811",
+    "expected": "looks_wrong"
+   }
+  },
+  {
+   "id": "O12",
+   "kind": "odometer",
+   "description": "Tambor tremido e com pouca luz",
+   "lines": [
+    "80",
+    "100",
+    "60",
+    "120",
+    "km/h",
+    "40",
+    "140",
+    "20",
+    "87654",
+    "0",
+    "160",
+    "0 12",
+    "3",
+    "TRIP"
+   ],
+   "input": {
+    "reportedMileage": 87654
+   },
+   "truth": {
+    "reading": 87654,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O13",
+   "kind": "odometer",
+   "description": "LCD em perspectiva forte (foto de lado)",
+   "lines": [
+    "100 120",
+    "80",
+    "140",
+    "15:02",
+    "24℃",
+    "4",
+    "60",
+    "km/h",
+    "160",
+    "3",
+    "5",
+    "3456",
+    "2",
+    "x1000 r/min",
+    "TRIP A",
+    "6",
+    "40",
+    "180",
+    "km",
+    "ODO",
+    "1",
+    "20",
+    "200",
+    "223344",
+    "8",
+    "220",
+    "km"
+   ],
+   "input": {
+    "reportedMileage": 223344
+   },
+   "truth": {
+    "reading": 223344,
+    "expected": [
+     "verified"
+    ]
+   }
+  },
+  {
+   "id": "O14",
+   "kind": "odometer",
+   "description": "Painel âmbar à noite, muito escuro",
+   "lines": [
+    "100 120",
+    "80",
+    "140",
+    "23:48",
+    "24℃",
+    "4",
+    "60",
+    "km/h",
+    "160",
+    "3",
+    "5",
+    "40",
+    "TRIP A",
+    "3456",
+    "2",
+    "x1000 r/min",
+    "180",
+    "6",
+    "km",
+    "20",
+    "ODO",
+    "200",
+    "309871",
+    "1",
+    "220",
+    "km",
+    "8"
+   ],
+   "input": {
+    "reportedMileage": 309871
+   },
+   "truth": {
+    "reading": 309871,
+    "expected": [
+     "verified"
+    ]
+   }
+  }
+ ]
+}

@@ -1,5 +1,6 @@
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
+import { Image } from "expo-image";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import {
@@ -7,7 +8,13 @@ import {
   resolveOwnMessageCheck,
 } from "@/features/chat/chat-rules";
 
+import { chatImageSource } from "@/features/chat/media-viewer-rules";
+
 import type { ClientChatMessage } from "@/features/chat/types";
+import { bubbleTones } from "@/features/chat/bubble-tones";
+import { useThemeColors } from "@/hooks/use-theme";
+
+import { ChatMessageContextTags } from "./message-context-tags";
 
 import {
   MEDIA_BUBBLE_PADDING,
@@ -59,6 +66,9 @@ const ChatImageGrid = ({
   onPressImage,
   onPressDelivery,
 }: ChatImageGridProps) => {
+  const colors = useThemeColors();
+  const tones = bubbleTones(colors, isMine);
+
   const newest = messages[messages.length - 1];
 
   const tiles = messages.slice(0, VISIBLE_TILES);
@@ -66,6 +76,9 @@ const ChatImageGrid = ({
 
   const caption = messages.find((message) => message.body)?.body ?? null;
   const linked = messages.find((message) => message.delivery)?.delivery ?? null;
+
+  // One batch, one route: the photos were sent within minutes of each other.
+  const linkedRoute = messages.find((message) => message.route)?.route ?? null;
 
   const anyPending = messages.some((message) => message.pending);
 
@@ -84,7 +97,7 @@ const ChatImageGrid = ({
         <Ionicons
           name="time-outline"
           size={13}
-          color="#bfdbfe"
+          color={tones.check}
           accessibilityLabel="Enviando"
         />
       );
@@ -95,7 +108,7 @@ const ChatImageGrid = ({
         <Ionicons
           name="checkmark"
           size={14}
-          color="#bfdbfe"
+          color={tones.check}
           accessibilityLabel="Enviadas"
         />
       );
@@ -105,7 +118,7 @@ const ChatImageGrid = ({
       <Ionicons
         name="checkmark-done"
         size={14}
-        color={check === "read" ? "#7dd3fc" : "#bfdbfe"}
+        color={check === "read" ? tones.checkRead : tones.check}
         accessibilityLabel={
           check === "read" ? "Lidas pela operação" : "Recebidas pela operação"
         }
@@ -117,7 +130,7 @@ const ChatImageGrid = ({
     <View className={`w-full ${isMine ? "items-end" : "items-start"} px-4`}>
       <View style={{ width: MEDIA_BUBBLE_WIDTH, maxWidth: "100%" }}>
         {showSenderName && (
-          <Text className="mb-0.5 px-1 text-xs font-medium text-gray-500">
+          <Text className="mb-0.5 px-1 text-xs font-medium text-muted">
             {newest.sender.name}
           </Text>
         )}
@@ -131,34 +144,17 @@ const ChatImageGrid = ({
         <View
           className={`rounded-2xl ${
             isMine
-              ? "rounded-br-md bg-blue-600"
-              : "rounded-bl-md border border-gray-200 bg-white"
+              ? "rounded-br-md bg-primary"
+              : "rounded-bl-md border border-border bg-card"
           }`}
           style={{ padding: MEDIA_BUBBLE_PADDING }}
         >
-          {linked && (
-            <TouchableOpacity
-              onPress={() => onPressDelivery(linked.id)}
-              accessibilityRole="button"
-              accessibilityLabel={`Abrir entrega de ${linked.recipient_name}`}
-              className={`mb-1.5 flex-row items-center gap-1.5 rounded-lg px-2
-              py-1.5 ${isMine ? "bg-blue-500" : "bg-gray-100"}`}
-            >
-              <Ionicons
-                name="cube-outline"
-                size={14}
-                color={isMine ? "#ffffff" : "#374151"}
-              />
-              <Text
-                numberOfLines={1}
-                className={`flex-1 text-xs ${
-                  isMine ? "text-white" : "text-gray-700"
-                }`}
-              >
-                Entrega: {linked.recipient_name}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <ChatMessageContextTags
+            delivery={linked}
+            route={linkedRoute}
+            isMine={isMine}
+            onPressDelivery={onPressDelivery}
+          />
 
           <View
             className="flex-row flex-wrap"
@@ -191,10 +187,14 @@ const ChatImageGrid = ({
                   className="overflow-hidden rounded-md"
                   style={{ width: MEDIA_TILE_SIZE, height: MEDIA_TILE_SIZE }}
                 >
+                  {/* Same cache identity as the single bubble and the
+                  viewer: the message, never the signed url (MOB-08). */}
                   <Image
-                    source={{ uri: message.attachment_url! }}
+                    source={chatImageSource(message.attachment_url!, message.id)}
+                    recyclingKey={message.id}
+                    cachePolicy="memory-disk"
+                    contentFit="cover"
                     style={{ width: MEDIA_TILE_SIZE, height: MEDIA_TILE_SIZE }}
-                    resizeMode="cover"
                   />
 
                   {message.pending && !showsOverflow && (
@@ -202,14 +202,14 @@ const ChatImageGrid = ({
                       <Ionicons
                         name="time-outline"
                         size={20}
-                        color="#ffffff"
+                        color={colors.primaryForeground}
                       />
                     </View>
                   )}
 
                   {showsOverflow && (
                     <View className="absolute inset-0 items-center justify-center bg-black/50">
-                      <Text className="text-xl font-semibold text-white">
+                      <Text className="text-xl font-semibold text-primary-foreground">
                         +{hidden}
                       </Text>
                     </View>
@@ -222,7 +222,7 @@ const ChatImageGrid = ({
           {caption ? (
             <Text
               className={`mt-1 text-[15px] leading-5 ${
-                isMine ? "text-white" : "text-gray-900"
+                isMine ? "text-primary-foreground" : "text-ink"
               }`}
               style={{ width: MEDIA_CONTENT_WIDTH }}
             >
@@ -236,7 +236,7 @@ const ChatImageGrid = ({
           >
             <Text
               className={`text-[10px] ${
-                isMine ? "text-blue-100" : "text-gray-400"
+                isMine ? "text-primary-foreground/95" : "text-muted"
               }`}
             >
               {formatMessageClock(newest.created_at)}

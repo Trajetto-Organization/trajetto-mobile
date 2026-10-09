@@ -11,6 +11,17 @@ export const formatMileage = (value: string): string => {
 };
 
 /**
+ * A stored km reading as the screens show it: "50.120". Fixed to the
+ * Brazilian separator on purpose — `toLocaleString()` follows the phone's
+ * language, and an English-language phone showed the odometer as "50,120",
+ * which reads as fifty km in Brazil. Null when there is no reading.
+ */
+export const formatKmReading = (value: number | null | undefined): string | null =>
+  typeof value === "number" && Number.isFinite(value)
+    ? formatMileage(String(Math.trunc(value)))
+    : null;
+
+/**
  * Format liters input with Brazilian decimal format (natural approach)
  * Example: "45500" -> "45,500"
  */
@@ -203,4 +214,42 @@ export const emptyStringToNull = (value: any) => {
 export const isValidDateString = (value: string): boolean => {
   const date = new Date(value);
   return !isNaN(date.getTime());
+};
+
+const DATE_ONLY_KEY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Formats a DATE-ONLY value — a delivery's expected date, a route's day —
+ * as "17/09" (or "17/09/2026" with the year). Null when there is nothing to
+ * show.
+ *
+ * The API stores the civil day as UTC midnight ("2026-09-17T00:00:00.000Z")
+ * or sends "2026-09-17". It is a day, not an instant, so it is read in UTC:
+ * `toLocaleDateString` in the phone's zone showed the 16th for a delivery of
+ * the 17th anywhere in Brazil (decision 1.3).
+ *
+ * Defaults differ from the web's `formatDateOnly` on purpose: a card here
+ * shows "17/09" and hides the line on `null`; the web's tables show the year
+ * and "N/A". The day read is the same.
+ */
+export const formatDateOnly = (
+  value: string | Date | null | undefined,
+  options: { withYear?: boolean } = {},
+): string | null => {
+  if (value === null || value === undefined || value === "") return null;
+
+  const key = typeof value === "string" ? DATE_ONLY_KEY.exec(value.trim()) : null;
+
+  const date = key
+    ? new Date(Date.UTC(Number(key[1]), Number(key[2]) - 1, Number(key[3])))
+    : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    ...(options.withYear && { year: "numeric" }),
+    timeZone: "UTC",
+  }).format(date);
 };

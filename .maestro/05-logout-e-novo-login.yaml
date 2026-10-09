@@ -1,0 +1,27 @@
+# Logout drops the session; a new login through the form brings the driver
+# back to the same day, with the finished route gone from the list.
+appId: com.trajetto.fleetmanager
+name: 05 Logout e novo login
+tags:
+  - driver
+---
+- runFlow: subflows/logout.yaml
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${DRIVER_EMAIL}
+      PASSWORD: ${DRIVER_PASSWORD}
+- extendedWaitUntil:
+    visible:
+      id: tab-deliveries
+    timeout: 60000
+- tapOn:
+    id: tab-deliveries
+# The three stops were delivered or reported: nothing left for the driver.
+- extendedWaitUntil:
+    visible:
+      id: deliveries-list
+    timeout: 60000
+- assertNotVisible: "Cliente E2E 1"
+- assertNotVisible: "Cliente E2E 3"
+- takeScreenshot: 05-novo-login

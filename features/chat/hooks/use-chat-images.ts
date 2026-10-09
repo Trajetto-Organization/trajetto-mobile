@@ -180,29 +180,24 @@ function useChatImages(): ChatImages {
     [commit, report],
   );
 
-  const ensurePermission = useCallback(
-    async (source: "camera" | "gallery"): Promise<boolean> => {
-      const permission =
-        source === "camera"
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+  // Only the camera asks. The gallery is the system photo picker, which needs
+  // no permission; asking for the media library on Android 12 or older would
+  // be refused outright, since the manifest no longer declares
+  // READ_EXTERNAL_STORAGE (app.config.js).
+  const ensureCameraPermission = useCallback(async (): Promise<boolean> => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
 
-      if (permission.granted) return true;
+    if (permission.granted) return true;
 
-      Toast.show({
-        type: "error",
-        text1: "Permissão necessária",
-        text2:
-          source === "camera"
-            ? "É necessário permitir acesso à câmera."
-            : "É necessário permitir acesso à galeria.",
-        position: "top",
-      });
+    Toast.show({
+      type: "error",
+      text1: "Permissão necessária",
+      text2: "É necessário permitir acesso à câmera.",
+      position: "top",
+    });
 
-      return false;
-    },
-    [],
-  );
+    return false;
+  }, []);
 
   const remaining = Math.max(0, MAX_CHAT_IMAGES_PER_SEND - images.length);
 
@@ -221,21 +216,19 @@ function useChatImages(): ChatImages {
       return;
     }
 
-    if (!(await ensurePermission("camera"))) return;
+    if (!(await ensureCameraPermission())) return;
 
     const result = await ImagePicker.launchCameraAsync(CAMERA_OPTIONS);
     if (result.canceled || !result.assets[0]) return;
 
     await stage([result.assets[0]]);
-  }, [remaining, warnFull, ensurePermission, stage]);
+  }, [remaining, warnFull, ensureCameraPermission, stage]);
 
   const pickFromGallery = useCallback(async () => {
     if (remaining === 0) {
       warnFull();
       return;
     }
-
-    if (!(await ensurePermission("gallery"))) return;
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -251,7 +244,7 @@ function useChatImages(): ChatImages {
     if (result.canceled || result.assets.length === 0) return;
 
     await stage(result.assets);
-  }, [remaining, warnFull, ensurePermission, stage]);
+  }, [remaining, warnFull, stage]);
 
   const remove = useCallback(
     (index: number) => {

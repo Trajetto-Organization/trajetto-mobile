@@ -5,7 +5,11 @@ import { AppState, Platform } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { shouldPersistQuery } from "@/features/offline/offline-cache-rules";
+import {
+  compactPersistedClient,
+  dropLeastValuableQuery,
+  shouldPersistQuery,
+} from "@/features/offline/offline-cache-rules";
 import NetInfo from "@react-native-community/netinfo";
 
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -17,6 +21,9 @@ import {
 
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { ApiError } from "../utils/api";
+import { socketResyncOwed } from "../utils/socket";
+
+import { refetchOnFocus } from "../features/foreground/return-rules";
 
 const shouldRetryQuery = (failureCount: number, error: unknown): boolean => {
   if (error instanceof Error && error.name === "AbortError") return false;
@@ -35,6 +42,13 @@ export const queryPersister = createAsyncStoragePersister({
   storage: AsyncStorage,
   key: "@trajetto:react-query:offline-v1",
   throttleTime: 1_000,
+
+  // The whole cache is one AsyncStorage row, and a row too big to read back
+  // made the restore fail and wiped the offline cache (MOB-22). Written
+  // bounded, most valuable first; a write refused anyway drops the least
+  // valuable query and tries again.
+  serialize: (client) => JSON.stringify(compactPersistedClient(client)),
+  retry: dropLeastValuableQuery,
 });
 
 class AppQueryClient extends QueryClient {
@@ -65,7 +79,11 @@ export const queryClient = new AppQueryClient({
       // from memory is not dehydrated, so a shorter window here would silently
       // shrink the one above back to ten minutes.
       gcTime: OFFLINE_CACHE_MAX_AGE,
-      refetchOnWindowFocus: true,
+      // Except the realtime lists while the socket's resync is on its way:
+      // their focus refetch would leave before the socket is back and be
+      // followed by that resync a second later (MOB-20).
+      refetchOnWindowFocus: (query) =>
+        refetchOnFocus(query.queryKey, socketResyncOwed()),
       refetchOnMount: true,
       refetchOnReconnect: true,
     },

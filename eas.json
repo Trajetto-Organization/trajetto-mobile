@@ -13,7 +13,15 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
-      "environment": "preview"
+      "environment": "preview",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "staging": {
+      "extends": "preview",
+      "channel": "staging",
+      "environment": "staging"
     },
     "production": {
       "autoIncrement": true,

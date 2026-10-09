@@ -9,7 +9,7 @@ import type { ChatThreadsResponse } from "../types";
 /**
  * The hub card's badge: how many SAC messages the driver has not read.
  * Derived on the server from the read cursor — nothing accumulates. Kept
- * fresh by the realtime hook invalidating this key on every arrival.
+ * fresh by `requestChatUnreadRefresh`, once per burst of arrivals or reads.
  */
 function useChatUnread() {
   const user = useAuthStore((state) => state.user);

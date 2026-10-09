@@ -1,0 +1,59 @@
+# An occurrence whose type has a form: a required text and a Sim/Não.
+appId: com.trajetto.fleetmanager
+name: 02 Ocorrência com formulário
+tags:
+  - driver
+---
+- tapOn: "Cliente E2E 2"
+- tapOn:
+    id: delivery-occurrence-button
+- assertVisible: "Registrar ocorrência"
+- tapOn:
+    id: occurrence-type
+# By the option handle: the field itself reads the same once a draft
+# restored the type.
+- tapOn:
+    id: occurrence-type-option
+    text: "Avaria na carga"
+# The type's form renders in its order, below the type.
+- extendedWaitUntil:
+    visible:
+      id: occurrence-field-volumes_avariados
+    timeout: 30000
+# Required and empty: the tap is refused on the phone and the field says why
+# (errors show after the first attempt, not while the driver is typing).
+- tapOn:
+    id: occurrence-submit
+- extendedWaitUntil:
+    visible: "Preencha o campo .Volumes avariados.*"
+    timeout: 30000
+- assertVisible:
+    id: occurrence-submit
+- tapOn:
+    id: occurrence-field-volumes_avariados
+- inputText: "2 caixas"
+- hideKeyboard
+- tapOn:
+    id: occurrence-field-cliente_recusou-yes
+- tapOn:
+    id: occurrence-description
+- inputText: "Caixas amassadas no transporte."
+- hideKeyboard
+- tapOn:
+    id: occurrence-submit
+- extendedWaitUntil:
+    visible: "Ocorrência registrada.*"
+    timeout: 120000
+- takeScreenshot: 02-ocorrencia
+# An informative occurrence (the type does not block the delivery) keeps the
+# stop on the route: back on the detail, then on the list.
+- extendedWaitUntil:
+    visible:
+      id: delivery-deliver-button
+    timeout: 30000
+- back
+- extendedWaitUntil:
+    visible:
+      id: deliveries-list
+    timeout: 30000
+- assertVisible: "Cliente E2E 2"

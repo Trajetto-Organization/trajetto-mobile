@@ -16,6 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { chatPresenceHintAccessibilityLabel } from "@/features/chat/chat-rules";
+import { useThemeColors } from "@/hooks/use-theme";
 
 /**
  * One full round trip of a bar, up and back down. Faster than the typing
@@ -35,8 +36,6 @@ const BAR_HEIGHT = 16;
  * meter that empties reads as "stopped", which is the opposite of the news. */
 const BAR_MIN_SCALE = 0.28;
 
-/** The recording red, shared with the dot on the driver's own recording bar. */
-const RECORDING_COLOR = "#ef4444";
 
 /**
  * The heights the bars hold still at when the device asks for less motion.
@@ -49,9 +48,11 @@ interface LevelBarProps {
   progress: SharedValue<number>;
   staticScale: number;
   reduceMotion: boolean;
+  /** The recording red (`destructive`), the same as the driver's own recording dot. */
+  color: string;
 }
 
-const LevelBar = ({ progress, staticScale, reduceMotion }: LevelBarProps) => {
+const LevelBar = ({ progress, staticScale, reduceMotion, color }: LevelBarProps) => {
   const style = useAnimatedStyle(() => {
     if (reduceMotion) {
       return { opacity: 0.9, transform: [{ scaleY: staticScale }] };
@@ -72,7 +73,7 @@ const LevelBar = ({ progress, staticScale, reduceMotion }: LevelBarProps) => {
           width: BAR_WIDTH,
           height: BAR_HEIGHT,
           borderRadius: BAR_WIDTH / 2,
-          backgroundColor: RECORDING_COLOR,
+          backgroundColor: color,
         },
         style,
       ]}
@@ -100,6 +101,7 @@ const LevelBar = ({ progress, staticScale, reduceMotion }: LevelBarProps) => {
  */
 const ChatRecordingIndicator = () => {
   const reduceMotion = useReducedMotion();
+  const colors = useThemeColors();
 
   const first = useSharedValue(0);
   const second = useSharedValue(0);
@@ -159,10 +161,10 @@ const ChatRecordingIndicator = () => {
     >
       <View
         className="flex-row items-center gap-2 rounded-2xl rounded-bl-md
-        border border-gray-200 bg-white px-3.5 py-3"
+        border border-border bg-card px-3.5 py-3"
       >
         <Animated.View style={micStyle}>
-          <Ionicons name="mic" size={16} color={RECORDING_COLOR} />
+          <Ionicons name="mic" size={16} color={colors.destructive} />
         </Animated.View>
 
         <View className="flex-row items-center gap-1">
@@ -172,6 +174,7 @@ const ChatRecordingIndicator = () => {
               progress={bars[index]}
               staticScale={STATIC_SCALES[index]}
               reduceMotion={reduceMotion}
+              color={colors.destructive}
             />
           ))}
         </View>

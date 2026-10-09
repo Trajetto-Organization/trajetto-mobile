@@ -5,7 +5,7 @@ import {
   hasSpaceAtEdges,
   isEmptyOrWhitespace,
   isValidDateString,
-} from "@/utils";
+} from "@/utils/formatters";
 
 export const createFuelSchema = z.object({
   current_mileage: z.preprocess(
@@ -71,7 +71,8 @@ export const createFuelSchema = z.object({
       })
       .positive("O preço por litro deve ser um valor positivo.")
       .min(0.01, "O preço por litro deve ser no mínimo R$ 0,01")
-      .max(999.99, "O preço por litro não pode exceder R$ 999,99."),
+      // Sanity cap (decision 15.9), mirrored from the API and the web.
+      .max(50, "O preço por litro não pode exceder R$ 50,00."),
   ),
   total_amount: z
     .number()

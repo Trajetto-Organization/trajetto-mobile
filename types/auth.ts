@@ -1,3 +1,5 @@
+import type { SessionAiFlag } from "@/features/ai-precheck/precheck-gate";
+
 export type UserRole = "MASTER" | "BUSINESS_ADMIN" | "BUSINESS_USER";
 
 export type PermissionKey =
@@ -50,6 +52,15 @@ export interface User {
   email_notifications_enabled?: boolean;
   activity_notifications_enabled?: boolean;
   access_revoked?: boolean;
+
+  /**
+   * Decision 14.2: whether the app runs the offline pre-check of receipt and
+   * odometer photos (`/user/me`). Absent on an API or a cache from before.
+   */
+  ai?: SessionAiFlag | null;
+
+  /** When the phone received `ai` (epoch ms): the flag is trusted for 7 days. */
+  aiCheckedAt?: number;
 }
 
 export interface UserMeResponse {
@@ -68,6 +79,8 @@ export interface LoginResponse {
 export interface TwoFactorRequiredResponse {
   message: string;
   twoFactorVerification: boolean;
+  /** Proof of the password step; sent back with the code and with a resend. */
+  twoFactorChallenge?: string;
 }
 
 export interface EmailVerificationResponse {

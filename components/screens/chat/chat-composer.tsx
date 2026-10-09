@@ -29,17 +29,20 @@ import {
   whyRecordingIsNotSendable,
 } from "@/features/chat/chat-rules";
 
+import {
+  chatContextLabel,
+  composeImageBatch,
+  type ChatContext,
+} from "@/features/chat/chat-context";
+
 import type { SendInput } from "@/features/chat/hooks/use-chat-conversation";
 
 import Toast from "react-native-toast-message";
+import { truncateText } from "@/utils/truncate-text";
+import { useThemeColors } from "@/hooks/use-theme";
 
 /** The ceiling as the driver reads it — "2:00". Derived, never retyped. */
 const AUDIO_LIMIT_LABEL = formatAudioClock(MAX_AUDIO_DURATION_MS);
-
-interface DeliveryChip {
-  id: string;
-  recipient: string;
-}
 
 interface ChatComposerProps {
   onSend: (input: SendInput) => void;
@@ -56,9 +59,23 @@ interface ChatComposerProps {
    */
   onRecording: (recording: boolean) => void;
 
-  /** Pre-linked delivery ("Falar com a base" from the detail screen). */
-  deliveryChip: DeliveryChip | null;
-  onClearDeliveryChip: () => void;
+  /**
+   * What the messages are about ("Falar com a base" from a delivery or a
+   * route). It stays until the driver removes it (DLVP-CHAT-1): consumed by
+   * the first message, every follow-up about the same stop went out with no
+   * link to it.
+   */
+  context: ChatContext | null;
+  onClearContext: () => void;
+
+  /**
+   * Decision 14.5: the context is the composer's default subject, not one the
+   * driver or a screen put up — there is nothing to remove, only to change.
+   */
+  contextIsAutomatic?: boolean;
+
+  /** Opens "Sobre o quê?" (design §8.2). Absent: the chip is not tappable. */
+  onPressContext?: () => void;
 }
 
 /**
@@ -76,9 +93,12 @@ const ChatComposer = ({
   onSendMany,
   onTyping,
   onRecording,
-  deliveryChip,
-  onClearDeliveryChip,
+  context,
+  onClearContext,
+  contextIsAutomatic = false,
+  onPressContext,
 }: ChatComposerProps) => {
+  const colors = useThemeColors();
   const [text, setText] = useState<string>("");
   const [isPickerOpen, setIsPickerOpen] = useState<boolean>(false);
 
@@ -205,33 +225,12 @@ const ChatComposer = ({
     return () => onRecording(false);
   }, [hasLiveRecording, onRecording]);
 
-  const consumeChip = () => {
-    const chipId = deliveryChip?.id;
-
-    if (chipId) onClearDeliveryChip();
-    return chipId;
-  };
-
   const handleSend = () => {
     const body = text.trim();
 
     if (photos.images.length > 0) {
-      const chipId = consumeChip();
-      const lastIndex = photos.images.length - 1;
-
-      onSendMany(
-        photos.images.map((image, index) => ({
-          kind: "IMAGE" as const,
-          // The caption closes the batch; the chip opens it. Repeating either
-          // on every photo would turn one remark into ten.
-          body: index === lastIndex ? body || undefined : undefined,
-          uri: image.uri,
-          fileName: image.fileName,
-          fileSize: image.fileSize,
-          mimeType: image.mimeType,
-          deliveryId: index === 0 ? chipId : undefined,
-        })),
-      );
+      // Caption on the last photo, the context on every one of them.
+      onSendMany(composeImageBatch(photos.images, body, context));
 
       photos.clear();
       setText("");
@@ -241,7 +240,7 @@ const ChatComposer = ({
 
     if (!body) return;
 
-    onSend({ kind: "TEXT", body, deliveryId: consumeChip() });
+    onSend({ kind: "TEXT", body, context });
     setText("");
   };
 
@@ -308,16 +307,14 @@ const ChatComposer = ({
       return;
     }
 
-    // The chip is CONSUMED, exactly as text and photos consume it — read into
-    // the message and cleared by the same act. Clearing it separately was the
-    // "button that lies": the driver watched the chip disappear while the SAC
-    // received an audio linked to no delivery at all.
+    // The chip travels with the note exactly as with text and photos: what
+    // the bar shows is what the message is linked to.
     onSend({
       kind: "AUDIO",
       uri: finished.uri,
       durationMs: finished.durationMs,
       fileSize: finished.fileSize,
-      deliveryId: consumeChip(),
+      context,
     });
 
     recorder.reset();
@@ -358,7 +355,7 @@ const ChatComposer = ({
         : recordingCountdownSeconds(recorder.recordingMs);
 
     return (
-      <View className="border-t border-gray-200 bg-white px-4 py-3">
+      <View className="border-t border-border bg-surface px-4 py-3">
         <View className="flex-row items-center gap-3">
           {/*
             Inert while the stop is in flight, and visibly so. The recording is
@@ -371,9 +368,9 @@ const ChatComposer = ({
             accessibilityRole="button"
             accessibilityLabel="Descartar gravação"
             className={`h-10 w-10 items-center justify-center rounded-full
-            bg-gray-100 ${isFinishing ? "opacity-50" : ""}`}
+            bg-subtle ${isFinishing ? "opacity-50" : ""}`}
           >
-            <Ionicons name="trash-outline" size={20} color="#6b7280" />
+            <Ionicons name="trash-outline" size={20} color={colors.muted} />
           </TouchableOpacity>
 
           <View className="flex-1">
@@ -381,13 +378,13 @@ const ChatComposer = ({
               <View
                 className={`h-2.5 w-2.5 rounded-full ${
                   captured || isFinishing
-                    ? "bg-gray-400"
+                    ? "bg-muted"
                     : recorder.isPaused
-                      ? "bg-amber-500"
-                      : "bg-red-500"
+                      ? "bg-warning"
+                      : "bg-destructive"
                 }`}
               />
-              <Text className="text-base font-medium text-gray-900">
+              <Text className="text-base font-medium text-ink">
                 {captured
                   ? `Gravação de ${formatAudioClock(captured.durationMs)}`
                   : isFinishing
@@ -400,14 +397,14 @@ const ChatComposer = ({
 
             {captured ? (
               <Text
-                className="mt-0.5 text-xs text-gray-500"
+                className="mt-0.5 text-xs text-muted"
                 accessibilityLiveRegion="polite"
               >
                 Limite de {AUDIO_LIMIT_LABEL} atingido. Envie ou descarte.
               </Text>
             ) : countdown !== null ? (
               <Text
-                className="mt-0.5 text-xs font-medium text-amber-600"
+                className="mt-0.5 text-xs font-medium text-warning"
                 accessibilityLiveRegion="polite"
               >
                 {recorder.isPaused
@@ -415,7 +412,7 @@ const ChatComposer = ({
                   : `Faltam ${countdown}s — conclua a frase.`}
               </Text>
             ) : recorder.isPaused ? (
-              <Text className="mt-0.5 text-xs text-gray-500">
+              <Text className="mt-0.5 text-xs text-muted">
                 Continue quando puder — o tempo parado não conta.
               </Text>
             ) : null}
@@ -435,12 +432,12 @@ const ChatComposer = ({
               accessibilityLabel={
                 recorder.isPaused ? "Continuar gravação" : "Pausar gravação"
               }
-              className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+              className="h-10 w-10 items-center justify-center rounded-full bg-subtle"
             >
               <Ionicons
                 name={recorder.isPaused ? "mic" : "pause"}
                 size={20}
-                color="#374151"
+                color={colors.inkSoft}
               />
             </TouchableOpacity>
           )}
@@ -451,9 +448,9 @@ const ChatComposer = ({
             accessibilityRole="button"
             accessibilityLabel="Enviar mensagem de voz"
             className={`h-10 w-10 items-center justify-center rounded-full
-            bg-blue-600 ${isFinishing ? "opacity-50" : ""}`}
+            bg-primary ${isFinishing ? "opacity-50" : ""}`}
           >
-            <Ionicons name="send" size={18} color="#ffffff" />
+            <Ionicons name="send" size={18} color={colors.primaryForeground} />
           </TouchableOpacity>
         </View>
       </View>
@@ -461,31 +458,71 @@ const ChatComposer = ({
   }
 
   return (
-    <View className="border-t border-gray-200 bg-white px-3 py-2">
-      {deliveryChip && (
+    <View className="border-t border-border bg-surface px-3 py-2">
+      {!context && onPressContext && (
+        <TouchableOpacity
+          onPress={onPressContext}
+          accessibilityRole="button"
+          accessibilityLabel="Escolher o assunto da mensagem"
+          className="mb-2 flex-row items-center gap-1.5 self-start rounded-full
+          border border-dashed border-input px-3 py-1"
+        >
+          <Ionicons name="chatbox-ellipses-outline" size={13} color={colors.muted} />
+          <Text className="text-xs text-muted">Novo assunto · Escolher</Text>
+        </TouchableOpacity>
+      )}
+
+      {context && (
         <View
           className="mb-2 flex-row items-center gap-1.5 self-start rounded-full
-          border border-gray-200 bg-gray-50 px-3 py-1"
+          border border-border bg-subtle px-3 py-1"
         >
-          <Ionicons name="cube-outline" size={13} color="#6b7280" />
-          <Text className="max-w-[220px] text-xs text-gray-700" numberOfLines={1}>
-            Sobre a entrega: {deliveryChip.recipient}
-          </Text>
           <TouchableOpacity
-            onPress={onClearDeliveryChip}
+            onPress={onPressContext}
+            disabled={!onPressContext}
             accessibilityRole="button"
-            accessibilityLabel="Remover referência da entrega"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={`${chatContextLabel(context)}. Toque para mudar o assunto`}
+            className="flex-row items-center gap-1.5"
           >
-            <Ionicons name="close" size={14} color="#6b7280" />
+            <Ionicons
+              name={
+                context.ticket
+                  ? "chatbox-ellipses-outline"
+                  : context.delivery
+                    ? "cube-outline"
+                    : "map-outline"
+              }
+              size={13}
+              color={colors.muted}
+            />
+            <Text className="max-w-[220px] text-xs text-ink-soft" numberOfLines={1}>
+              {chatContextLabel(context)}
+            </Text>
+            {onPressContext && <Ionicons name="chevron-down" size={12} color={colors.muted} />}
           </TouchableOpacity>
+          {!contextIsAutomatic && (
+            <TouchableOpacity
+              onPress={onClearContext}
+              accessibilityRole="button"
+              accessibilityLabel={
+                context.ticket
+                  ? "Remover o assunto"
+                  : context.delivery
+                    ? "Remover referência da entrega"
+                    : "Remover referência da rota"
+              }
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
       {photos.images.length > 0 && (
         <View className="mb-2">
           <View className="mb-1.5 flex-row items-center justify-between pr-1">
-            <Text className="text-xs font-medium text-gray-500">
+            <Text className="text-xs font-medium text-muted">
               {photos.images.length}/{MAX_CHAT_IMAGES_PER_SEND}
             </Text>
 
@@ -495,7 +532,7 @@ const ChatComposer = ({
               accessibilityLabel="Remover todas as fotos"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text className="text-xs font-medium text-gray-500">
+              <Text className="text-xs font-medium text-muted">
                 Limpar
               </Text>
             </TouchableOpacity>
@@ -520,9 +557,9 @@ const ChatComposer = ({
                   accessibilityLabel={`Remover foto ${index + 1}`}
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   className="absolute -right-2 -top-2 h-6 w-6 items-center
-                  justify-center rounded-full border border-gray-200 bg-white"
+                  justify-center rounded-full border border-border bg-card"
                 >
-                  <Ionicons name="close" size={14} color="#374151" />
+                  <Ionicons name="close" size={14} color={colors.inkSoft} />
                 </TouchableOpacity>
               </View>
             ))}
@@ -537,17 +574,17 @@ const ChatComposer = ({
           accessibilityLabel="Anexar fotos"
           className="h-10 w-10 items-center justify-center"
         >
-          <Ionicons name="camera-outline" size={24} color="#6b7280" />
+          <Ionicons name="camera-outline" size={24} color={colors.muted} />
         </TouchableOpacity>
 
         <View
           className="max-h-28 flex-1 justify-center rounded-3xl
-          border border-gray-200 bg-gray-50 px-4"
+          border border-input bg-subtle px-4"
         >
           <TextInput
             value={text}
             onChangeText={(value) => {
-              setText(value.slice(0, MAX_CHAT_MESSAGE_LENGTH));
+              setText(truncateText(value, MAX_CHAT_MESSAGE_LENGTH));
               onTyping();
             }}
             placeholder={
@@ -555,10 +592,13 @@ const ChatComposer = ({
                 ? "Legenda (opcional)..."
                 : "Escreva uma mensagem..."
             }
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.muted}
+            selectionColor={colors.primary}
+            cursorColor={colors.primary}
             multiline
-            className="min-h-[40px] py-2 text-[15px] text-gray-900"
+            className="min-h-[40px] py-2 text-[15px] text-ink"
             accessibilityLabel="Mensagem"
+            testID="chat-input"
           />
         </View>
 
@@ -567,18 +607,19 @@ const ChatComposer = ({
             onPress={handleSend}
             accessibilityRole="button"
             accessibilityLabel="Enviar mensagem"
-            className="h-10 w-10 items-center justify-center rounded-full bg-blue-600"
+            testID="chat-send"
+            className="h-10 w-10 items-center justify-center rounded-full bg-primary"
           >
-            <Ionicons name="send" size={18} color="#ffffff" />
+            <Ionicons name="send" size={18} color={colors.primaryForeground} />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
             onPress={handleStartRecording}
             accessibilityRole="button"
             accessibilityLabel="Gravar mensagem de voz"
-            className="h-10 w-10 items-center justify-center rounded-full bg-blue-600"
+            className="h-10 w-10 items-center justify-center rounded-full bg-primary"
           >
-            <Ionicons name="mic" size={20} color="#ffffff" />
+            <Ionicons name="mic" size={20} color={colors.primaryForeground} />
           </TouchableOpacity>
         )}
       </View>
@@ -596,4 +637,3 @@ const ChatComposer = ({
 };
 
 export { ChatComposer };
-export type { DeliveryChip };

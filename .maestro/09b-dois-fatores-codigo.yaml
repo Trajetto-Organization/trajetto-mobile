@@ -1,0 +1,43 @@
+# The code step, on the screen flow 09 left open. The API keeps only a hash
+# of the e-mailed code, so scripts/e2e/run.sh swaps the pending code of this
+# account for one it knows (api.sh two-factor-code) and passes it here as
+# TWO_FACTOR_CODE; the API still checks it, attempt counter and expiry
+# included. A wrong code is refused first and the screen stays. The digit
+# boxes are the library's (react-native-otp-entry, testID "otp-input"); a tap
+# focuses its hidden field, which then takes the typing.
+appId: com.trajetto.fleetmanager
+name: 09b Dois fatores, código
+tags:
+  - driver
+  - auth
+---
+- assertVisible: "Autenticação em Duas Etapas"
+- tapOn:
+    id: otp-input
+    index: 0
+- inputText: ${TWO_FACTOR_WRONG_CODE}
+- hideKeyboard
+- tapOn:
+    id: two-factor-submit
+- extendedWaitUntil:
+    visible: "Código inválido"
+    timeout: 60000
+- assertNotVisible:
+    id: tab-deliveries
+# The last box: the caret goes to the end, so the erase takes all six (a
+# tap on the first box left the wrong code in place in run r4c).
+- tapOn:
+    id: otp-input
+    index: 5
+- eraseText: 6
+- inputText: ${TWO_FACTOR_CODE}
+- hideKeyboard
+- tapOn:
+    id: two-factor-submit
+# A deliveries-only company: the app opens on the stops of the day.
+- extendedWaitUntil:
+    visible: "Cliente E2E 1"
+    timeout: 60000
+- assertVisible:
+    id: deliveries-list
+- takeScreenshot: 09b-entrou-com-codigo

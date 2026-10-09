@@ -299,45 +299,38 @@ function mediaPositionLabel(index: number, length: number): string {
   return `${clampGalleryIndex(index, length) + 1} / ${length}`;
 }
 
-/**
- * How far outside the mounted window the cache is warmed.
- *
- * Two, not one, and the difference is the whole point: `mediaWindowIndexes`
- * already MOUNTS i-1, i and i+1 as real image views, and an image view fetches
- * its own source. Prefetching those is the same request twice — and on Android
- * the prefetch decodes the file at its ORIGINAL resolution while the mounted
- * view decodes it down to the screen, so it is two decodes per neighbour with
- * the bigger one thrown away. The photos worth warming are the ones the NEXT
- * swipe will mount.
- */
-const MEDIA_PREFETCH_DISTANCE = 2;
+/** What `expo-image` is handed for a chat photo. */
+interface ChatImageSource {
+  uri: string;
+
+  /** The disk/memory cache identity, when the uri cannot be one. */
+  cacheKey?: string;
+}
 
 /**
- * The photos worth warming the cache with: the ring just outside the mounted
- * window, in the two directions the driver can swipe.
+ * The cache identity of a chat photo: the MESSAGE, never the url (MOB-08).
  *
- * A `file://` photo is already on the device and prefetching it means nothing,
- * so it is dropped rather than handed to a network cache that has no idea what
- * to do with it.
+ * Attachment urls are signed per request, so the same photo comes back under
+ * a new url on every listing, resync and re-signature. Cached by url — the
+ * RN `Image` in the bubbles, and `expo-image` without a key in the viewer —
+ * every one of those was a fresh download of every thumbnail on the driver's
+ * data plan. Keyed by message, the bubble's download is also what the viewer
+ * reads from disk when the photo is opened.
  */
-function prefetchRingUrls(
-  gallery: MediaViewerPhoto[],
-  index: number,
-): string[] {
-  const urls: string[] = [];
+function chatImageCacheKey(messageId: string): string {
+  return `chat-image:${messageId}`;
+}
 
-  [index - MEDIA_PREFETCH_DISTANCE, index + MEDIA_PREFETCH_DISTANCE].forEach(
-    (candidate) => {
-      const photo = gallery[candidate];
+/**
+ * The source to draw a chat photo from. A `file://` the picker handed over is
+ * read straight from disk and needs no key; anything remote gets the stable
+ * one above — in the bubble, the grid and the viewer alike, so all three
+ * share one cached copy.
+ */
+function chatImageSource(url: string, messageId: string): ChatImageSource {
+  if (isLocalFileUri(url)) return { uri: url };
 
-      if (!photo) return;
-      if (isLocalFileUri(photo.url)) return;
-
-      urls.push(photo.url);
-    },
-  );
-
-  return urls;
+  return { uri: url, cacheKey: chatImageCacheKey(messageId) };
 }
 
 /**
@@ -523,7 +516,6 @@ export {
   MEDIA_AXIS_LOCK_THRESHOLD,
   MEDIA_AXIS_DOMINANCE,
   MEDIA_AXIS_TIE_THRESHOLD,
-  MEDIA_PREFETCH_DISTANCE,
   MEDIA_PAGE_DISTANCE_RATIO,
   MEDIA_PAGE_VELOCITY,
   MEDIA_EDGE_RESISTANCE,
@@ -542,7 +534,8 @@ export {
   hasPreviousPhoto,
   hasNextPhoto,
   mediaPositionLabel,
-  prefetchRingUrls,
+  chatImageCacheKey,
+  chatImageSource,
   resolveDragAxis,
   resistedPagePan,
   resolvePageStep,
@@ -554,6 +547,7 @@ export {
 };
 
 export type {
+  ChatImageSource,
   MediaViewerAnchor,
   MediaViewerPhoto,
   MediaDragAxis,

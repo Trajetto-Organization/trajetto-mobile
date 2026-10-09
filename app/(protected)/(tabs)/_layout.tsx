@@ -6,8 +6,9 @@ import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { useDeliveriesAccess } from "@/features/deliveries/hooks/use-deliveries-access";
 import { useChatUnread } from "@/features/chat/hooks/use-chat-unread";
+import { useAppSurfaces } from "@/features/access/use-app-surfaces";
+import { useThemeColors } from "@/hooks/use-theme";
 
 interface TabDescriptor {
   name: string;
@@ -48,8 +49,8 @@ const TABS: TabDescriptor[] = [
  */
 const GlassTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
 
-  const hasDeliveries = useDeliveriesAccess();
   const { unreadCount } = useChatUnread();
 
   const focusedName = state.routes[state.index]?.name;
@@ -58,27 +59,29 @@ const GlassTabBar = ({ state, navigation }: BottomTabBarProps) => {
   // its own back arrow returns to the tabs.
   if (focusedName === "chat") return null;
 
-  const visibleTabs = TABS.filter(
-    (tab) => tab.name === "vehicles" || hasDeliveries,
+  // Drawn from the routes the navigator actually has: the guards below
+  // decide which tabs exist, and the bar can never offer one they removed.
+  const visibleTabs = TABS.filter((tab) =>
+    state.routes.some((route) => route.name === tab.name),
   );
 
   // Managers see no bar at all — a lone "Início" pill would be noise. The
   // spacer keeps their content clear of the gesture area the SafeAreaView
   // no longer pads (the bar normally absorbs that inset).
   if (visibleTabs.length <= 1) {
-    return <View style={{ height: insets.bottom }} className="bg-gray-50" />;
+    return <View style={{ height: insets.bottom }} className="bg-background" />;
   }
 
   return (
     <View
-      className="bg-gray-50 px-6 pt-2"
+      className="bg-background px-6 pt-2"
       style={{ paddingBottom: Math.max(insets.bottom, 12) }}
     >
       <View
-        className="flex-row rounded-3xl border border-white/70 px-2 py-1.5"
+        className="flex-row rounded-3xl border border-border px-2 py-1.5"
         style={{
           /**
-           * Opaque, not `bg-white/85`, and that is the whole point.
+           * Opaque, not 85% white, and that is the whole point.
            *
            * Android draws an elevation shadow from the view's OUTLINE, and it
            * only takes the rounded outline when the background is opaque. Over
@@ -86,8 +89,9 @@ const GlassTabBar = ({ state, navigation }: BottomTabBarProps) => {
            * a hard square behind the rounded pill — the "white rectangle from
            * the middle down" this replaces. The look barely moves: 85% white
            * over the page's #f9fafb is within a hair of solid white anyway.
+           * The surface token keeps it opaque in the dark theme too.
            */
-          backgroundColor: "#ffffff",
+          backgroundColor: colors.surface,
           shadowColor: "#0f172a",
           shadowOffset: { width: 0, height: 6 },
           shadowOpacity: 0.12,
@@ -119,6 +123,7 @@ const GlassTabBar = ({ state, navigation }: BottomTabBarProps) => {
             <TouchableOpacity
               key={tab.name}
               onPress={handlePress}
+              testID={`tab-${tab.name}`}
               accessibilityRole="tab"
               accessibilityState={{ selected: isFocused }}
               accessibilityLabel={tab.label}
@@ -128,14 +133,14 @@ const GlassTabBar = ({ state, navigation }: BottomTabBarProps) => {
                 <Ionicons
                   name={isFocused ? tab.iconActive : tab.icon}
                   size={22}
-                  color={isFocused ? "#2563eb" : "#6b7280"}
+                  color={isFocused ? colors.primary : colors.muted}
                 />
                 {showBadge && (
                   <View
                     className="absolute -right-2.5 -top-1.5 h-4 min-w-4
-                    items-center justify-center rounded-full bg-red-500 px-1"
+                    items-center justify-center rounded-full bg-destructive px-1"
                   >
-                    <Text className="text-[10px] font-bold text-white">
+                    <Text className="text-[10px] font-bold text-destructive-foreground">
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </Text>
                   </View>
@@ -144,8 +149,8 @@ const GlassTabBar = ({ state, navigation }: BottomTabBarProps) => {
               <Text
                 className={`mt-0.5 text-[11px] ${
                   isFocused
-                    ? "font-semibold text-blue-600"
-                    : "font-medium text-gray-500"
+                    ? "font-semibold text-primary"
+                    : "font-medium text-muted"
                 }`}
               >
                 {tab.label}
@@ -158,15 +163,35 @@ const GlassTabBar = ({ state, navigation }: BottomTabBarProps) => {
   );
 };
 
+/**
+ * Which tabs exist, from the same rules as every other surface (decision
+ * 4.2). A tab whose guard turns false while it is open — the company switched
+ * a module off — is removed, and the navigator falls back to the first tab
+ * left.
+ *
+ * "Início" is always one of them (`appTabs`): its header carries the bell and
+ * the drawer with "Sair da conta", which no other tab has. A driver of a
+ * company without Gestão de Frota still opens on Entregas (`landingHref`).
+ */
 const TabsLayout = () => {
+  const { tabs } = useAppSurfaces();
+
   return (
     <Tabs
       tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tabs.Screen name="vehicles" />
-      <Tabs.Screen name="deliveries" />
-      <Tabs.Screen name="chat" />
+      <Tabs.Protected guard={tabs.includes("vehicles")}>
+        <Tabs.Screen name="vehicles" />
+      </Tabs.Protected>
+
+      <Tabs.Protected guard={tabs.includes("deliveries")}>
+        <Tabs.Screen name="deliveries" />
+      </Tabs.Protected>
+
+      <Tabs.Protected guard={tabs.includes("chat")}>
+        <Tabs.Screen name="chat" />
+      </Tabs.Protected>
     </Tabs>
   );
 };

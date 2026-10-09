@@ -2,9 +2,10 @@ import {
   View,
   Text,
   ScrollView,
-  KeyboardAvoidingView,
   TouchableOpacity,
 } from "react-native";
+
+import { KeyboardAvoidingView } from "../../components/ui/keyboard-avoiding-view";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ProtectedRoute } from "../../components/protected-route";
@@ -26,6 +27,7 @@ import {
 
 import { FuelForm } from "../../components/screens/fuel";
 import { useFuel } from "@/features/fuel/hooks/use-fuel";
+import { PrecheckNotice } from "../../components/screens/ai-precheck/precheck-notice";
 
 const FuelScreen = () => {
   const {
@@ -43,6 +45,8 @@ const FuelScreen = () => {
     setCalculatedTotal,
     odometerImage,
     removeOdometerImage,
+    odometerPrecheckWarning,
+    dismissOdometerPrecheck,
     isDraftReady,
     hasDraft,
     showDiscardDraftModal,
@@ -51,17 +55,18 @@ const FuelScreen = () => {
     vehicleData,
     isLoadingVehicle,
     control,
-    handleSubmit,
     errors,
+    odometerPhotoError,
+    fieldFocus,
     setValue,
     trigger,
     permissions,
     stepInfo,
-    onSubmit,
+    submitForm,
+    canSubmit,
     goToNextStep,
     goToPrevStep,
     canProceedToNext,
-    areAllRequiredFieldsFilled,
     takePhoto,
     pickFromGallery,
     showImagePicker,
@@ -77,7 +82,7 @@ const FuelScreen = () => {
   if (!isDraftReady) {
     return (
       <ProtectedRoute>
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-background">
           <LoadingSpinner text="Restaurando rascunho..." />
         </SafeAreaView>
       </ProtectedRoute>
@@ -86,12 +91,12 @@ const FuelScreen = () => {
 
   if (!permissions.canWrite) {
     return (
-      <SafeAreaView className="flex-1 bg-white">
+      <SafeAreaView className="flex-1 bg-background">
         <View className="flex-1 justify-center items-center px-6">
-          <Text className="text-xl font-bold text-gray-900 mb-4 text-center">
+          <Text className="text-xl font-bold text-ink mb-4 text-center">
             Acesso negado
           </Text>
-          <Text className="text-gray-600 text-center mb-8">
+          <Text className="text-muted text-center mb-8">
             Você não tem permissão para criar abastecimentos.
           </Text>
           <Button onPress={goToPrevStep} variant="primary">
@@ -104,15 +109,15 @@ const FuelScreen = () => {
 
   return (
     <ProtectedRoute>
-      <SafeAreaView className="flex-1 bg-gray-50">
+      <SafeAreaView className="flex-1 bg-background">
         {/* Step Indicator */}
-        <View className="px-6 py-4 bg-white border-b border-gray-200">
+        <View className="px-6 py-4 bg-surface border-b border-border">
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-1">
-              <Text className="text-lg font-bold text-gray-900">
+              <Text className="text-lg font-bold text-ink">
                 {stepInfo.title}
               </Text>
-              <Text className="text-sm text-gray-600">
+              <Text className="text-sm text-muted">
                 {stepInfo.description}
               </Text>
               {currentStep === "form" && hasDraft ? (
@@ -121,23 +126,23 @@ const FuelScreen = () => {
                   onPress={requestDiscardDraft}
                   className="self-start mt-2"
                 >
-                  <Text className="text-sm font-medium text-red-600">
+                  <Text className="text-sm font-medium text-destructive">
                     Descartar rascunho
                   </Text>
                 </TouchableOpacity>
               ) : null}
             </View>
-            <View className="bg-primary-100 rounded-full px-3 py-1">
-              <Text className="text-xs font-medium text-primary-800">
+            <View className="bg-primary-soft rounded-full px-3 py-1">
+              <Text className="text-xs font-medium text-primary">
                 {stepInfo.step} de {stepInfo.total}
               </Text>
             </View>
           </View>
 
           {/* Progress Bar */}
-          <View className="w-full bg-gray-200 rounded-full h-2">
+          <View className="w-full bg-border rounded-full h-2">
             <View
-              className="bg-primary-500 h-2 rounded-full transition-all"
+              className="bg-primary h-2 rounded-full transition-all"
               style={{ width: `${(stepInfo.step / stepInfo.total) * 100}%` }}
             />
           </View>
@@ -146,7 +151,7 @@ const FuelScreen = () => {
         <StatusBanners />
 
         {/* Step Content */}
-        <KeyboardAvoidingView behavior={"height"} className="flex-1">
+        <KeyboardAvoidingView behavior="padding" className="flex-1">
           {currentStep === "branch" && (
             <BranchSelection
               businessId={user?.businessId || ""}
@@ -195,6 +200,7 @@ const FuelScreen = () => {
 
           {currentStep === "form" && (
             <ScrollView
+              ref={fieldFocus.scrollRef}
               className="flex-1"
               contentContainerStyle={{ flexGrow: 1 }}
               keyboardShouldPersistTaps="handled"
@@ -212,11 +218,27 @@ const FuelScreen = () => {
                 vehicleData={vehicleData}
                 isLoadingVehicle={isLoadingVehicle}
                 trigger={trigger}
+                fieldFocus={fieldFocus}
+                odometerPhotoError={odometerPhotoError}
                 isDriver={isDriver}
                 onLocationChange={handleLocationChange}
                 onLocationLoadingChange={handleLocationLoadingChange}
                 locationError={
                   errors.latitude?.message || errors.longitude?.message
+                }
+                precheckNotice={
+                  odometerPrecheckWarning ? (
+                    <PrecheckNotice
+                      message={odometerPrecheckWarning}
+                      disabled={isSubmitting}
+                      actions={[
+                        // The warning goes; a new km is checked again.
+                        { label: "Corrigir km", onPress: dismissOdometerPrecheck },
+                        { label: "Tirar outra", onPress: showImagePicker },
+                        { label: "Enviar assim", onPress: dismissOdometerPrecheck },
+                      ]}
+                    />
+                  ) : null
                 }
               />
             </ScrollView>
@@ -224,7 +246,7 @@ const FuelScreen = () => {
         </KeyboardAvoidingView>
 
         {/* Navigation Buttons */}
-        <View className="px-6 py-4 bg-white border-t border-gray-200">
+        <View className="px-6 py-4 bg-surface border-t border-border">
           <UploadProgressBar progress={uploadProgress} />
 
           <View className="flex-row gap-4">
@@ -234,14 +256,11 @@ const FuelScreen = () => {
 
             {currentStep === "form" ? (
               <Button
-                onPress={handleSubmit(onSubmit)}
+                onPress={() => void submitForm()}
+                testID="fuel-submit"
                 loading={isSubmitting}
-                disabled={
-                  isSubmitting ||
-                  isLocationLoading ||
-                  !areAllRequiredFieldsFilled() ||
-                  Object.keys(errors).length > 0
-                }
+                // Enabled while idle (decision 16.701): the tap shows what is missing.
+                disabled={!canSubmit}
                 className="flex-1"
               >
                 {isSubmitting ? "Criando..." : "Abastecer"}
@@ -249,6 +268,7 @@ const FuelScreen = () => {
             ) : (
               <Button
                 onPress={goToNextStep}
+                testID="fuel-next"
                 disabled={!canProceedToNext()}
                 className="flex-1"
               >

@@ -22,6 +22,8 @@ interface ConfirmModalProps {
   isLoading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Maestro handle: the buttons get `<testID>-confirm` and `<testID>-cancel`. */
+  testID?: string;
 }
 
 const { width } = Dimensions.get("window");
@@ -43,6 +45,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   isLoading = false,
   onConfirm,
   onCancel,
+  testID,
 }) => {
   const headerEmoji = emoji ?? (confirmVariant === "danger" ? "⚠️" : "✅");
 
@@ -63,31 +66,27 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         }}
       >
         <Pressable
-          className="bg-white rounded-3xl overflow-hidden shadow-2xl"
+          className="bg-card rounded-3xl overflow-hidden shadow-2xl border border-border"
           style={{ width: Math.min(width - 48, 340) }}
           onPress={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <View
-            className="bg-gradient-to-r
-            from-gray-50 to-gray-100
-            px-6 pt-6 pb-4"
-          >
+          <View className="bg-subtle px-6 pt-6 pb-4">
             <View className="items-center">
               <View
                 className={`w-16 h-16 rounded-full items-center
-                justify-center mb-4 bg-gradient-to-br ${
+                justify-center mb-4 ${
                   confirmVariant === "danger"
-                    ? "from-danger-100 to-danger-200"
-                    : "from-primary-100 to-primary-200"
+                    ? "bg-destructive-soft"
+                    : "bg-primary-soft"
                 }`}
               >
                 <Text className="text-3xl">{headerEmoji}</Text>
               </View>
-              <Text className="text-xl font-bold text-gray-900 mb-2 text-center">
+              <Text className="text-xl font-bold text-ink mb-2 text-center">
                 {title}
               </Text>
-              <Text className="text-gray-600 text-center text-sm leading-5">
+              <Text className="text-muted text-center text-sm leading-5">
                 {message}
               </Text>
             </View>
@@ -97,6 +96,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <View className="px-6 py-6 gap-3">
             <Button
               onPress={onConfirm}
+              testID={testID ? `${testID}-confirm` : undefined}
               variant={confirmVariant}
               loading={isLoading}
               disabled={isLoading}
@@ -108,10 +108,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             <TouchableOpacity
               onPress={onCancel}
               disabled={isLoading}
-              className={`py-3 bg-gray-100 rounded-lg ${isLoading ? "opacity-50" : ""}`}
+              testID={testID ? `${testID}-cancel` : undefined}
+              accessibilityRole="button"
+              className={`py-3 bg-subtle border border-border rounded-lg ${isLoading ? "opacity-50" : ""}`}
             >
               <Text
-                className="text-gray-700
+                className="text-ink-soft
                 text-center font-medium"
               >
                 {cancelText}

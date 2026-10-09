@@ -25,6 +25,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { Image } from "expo-image";
+import { StatusBar } from "expo-status-bar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { formatMessageClock } from "@/features/chat/chat-rules";
@@ -41,7 +42,7 @@ import {
   mediaPositionLabel,
   mediaSlotKey,
   mediaWindowIndexes,
-  prefetchRingUrls,
+  chatImageSource,
   resistedPagePan,
   resolveAnchorIndex,
   resolveDragAxis,
@@ -102,15 +103,12 @@ interface MediaViewerSlotProps {
 /**
  * One photo of the window.
  *
- * This is the ONLY place in the chat module that draws with `expo-image`
- * instead of the `Image` of react-native the bubbles use, and the difference
- * is deliberate rather than an oversight: the viewer is the one screen that
- * needs a typed `onError` (an attachment url is signed and expires, and a
- * silent black rectangle is the worst possible answer to that), a
- * `recyclingKey` so a recycled view never shows the previous photo for a
- * frame, and `prefetch` for the ring outside the window. The bubbles need
- * none of the
- * three.
+ * Drawn with `expo-image`, like the bubbles, and from the SAME cache entry:
+ * the source carries the message's cache key (`chatImageSource`), so a photo
+ * whose thumbnail was already downloaded opens from disk. What the viewer adds
+ * is a typed `onError` (an attachment url is signed and expires, and a silent
+ * black rectangle is the worst possible answer to that) and a `recyclingKey`
+ * so a recycled view never shows the previous photo for a frame.
  *
  * It is also its own component so that zoom — deliberately out of scope for
  * now — has somewhere to land later: a pinch belongs to a single photo, not to
@@ -198,10 +196,12 @@ const MediaViewerSlot = ({
       {(status === "loading" || status === "ready") && (
         <Image
           key={`${mediaSlotKey(photo.anchor)}-${attempt}`}
-          source={{ uri: photo.url }}
           // The url is NOT an identity here — it is signed and comes back
-          // different on every load of the same photo. The stable identity is,
-          // and it is not the message id either: see `mediaSlotKey`.
+          // different on every load of the same photo. The cache is keyed by
+          // the message (the same key the bubble used), and the view is
+          // recycled by the anchor, which survives an optimistic photo being
+          // confirmed: see `mediaSlotKey`.
+          source={chatImageSource(photo.url, photo.anchor.messageId)}
           recyclingKey={mediaSlotKey(photo.anchor)}
           contentFit="contain"
           cachePolicy="memory-disk"
@@ -419,22 +419,11 @@ const ChatMediaViewer = ({
     offset.value = -index * viewport.width;
   }, [index, viewport.width, offset, page]);
 
-  // The ring JUST OUTSIDE the mounted window is warmed — the photos the swipe
-  // after next will mount. Not the neighbours: those are already mounted as
-  // real image views, which fetch their own source, so warming them is the
-  // same request twice plus a full-resolution decode on Android that is
-  // thrown away. Locally stored photos are skipped — nothing to warm.
-  useEffect(() => {
-    if (index < 0) return;
-
-    const urls = prefetchRingUrls(gallery, index);
-
-    if (urls.length === 0) return;
-
-    void Image.prefetch(urls, { cachePolicy: "memory-disk" }).catch(
-      () => undefined,
-    );
-  }, [gallery, index]);
+  // No `Image.prefetch` of the ring outside the window any more: in this
+  // expo-image version it caches by URL and cannot take a cache key, so with
+  // signed urls it downloaded a copy nobody would ever read (MOB-08). The
+  // neighbours are mounted as real views, and any photo whose bubble was on
+  // screen is already on disk under the key the viewer reads.
 
   // With the viewer open the hardware back button closes the PHOTO. Without
   // this it would run the router's navigation and leave the chat screen
@@ -657,6 +646,10 @@ const ChatMediaViewer = ({
       onLayout={handleLayout}
       accessibilityViewIsModal
     >
+      {/* The viewer is black in both themes: light icons while it is open,
+      and the root's themed bar comes back when it unmounts. */}
+      <StatusBar style="light" />
+
       {/* The only thing between the photo and the conversation. Fading it is
       the whole trick: the chat behind is the real screen, not a picture of
       one. */}

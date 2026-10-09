@@ -1,47 +1,51 @@
 import {
   View,
   Text,
-  KeyboardAvoidingView,
   TouchableOpacity,
 } from "react-native";
+
+import { KeyboardAvoidingView } from "../../components/ui/keyboard-avoiding-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Controller } from "react-hook-form";
 import { OtpInput } from "react-native-otp-entry";
 
 import { Button, ConfirmModal } from "../../components/ui";
+import { useThemeColors } from "@/hooks/use-theme";
 import { useTwoFactor } from "@/features/auth/hooks";
+import { twoFactorCellColors } from "@/features/auth/two-factor-cells";
 
 const TwoFactorScreen = () => {
   const {
     email,
     control,
-    handleSubmit,
     errors,
     isSubmitting,
     isCodeComplete,
-    watchedCode,
     resendTimer,
     showBackModal,
-    onSubmit,
+    submit,
+    codeInputRef,
     handleResendCode,
     handleBackToLogin,
     confirmBackToLogin,
     cancelBackToLogin,
   } = useTwoFactor();
+  const colors = useThemeColors();
+  const cells = twoFactorCellColors(colors, Boolean(errors.code));
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView behavior={"height"} className="flex-1">
+    <SafeAreaView className="flex-1 bg-background">
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
         <View className="flex-1 px-6 justify-center">
           {/* Header */}
           <View className="items-center mb-8">
             <View
-              className="w-24 h-24 bg-primary-600
+              className="w-24 h-24 bg-primary
               rounded-full items-center justify-center mb-6"
             >
               <Text
-                className="text-white
+                className="text-primary-foreground
                 text-3xl font-bold"
               >
                 🔐
@@ -49,18 +53,18 @@ const TwoFactorScreen = () => {
             </View>
             <Text
               className="text-3xl font-bold
-              text-gray-900 mb-2 text-center"
+              text-ink mb-2 text-center"
             >
               Autenticação em Duas Etapas
             </Text>
             <Text
-              className="text-gray-600
+              className="text-muted
               text-center text-base mb-2"
             >
               Digite o código de 6 dígitos enviado para:
             </Text>
             <Text
-              className="text-primary-600
+              className="text-primary
               font-semibold text-base"
             >
               {email}
@@ -72,16 +76,18 @@ const TwoFactorScreen = () => {
             <Controller
               control={control}
               name="code"
-              render={({ field: { onChange, value } }) => (
+              render={({ field: { onChange, onBlur } }) => (
                 <View className="items-center">
                   <OtpInput
+                    ref={codeInputRef}
                     numberOfDigits={6}
-                    focusColor="#3b82f6"
+                    focusColor={colors.primary}
                     focusStickBlinkingDuration={500}
                     onTextChange={onChange}
                     onFilled={(text) => {
                       onChange(text);
                     }}
+                    onBlur={onBlur}
                     disabled={isSubmitting}
                     autoFocus
                     theme={{
@@ -92,28 +98,21 @@ const TwoFactorScreen = () => {
                         gap: 8,
                       },
                       pinCodeContainerStyle: {
-                        backgroundColor: errors.code ? "#fef2f2" : "#ffffff",
-                        borderColor: errors.code ? "#ef4444" : "#d1d5db",
+                        ...cells.base,
                         borderWidth: 2,
                         borderRadius: 8,
                         width: 48,
                         height: 56,
                       },
-                      focusedPinCodeContainerStyle: {
-                        borderColor: "#3b82f6",
-                        backgroundColor: "#eff6ff",
-                      },
-                      filledPinCodeContainerStyle: {
-                        borderColor: "#6b7280",
-                        backgroundColor: "#ffffff",
-                      },
+                      focusedPinCodeContainerStyle: cells.focused,
+                      filledPinCodeContainerStyle: cells.filled,
                       pinCodeTextStyle: {
                         fontSize: 18,
                         fontWeight: "600",
-                        color: "#111827",
+                        color: colors.ink,
                       },
                       focusStickStyle: {
-                        backgroundColor: "#3b82f6",
+                        backgroundColor: colors.primary,
                         width: 2,
                         height: 24,
                       },
@@ -122,7 +121,7 @@ const TwoFactorScreen = () => {
                   {errors.code?.message && (
                     <Text
                       style={{
-                        color: "#dc2626",
+                        color: colors.destructive,
                         fontSize: 14,
                         marginTop: 8,
                         textAlign: "center",
@@ -145,8 +144,8 @@ const TwoFactorScreen = () => {
                 <Text
                   className={`text-base font-medium ${
                     resendTimer > 0 || isSubmitting
-                      ? "text-gray-400"
-                      : "text-primary-600"
+                      ? "text-muted"
+                      : "text-primary"
                   }`}
                 >
                   {resendTimer > 0
@@ -160,17 +159,13 @@ const TwoFactorScreen = () => {
           {/* Actions */}
           <View className="gap-3 mt-8">
             <Button
-              onPress={handleSubmit(onSubmit)}
+              onPress={submit}
+              testID="two-factor-submit"
               loading={isSubmitting}
-              disabled={!isCodeComplete}
               fullWidth
-              className={isCodeComplete ? "bg-green-600" : ""}
+              className={isCodeComplete ? "bg-success" : ""}
             >
-              {isSubmitting
-                ? "Verificando..."
-                : isCodeComplete
-                  ? "✓ Verificar Código"
-                  : `Código ${watchedCode.length}/6`}
+              {isSubmitting ? "Verificando..." : "Verificar código"}
             </Button>
 
             <TouchableOpacity
@@ -179,7 +174,7 @@ const TwoFactorScreen = () => {
               className="items-center py-3"
             >
               <Text
-                className="text-gray-600
+                className="text-muted
                 font-medium"
               >
                 Voltar ao login

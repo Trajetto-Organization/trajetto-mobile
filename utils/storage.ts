@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
+import { rememberClockSkewFrom } from "./jwt";
+
 const SECURE_KEYS = {
   SESSION_V1: "session_v1",
   LEGACY_ACCESS_TOKEN: "tkey",
@@ -236,6 +238,11 @@ export const tokenStorage = {
     refreshToken: string,
     expectedEpoch = tokenMutationEpoch,
   ): Promise<void> {
+    // Every token written here has just come from the server (login or
+    // refresh), which makes this the one place its `iat` tells us how wrong
+    // the phone's clock is.
+    rememberClockSkewFrom(accessToken);
+
     return enqueueTokenMutation(async () => {
       if (expectedEpoch !== tokenMutationEpoch) {
         throw createStaleSessionError();

@@ -1,6 +1,7 @@
 import { Pressable, Text, ActivityIndicator } from "react-native";
 import * as Haptics from "expo-haptics";
 
+import { useThemeColors } from "../../hooks/use-theme";
 import { cn } from "../../utils/cn";
 
 interface ButtonProps {
@@ -12,22 +13,27 @@ interface ButtonProps {
   loading?: boolean;
   className?: string;
   fullWidth?: boolean;
+  /** Stable handle for the Maestro E2E flows (docs/testes.md, Maestro section). */
+  testID?: string;
 }
 
+// Tokens (docs/arquitetura.md, theme section): `bg-primary` / `bg-destructive` are the deep
+// surfaces behind white text in both themes; outline and ghost sit on the
+// page and use the readable colours.
 const variantStyles = {
-  primary: "bg-primary-600",
-  secondary: "bg-gray-600",
-  outline: "border border-primary-600 bg-transparent",
+  primary: "bg-primary",
+  secondary: "bg-subtle border border-border",
+  outline: "border border-primary bg-transparent",
   ghost: "bg-transparent",
-  danger: "bg-danger-600",
+  danger: "bg-destructive",
 };
 
 const variantTextStyles = {
-  primary: "text-white",
-  secondary: "text-white",
-  outline: "text-primary-600",
-  ghost: "text-gray-700",
-  danger: "text-white",
+  primary: "text-primary-foreground",
+  secondary: "text-ink",
+  outline: "text-primary",
+  ghost: "text-ink-soft",
+  danger: "text-destructive-foreground",
 };
 
 const sizeStyles = {
@@ -51,8 +57,10 @@ export const Button: React.FC<ButtonProps> = ({
   loading = false,
   className = "",
   fullWidth = false,
+  testID,
 }) => {
   const isDisabled = disabled || loading;
+  const colors = useThemeColors();
 
   const handlePress = () => {
     if (isDisabled || !onPress) return;
@@ -64,6 +72,9 @@ export const Button: React.FC<ButtonProps> = ({
     <Pressable
       onPress={handlePress}
       disabled={isDisabled}
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={({ pressed }) => ({
         opacity: pressed && !isDisabled ? 0.7 : 1,
         transform: [{ scale: pressed && !isDisabled ? 0.97 : 1 }],
@@ -81,7 +92,11 @@ export const Button: React.FC<ButtonProps> = ({
         <ActivityIndicator
           size="small"
           color={
-            variant === "outline" || variant === "ghost" ? "#3b82f6" : "#ffffff"
+            variant === "outline"
+              ? colors.primary
+              : variant === "ghost" || variant === "secondary"
+                ? colors.inkSoft
+                : colors.primaryForeground
           }
           className="mr-2"
         />

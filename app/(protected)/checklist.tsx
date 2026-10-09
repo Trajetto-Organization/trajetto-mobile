@@ -2,9 +2,10 @@ import {
   View,
   Text,
   ScrollView,
-  KeyboardAvoidingView,
   TouchableOpacity,
 } from "react-native";
+
+import { KeyboardAvoidingView } from "../../components/ui/keyboard-avoiding-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ProtectedRoute } from "../../components/protected-route";
@@ -21,6 +22,7 @@ import { BranchSelection, DriverSelection } from "../../components/shared";
 import { ChecklistForm } from "../../components/screens/checklist";
 
 import { useChecklist } from "@/features/checklist/hooks/use-checklist";
+import { PrecheckNotice } from "../../components/screens/ai-precheck/precheck-notice";
 
 const ChecklistScreen = () => {
   const {
@@ -39,20 +41,23 @@ const ChecklistScreen = () => {
     setShowImagePickerModal,
     currentPhotoField,
     checklistImages,
+    mileagePrecheckWarning,
+    dismissMileagePrecheck,
     vehicleData,
     isLoadingVehicle,
     control,
-    handleSubmit,
     errors,
+    photoErrors,
+    fieldFocus,
     setValue,
     trigger,
     permissions,
     stepInfo,
-    onSubmit,
+    submitForm,
+    canSubmit,
     goToNextStep,
     goToPrevStep,
     canProceedToNext,
-    areAllRequiredFieldsFilled,
     takePhoto,
     pickFromGallery,
     showImagePicker,
@@ -66,7 +71,7 @@ const ChecklistScreen = () => {
   if (!isDraftReady) {
     return (
       <ProtectedRoute>
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-background">
           <LoadingSpinner text="Restaurando rascunho..." />
         </SafeAreaView>
       </ProtectedRoute>
@@ -76,12 +81,12 @@ const ChecklistScreen = () => {
   if (!permissions.canWrite) {
     return (
       <ProtectedRoute>
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-background">
           <View className="flex-1 justify-center items-center px-6">
-            <Text className="text-xl font-bold text-gray-900 mb-4 text-center">
+            <Text className="text-xl font-bold text-ink mb-4 text-center">
               Acesso Negado
             </Text>
-            <Text className="text-gray-600 text-center mb-8">
+            <Text className="text-muted text-center mb-8">
               Você não tem permissão para criar checklists veiculares.
             </Text>
             <Button onPress={() => goToPrevStep()}>Voltar</Button>
@@ -93,15 +98,15 @@ const ChecklistScreen = () => {
 
   return (
     <ProtectedRoute>
-      <SafeAreaView className="flex-1 bg-gray-50">
+      <SafeAreaView className="flex-1 bg-background">
         {/* Step Indicator */}
-        <View className="px-6 py-4 bg-white border-b border-gray-200">
+        <View className="px-6 py-4 bg-surface border-b border-border">
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-1">
-              <Text className="text-lg font-bold text-gray-900">
+              <Text className="text-lg font-bold text-ink">
                 {stepInfo.title}
               </Text>
-              <Text className="text-sm text-gray-600">
+              <Text className="text-sm text-muted">
                 {stepInfo.description}
               </Text>
               {currentStep === "form" && hasDraft ? (
@@ -110,23 +115,23 @@ const ChecklistScreen = () => {
                   onPress={requestDiscardDraft}
                   className="self-start mt-2"
                 >
-                  <Text className="text-sm font-medium text-red-600">
+                  <Text className="text-sm font-medium text-destructive">
                     Descartar rascunho
                   </Text>
                 </TouchableOpacity>
               ) : null}
             </View>
-            <View className="bg-primary-100 rounded-full px-3 py-1">
-              <Text className="text-xs font-medium text-primary-800">
+            <View className="bg-primary-soft rounded-full px-3 py-1">
+              <Text className="text-xs font-medium text-primary">
                 {stepInfo.step} de {stepInfo.total}
               </Text>
             </View>
           </View>
 
           {/* Progress Bar */}
-          <View className="w-full bg-gray-200 rounded-full h-2">
+          <View className="w-full bg-border rounded-full h-2">
             <View
-              className="bg-primary-500 h-2 rounded-full transition-all"
+              className="bg-primary h-2 rounded-full transition-all"
               style={{ width: `${(stepInfo.step / stepInfo.total) * 100}%` }}
             />
           </View>
@@ -135,7 +140,7 @@ const ChecklistScreen = () => {
         <StatusBanners />
 
         {/* Step Content */}
-        <KeyboardAvoidingView behavior={"height"} className="flex-1">
+        <KeyboardAvoidingView behavior="padding" className="flex-1">
           {currentStep === "branch" && (
             <BranchSelection
               businessId={user?.businessId || ""}
@@ -169,6 +174,7 @@ const ChecklistScreen = () => {
 
           {currentStep === "form" && (
             <ScrollView
+              ref={fieldFocus.scrollRef}
               className="flex-1"
               contentContainerStyle={{ flexGrow: 1 }}
               keyboardShouldPersistTaps="handled"
@@ -184,14 +190,33 @@ const ChecklistScreen = () => {
                 vehicleData={vehicleData}
                 isLoadingVehicle={isLoadingVehicle}
                 trigger={trigger}
+                fieldFocus={fieldFocus}
+                photoErrors={photoErrors}
                 isDriver={isDriver}
+                mileagePrecheckNotice={
+                  mileagePrecheckWarning ? (
+                    <PrecheckNotice
+                      message={mileagePrecheckWarning}
+                      disabled={isSubmitting}
+                      actions={[
+                        // The warning goes; a new km is checked again.
+                        { label: "Corrigir km", onPress: dismissMileagePrecheck },
+                        {
+                          label: "Tirar outra",
+                          onPress: () => showImagePicker("current_mileage"),
+                        },
+                        { label: "Enviar assim", onPress: dismissMileagePrecheck },
+                      ]}
+                    />
+                  ) : null
+                }
               />
             </ScrollView>
           )}
         </KeyboardAvoidingView>
 
         {/* Navigation Buttons */}
-        <View className="px-6 py-4 bg-white border-t border-gray-200">
+        <View className="px-6 py-4 bg-surface border-t border-border">
           <UploadProgressBar progress={uploadProgress} />
 
           <View className="flex-row gap-4">
@@ -201,13 +226,11 @@ const ChecklistScreen = () => {
 
             {currentStep === "form" ? (
               <Button
-                onPress={handleSubmit(onSubmit)}
+                testID="checklist-submit"
+                onPress={() => void submitForm()}
                 loading={isSubmitting}
-                disabled={
-                  isSubmitting ||
-                  !areAllRequiredFieldsFilled ||
-                  Object.keys(errors).length > 0
-                }
+                // Enabled while idle (decision 16.701): the tap shows what is missing.
+                disabled={!canSubmit}
                 className="flex-1"
               >
                 {isSubmitting ? "Criando..." : "Criar Checklist"}

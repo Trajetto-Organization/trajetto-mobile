@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { View, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
+import { useColorSchemeName } from "../../hooks/use-theme";
+
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -19,11 +21,19 @@ interface SkeletonCardProps {
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
+// The sheen that sweeps the placeholder: a bright one reads as a flash on the
+// dark theme's `bg-border`, so it dims there.
+const SHIMMER = {
+  light: ["transparent", "rgba(255,255,255,0.8)", "transparent"],
+  dark: ["transparent", "rgba(255,255,255,0.08)", "transparent"],
+} as const;
+
 export const SkeletonCard: React.FC<SkeletonCardProps> = ({
   className = "",
   children,
 }) => {
   const shimmerTranslate = useSharedValue(-screenWidth);
+  const shimmer = SHIMMER[useColorSchemeName()];
 
   useEffect(() => {
     shimmerTranslate.value = withRepeat(
@@ -41,10 +51,10 @@ export const SkeletonCard: React.FC<SkeletonCardProps> = ({
 
   if (children) {
     return (
-      <View className={`bg-gray-200 overflow-hidden ${className}`}>
+      <View className={`bg-border overflow-hidden ${className}`}>
         <View className="opacity-30">{children}</View>
         <AnimatedLinearGradient
-          colors={["transparent", "rgba(255,255,255,0.8)", "transparent"]}
+          colors={shimmer}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[
@@ -64,9 +74,9 @@ export const SkeletonCard: React.FC<SkeletonCardProps> = ({
   }
 
   return (
-    <View className={`bg-gray-200 overflow-hidden ${className}`}>
+    <View className={`bg-border overflow-hidden ${className}`}>
       <AnimatedLinearGradient
-        colors={["transparent", "rgba(255,255,255,0.8)", "transparent"]}
+        colors={shimmer}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={[

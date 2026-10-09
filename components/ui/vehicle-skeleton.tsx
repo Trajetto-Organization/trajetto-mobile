@@ -4,8 +4,8 @@ import { SkeletonCard } from "./skeleton-card";
 export const VehicleSkeleton: React.FC = () => {
   return (
     <View
-      className="bg-white rounded-lg 
-      shadow-sm border border-gray-200 p-4 mb-3 mx-4"
+      className="bg-card rounded-lg 
+      shadow-sm border border-border p-4 mb-3 mx-4"
     >
       {/* Header with brand and model */}
       <View

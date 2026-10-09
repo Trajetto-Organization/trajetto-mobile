@@ -1,11 +1,21 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import {
   ActivityIndicator,
+  Pressable,
   Text,
   TouchableOpacity,
   View,
   type AccessibilityActionEvent,
+  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
 
@@ -25,6 +35,8 @@ import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { formatAudioClock } from "@/features/chat/chat-rules";
+import { bubbleTones, type BubbleTones } from "@/features/chat/bubble-tones";
+import { useThemeColors } from "@/hooks/use-theme";
 
 import {
   AUDIO_BAR_MIN_GAP,
@@ -36,6 +48,7 @@ import {
   audioPlayedRatio,
   audioRailWidth,
   audioRatioFromX,
+  audioResumeSeconds,
   audioSeekLanded,
   audioSeekSeconds,
   audioSteppedRatio,
@@ -44,6 +57,7 @@ import {
 import {
   isLocalFileUri,
   resolveAudioControl,
+  type AudioControl,
 } from "@/features/chat/audio-cache-rules";
 
 import {
@@ -53,8 +67,13 @@ import {
 } from "@/features/chat/audio-cache";
 
 import {
+  armAudioPlayer,
+  armedAudioPlayerId,
   claimAudioFocus,
+  disarmAudioPlayer,
+  holdsAudioFocus,
   releaseAudioFocus,
+  subscribeArmedAudioPlayer,
 } from "@/features/chat/audio-focus";
 
 /**
@@ -97,8 +116,411 @@ type PlaybackSpeed = (typeof SPEEDS)[number];
  */
 const LOAD_TIMEOUT_MS = 15_000;
 
-/** Smooth enough for the bars to move, cheap enough for a long thread. */
+/** Smooth enough for the bars to move, cheap enough for the one live player. */
 const STATUS_INTERVAL_MS = 120;
+
+function nextSpeed(speed: PlaybackSpeed): PlaybackSpeed {
+  return SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+}
+
+/** The bubble's colours, derived once from the bubble behind the player. */
+interface AudioPalette {
+  tint: string;
+  track: string;
+  fill: string;
+  muted: string;
+  danger: string;
+  buttonBackground: string;
+}
+
+/** The player's colours from the bubble tones: theme tokens, never literals. */
+function audioPalette(tones: BubbleTones): AudioPalette {
+  return {
+    tint: tones.tint,
+    track: tones.track,
+    fill: tones.fill,
+    muted: tones.meta,
+    danger: tones.danger,
+    buttonBackground: tones.buttonBackground,
+  };
+}
+
+// ======================================================= shared drawing
+
+/**
+ * One row of the motif. It is drawn twice — once in the track colour and
+ * once in the fill colour behind a clip that ends exactly at the played
+ * proportion — so the head lands on a pixel, not on a whole bar. Rounding
+ * progress to the nearest bar is a 1/N error in the DRAWING, which is what a
+ * driver reads as "it seeked a bit off" even when the seek was exact.
+ */
+const AudioBars = ({
+  rail,
+  barCount,
+  color,
+}: {
+  rail: number;
+  barCount: number;
+  color: string;
+}) => (
+  <View
+    style={{
+      width: rail,
+      height: BAR_MAX_HEIGHT,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    }}
+  >
+    {Array.from({ length: barCount }, (_unused, index) => (
+      <View
+        key={index}
+        style={{
+          width: AUDIO_BAR_WIDTH,
+          borderRadius: BAR_RADIUS,
+          height: Math.max(
+            BAR_MIN_HEIGHT,
+            BAR_MAX_HEIGHT * BAR_RHYTHM[index % BAR_RHYTHM.length],
+          ),
+          backgroundColor: color,
+        }}
+      />
+    ))}
+  </View>
+);
+
+function buttonLabelFor(control: AudioControl): string {
+  if (control === "download") return "Baixar mensagem de voz";
+  if (control === "downloading") return "Baixando mensagem de voz";
+  if (control === "pause") return "Pausar mensagem de voz";
+
+  return "Ouvir mensagem de voz";
+}
+
+/** The round button, in every state it can be in except "retry". */
+const AudioRoundButton = ({
+  control,
+  downloadRatio,
+  onPress,
+  palette,
+}: {
+  control: AudioControl;
+  downloadRatio: number | null;
+  onPress: () => void;
+  palette: AudioPalette;
+}) => {
+  const renderContent = () => {
+    if (control === "buffering") {
+      return <ActivityIndicator size="small" color={palette.tint} />;
+    }
+
+    // An unknown content length means an unknown ratio: a spinner says "no
+    // idea how long" honestly, a bar frozen at 0% does not.
+    if (control === "downloading" && downloadRatio === null) {
+      return <ActivityIndicator size="small" color={palette.tint} />;
+    }
+
+    return (
+      <Ionicons
+        name={
+          control === "download" || control === "downloading"
+            ? "arrow-down"
+            : control === "pause"
+              ? "pause"
+              : "play"
+        }
+        size={18}
+        color={palette.tint}
+        // Optical centring: the play triangle's mass sits to the left.
+        style={control === "play" ? { marginLeft: 2 } : undefined}
+      />
+    );
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={control === "downloading"}
+      accessibilityRole="button"
+      accessibilityLabel={buttonLabelFor(control)}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      className="items-center justify-center overflow-hidden rounded-full"
+      style={{
+        height: BUTTON_SIZE,
+        width: BUTTON_SIZE,
+        backgroundColor: palette.buttonBackground,
+      }}
+    >
+      {control === "downloading" && downloadRatio !== null ? (
+        // The button fills from the bottom as the bytes land: a progress
+        // indicator that needs no extra row and no SVG.
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: BUTTON_SIZE * downloadRatio,
+            backgroundColor: palette.fill,
+            opacity: 0.35,
+          }}
+        />
+      ) : null}
+
+      {renderContent()}
+    </TouchableOpacity>
+  );
+};
+
+const SpeedPill = ({
+  speed,
+  onPress,
+  palette,
+}: {
+  speed: PlaybackSpeed;
+  onPress: () => void;
+  palette: AudioPalette;
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={`Velocidade ${speed}x. Toque para mudar.`}
+    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+    className="rounded-full px-2 py-1"
+    style={{ backgroundColor: palette.buttonBackground }}
+  >
+    <Text className="text-[11px] font-semibold" style={{ color: palette.tint }}>
+      {speed}x
+    </Text>
+  </TouchableOpacity>
+);
+
+const AudioClockLine = ({
+  text,
+  palette,
+}: {
+  text: string;
+  palette: AudioPalette;
+}) => (
+  <View className="mt-1 pl-[50px]">
+    <Text className="text-[11px]" style={{ color: palette.muted }}>
+      {text}
+    </Text>
+  </View>
+);
+
+const AudioRetryRow = ({
+  onRetry,
+  palette,
+}: {
+  onRetry: () => void;
+  palette: AudioPalette;
+}) => (
+  <TouchableOpacity
+    onPress={onRetry}
+    accessibilityRole="button"
+    accessibilityLabel="Áudio não carregou. Toque para tentar de novo."
+    className="flex-row items-center gap-2 py-1"
+    style={{ minWidth: 200 }}
+  >
+    <Ionicons name="alert-circle-outline" size={30} color={palette.danger} />
+
+    <View className="flex-1">
+      <Text className="text-[13px] font-medium" style={{ color: palette.danger }}>
+        Áudio indisponível
+      </Text>
+      <Text className="text-[11px]" style={{ color: palette.muted }}>
+        Toque para tentar de novo
+      </Text>
+    </View>
+  </TouchableOpacity>
+);
+
+// ============================================================ idle note
+
+interface IdleAudioNoteProps {
+  control: AudioControl;
+  downloadRatio: number | null;
+
+  /** Where the note would start: where it was left, or 0. */
+  positionSeconds: number;
+  totalSeconds: number;
+
+  /** A file is on this device, so the track can be positioned. */
+  seekable: boolean;
+
+  speed: PlaybackSpeed;
+  palette: AudioPalette;
+
+  onPressButton: () => void;
+  onCycleSpeed: () => void;
+  onPosition: (seconds: number) => void;
+}
+
+/**
+ * A voice note with NO native player behind it — every note in the thread
+ * except the armed one (see `audio-focus.ts`).
+ *
+ * It draws exactly what the live player draws when paused, from plain props:
+ * the button, the bars filled to where the note was left, the clock and the
+ * speed. A tap on the track moves that starting point without building a
+ * player, so looking through a note costs nothing until the driver asks to
+ * hear it.
+ */
+const IdleAudioNote = ({
+  control,
+  downloadRatio,
+  positionSeconds,
+  totalSeconds,
+  seekable,
+  speed,
+  palette,
+  onPressButton,
+  onCycleSpeed,
+  onPosition,
+}: IdleAudioNoteProps) => {
+  const [trackWidth, setTrackWidth] = useState<number>(0);
+
+  const geometry = useMemo(
+    () => ({ width: trackWidth, padding: AUDIO_TRACK_PADDING }),
+    [trackWidth],
+  );
+
+  const rail = audioRailWidth(geometry);
+  const barCount = audioBarCount(rail, AUDIO_BAR_WIDTH, AUDIO_BAR_MIN_GAP);
+
+  const ratio = audioPlayedRatio(positionSeconds, totalSeconds);
+
+  const canPosition = seekable && totalSeconds > 0;
+
+  const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
+    setTrackWidth(event.nativeEvent.layout.width);
+  }, []);
+
+  const handleTrackPress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!canPosition) return;
+
+      onPosition(
+        audioSeekSeconds(
+          audioRatioFromX(event.nativeEvent.locationX, geometry),
+          totalSeconds,
+        ),
+      );
+    },
+    [canPosition, geometry, onPosition, totalSeconds],
+  );
+
+  const handleAccessibilityAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      const action = event.nativeEvent.actionName;
+
+      if (action !== "increment" && action !== "decrement") return;
+      if (!canPosition) return;
+
+      onPosition(
+        audioSeekSeconds(
+          audioSteppedRatio(
+            positionSeconds,
+            action === "increment"
+              ? AUDIO_SEEK_STEP_SECONDS
+              : -AUDIO_SEEK_STEP_SECONDS,
+            totalSeconds,
+          ),
+          totalSeconds,
+        ),
+      );
+    },
+    [canPosition, onPosition, positionSeconds, totalSeconds],
+  );
+
+  return (
+    <View className="py-1" style={{ minWidth: 210 }}>
+      <View className="flex-row items-center gap-2.5">
+        <AudioRoundButton
+          control={control}
+          downloadRatio={downloadRatio}
+          onPress={onPressButton}
+          palette={palette}
+        />
+
+        <Pressable
+          onLayout={handleTrackLayout}
+          onPress={canPosition ? handleTrackPress : undefined}
+          disabled={!canPosition}
+          accessibilityRole={canPosition ? "adjustable" : undefined}
+          accessibilityLabel="Posição da mensagem de voz"
+          accessibilityValue={
+            canPosition
+              ? { now: Math.round(ratio * 100), min: 0, max: 100 }
+              : undefined
+          }
+          accessibilityActions={
+            canPosition
+              ? [
+                  { name: "increment", label: "Avançar 5 segundos" },
+                  { name: "decrement", label: "Voltar 5 segundos" },
+                ]
+              : undefined
+          }
+          onAccessibilityAction={handleAccessibilityAction}
+          className="h-8 flex-1 justify-center"
+          style={{ paddingHorizontal: AUDIO_TRACK_PADDING }}
+        >
+          <View style={{ height: BAR_MAX_HEIGHT, width: rail }}>
+            <AudioBars rail={rail} barCount={barCount} color={palette.track} />
+
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                overflow: "hidden",
+                width: ratio * rail,
+              }}
+            >
+              <AudioBars rail={rail} barCount={barCount} color={palette.fill} />
+            </View>
+
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left: -KNOB_SIZE / 2,
+                top: (BAR_MAX_HEIGHT - KNOB_SIZE) / 2,
+                width: KNOB_SIZE,
+                height: KNOB_SIZE,
+                borderRadius: KNOB_SIZE / 2,
+                backgroundColor: palette.fill,
+                transform: [{ translateX: ratio * rail }],
+              }}
+            />
+          </View>
+        </Pressable>
+
+        <SpeedPill speed={speed} onPress={onCycleSpeed} palette={palette} />
+      </View>
+
+      <AudioClockLine
+        palette={palette}
+        text={
+          control === "downloading"
+            ? downloadRatio === null
+              ? "Baixando…"
+              : `Baixando… ${Math.round(downloadRatio * 100)}%`
+            : `${formatAudioClock(positionSeconds * 1000)} / ${formatAudioClock(
+                totalSeconds * 1000,
+              )}`
+        }
+      />
+    </View>
+  );
+};
+
+// ========================================================== armed player
 
 /**
  * A seek that has been asked for and not yet confirmed by the player.
@@ -112,65 +534,75 @@ interface PendingSeek {
   targetSeconds: number;
 }
 
-interface AudioPlayerBubbleProps {
-  /**
-   * The cache key. The url cannot be one: it is signed and expires, so the
-   * same note arrives under a new url on every load.
-   */
-  messageId: string;
+interface ArmedAudioPlayerProps {
+  /** The bubble's identity in the audio-focus arbiter. */
+  focusId: string;
 
-  url: string;
-  durationMs: number | null;
+  /** Always a file on this device: the player never reaches for the network. */
+  localUri: string;
 
-  /** Adapts icon/track colors to the bubble behind it. */
-  onDarkBubble: boolean;
+  /** The server's length, for the clock before the file is decoded. */
+  fallbackDurationMs: number | null;
+
+  /** Where the driver left the note, so a rebuilt player resumes there. */
+  startAtSeconds: number;
+
+  speed: PlaybackSpeed;
+  palette: AudioPalette;
+
+  onCycleSpeed: () => void;
+
+  /** The decoded length, once the player knows it. */
+  onDurationKnown: (seconds: number) => void;
+
+  /** The position the note was at when this player went away. */
+  onDetach: (positionSeconds: number) => void;
+
+  /** The file would not load or play; the bubble shows the retry. */
+  onFailed: () => void;
 }
 
 /**
- * The voice-note player inside a bubble, on the WhatsApp model: a note this
- * device does not have yet offers a DOWNLOAD arrow, not a play triangle. The
- * tap fetches it into the app cache with visible progress and then plays; a
- * note already cached plays instantly, and keeps playing with no signal at
- * all, which is the entire point for a driver on the road.
+ * The ONE live player of the conversation (MOB-06).
+ *
+ * Mounted only while its bubble is the armed note, which is what keeps a
+ * thread with thirty voice notes at one ExoPlayer instead of thirty: a player
+ * is a playback thread, and a prepared one is also a decoder and a status
+ * loop. It is mounted because the driver asked to hear the note, so it starts
+ * playing as soon as the file is loaded — from where the note was left.
  *
  * Three things it refuses to get wrong. Only one note in the conversation may
  * sound at a time, arbitrated by the audio-focus module. The total duration
- * comes from the server's `duration_ms` before anything is fetched, so the
+ * comes from the server's `duration_ms` before the file is decoded, so the
  * clock is right on the first frame instead of counting up from 0:00. And the
  * player is never handed a remote url — its source is always a local file, so
  * "downloaded" and "playable" cannot drift apart.
  */
-const AudioPlayerBubble = ({
-  messageId,
-  url,
-  durationMs,
-  onDarkBubble,
-}: AudioPlayerBubbleProps) => {
-  // Probed once, as the bubble mounts: an existing file decides between the
-  // download arrow and the play triangle on the very first frame, and nothing
-  // is fetched to find out.
-  const [localUri, setLocalUri] = useState<string | null>(() =>
-    findCachedChatAudio(messageId, url),
-  );
-
-  // Null source until there is a file: the player must never reach for the
-  // network on its own.
+const ArmedAudioPlayer = ({
+  focusId,
+  localUri,
+  fallbackDurationMs,
+  startAtSeconds,
+  speed,
+  palette,
+  onCycleSpeed,
+  onDurationKnown,
+  onDetach,
+  onFailed,
+}: ArmedAudioPlayerProps) => {
   const player = useAudioPlayer(localUri, {
     updateInterval: STATUS_INTERVAL_MS,
   });
 
   const status = useAudioPlayerStatus(player);
 
-  // Identity for the audio-focus arbiter: stable for this component's life,
-  // and unique even when the same note is rendered twice.
-  const focusId = useId();
-
-  const [speed, setSpeed] = useState<PlaybackSpeed>(1);
-
   // Measured on the track ITSELF — the very view the gesture is attached to.
   // Anything else (the row, the bubble) would hand the seek maths a width the
   // finger never touches.
   const [trackWidth, setTrackWidth] = useState<number>(0);
+
+  const totalSeconds =
+    status.duration > 0 ? status.duration : (fallbackDurationMs ?? 0) / 1000;
 
   /**
    * Where the head is drawn, 0..1, and where the finger has dragged it.
@@ -179,7 +611,9 @@ const AudioPlayerBubble = ({
    * without a single `setState`, so a scrub costs no React render at all and
    * the track keeps up with the finger on a cheap phone in a moving truck.
    */
-  const playbackRatio = useSharedValue<number>(0);
+  const playbackRatio = useSharedValue<number>(
+    audioPlayedRatio(startAtSeconds, totalSeconds),
+  );
   const scrubRatio = useSharedValue<number>(NO_SCRUB);
 
   // The clock under the bars, while a finger owns the track. Whole seconds,
@@ -187,20 +621,15 @@ const AudioPlayerBubble = ({
   // touch event.
   const [scrubSeconds, setScrubSeconds] = useState<number | null>(null);
 
-  const [isDownloading, setIsDownloading] = useState<boolean>(false);
-  const [downloadRatio, setDownloadRatio] = useState<number | null>(null);
+  // Mounted means asked for: the load timeout counts from here.
+  const [playRequested, setPlayRequested] = useState<boolean>(true);
 
-  // The driver asked for this note. Nothing loads eagerly and nothing is
-  // called broken before somebody wanted to hear it.
-  const [playRequested, setPlayRequested] = useState<boolean>(false);
-  const [hasFailed, setHasFailed] = useState<boolean>(false);
-
-  const downloadRef = useRef<ChatAudioDownload | null>(null);
-  const mountedRef = useRef<boolean>(true);
-
-  // A download the driver started is a download they want to hear: playback
-  // follows the last byte without a second tap.
-  const autoPlayRef = useRef<boolean>(false);
+  /**
+   * True until the first `play()` after the file loaded. Until then the head
+   * and the clock stay where the note was left, not at the 0:00 an unloaded
+   * player reports.
+   */
+  const [awaitingStart, setAwaitingStart] = useState<boolean>(true);
 
   /**
    * Whether the drag borrowed the sound and owes it back.
@@ -221,21 +650,27 @@ const AudioPlayerBubble = ({
    */
   const [pendingSeek, setPendingSeek] = useState<PendingSeek | null>(null);
 
-  const totalSeconds =
-    status.duration > 0 ? status.duration : (durationMs ?? 0) / 1000;
+  // The last position shown, handed back to the bubble when this player goes.
+  const positionRef = useRef<number>(startAtSeconds);
 
   const playedRatio = audioPlayedRatio(status.currentTime, totalSeconds);
 
   // What the driver is being SHOWN. While a seek is in flight that is where
   // they left the head, not the position the player last admitted to.
-  const shownRatio = pendingSeek
-    ? audioPlayedRatio(pendingSeek.targetSeconds, totalSeconds)
-    : playedRatio;
+  const shownRatio = awaitingStart
+    ? audioPlayedRatio(startAtSeconds, totalSeconds)
+    : pendingSeek
+      ? audioPlayedRatio(pendingSeek.targetSeconds, totalSeconds)
+      : playedRatio;
 
   // Who owns the clock, in order: the finger while it is on the track, then
-  // the position it let go at until the seek lands, then the player.
+  // the position the note is resuming from, then the position a seek was
+  // sent to until it lands, then the player.
   const elapsedMs =
-    (scrubSeconds ?? pendingSeek?.targetSeconds ?? status.currentTime) * 1000;
+    (scrubSeconds ??
+      (awaitingStart
+        ? startAtSeconds
+        : (pendingSeek?.targetSeconds ?? status.currentTime))) * 1000;
 
   // The track geometry, as one value: what was measured and what is reserved
   // at the ends. The gesture and the drawing both read it, which is the only
@@ -249,15 +684,13 @@ const AudioPlayerBubble = ({
   const barCount = audioBarCount(rail, AUDIO_BAR_WIDTH, AUDIO_BAR_MIN_GAP);
 
   const isPreparing =
-    !hasFailed &&
-    Boolean(localUri) &&
-    ((playRequested && !status.isLoaded) ||
-      (status.playing && status.isBuffering));
+    (playRequested && !status.isLoaded) ||
+    (status.playing && status.isBuffering);
 
   const control = resolveAudioControl({
-    isCached: Boolean(localUri),
-    isDownloading,
-    hasFailed,
+    isCached: true,
+    isDownloading: false,
+    hasFailed: false,
     isPreparing,
 
     // A note paused for the length of a drag is still the driver's note: the
@@ -267,26 +700,20 @@ const AudioPlayerBubble = ({
 
   // ------------------------------------------------------------ lifecycle
   useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // A note that loads late is not a broken note: the moment it is ready the
-  // error goes away on its own.
-  useEffect(() => {
-    if (status.isLoaded) setHasFailed(false);
-  }, [status.isLoaded]);
+    positionRef.current = elapsedMs / 1000;
+  }, [elapsedMs]);
 
   useEffect(() => {
-    if (!playRequested || status.isLoaded || hasFailed || !localUri) return;
+    if (status.duration > 0) onDurationKnown(status.duration);
+  }, [status.duration, onDurationKnown]);
 
-    const timer = setTimeout(() => setHasFailed(true), LOAD_TIMEOUT_MS);
+  useEffect(() => {
+    if (!playRequested || status.isLoaded) return;
+
+    const timer = setTimeout(onFailed, LOAD_TIMEOUT_MS);
 
     return () => clearTimeout(timer);
-  }, [playRequested, status.isLoaded, hasFailed, localUri]);
+  }, [playRequested, status.isLoaded, onFailed]);
 
   // The floor is given back when the note ends by itself, so the next tap
   // anywhere in the thread does not have to stop a player already silent.
@@ -294,16 +721,12 @@ const AudioPlayerBubble = ({
     if (status.didJustFinish) releaseAudioFocus(focusId);
   }, [status.didJustFinish, focusId]);
 
-  // Declared BEFORE the auto-play effect on purpose. Finishing a download
-  // swaps the player for one built on the new source, and React runs every
-  // cleanup before any new effect body — so this pause/release lands first
-  // and the claim below is not undone a moment after it is made.
   useEffect(() => {
     return () => {
       // expo-audio releases the native player itself when the component that
-      // created it unmounts (this API's `unloadAsync`), but that release and
-      // this cleanup are not ordered — pausing first is what guarantees the
-      // sound stops in the same frame the bubble leaves the screen.
+      // created it unmounts, but that release and this cleanup are not
+      // ordered — pausing first is what guarantees the sound stops in the
+      // same frame the player goes away.
       try {
         player.pause();
       } catch {
@@ -311,45 +734,63 @@ const AudioPlayerBubble = ({
       }
 
       releaseAudioFocus(focusId);
+      onDetach(positionRef.current);
     };
-  }, [player, focusId]);
+  }, [player, focusId, onDetach]);
 
-  // A transfer nobody is waiting for any more. Scrolling a note off screen
-  // must not keep spending the driver's data.
+  // The rate lives on the native player, so it is applied to each new one.
   useEffect(() => {
-    return () => {
-      downloadRef.current?.cancel();
-      downloadRef.current = null;
-    };
-  }, []);
-
-  // The rate lives on the native player, and a finished download builds a new
-  // one — so it is re-applied here rather than at the tap that changed it.
-  useEffect(() => {
-    if (!localUri) return;
-
     try {
       player.setPlaybackRate(speed, "high");
     } catch {
       // A source still settling refuses the rate; the next render reapplies.
     }
-  }, [player, speed, localUri]);
+  }, [player, speed]);
 
+  /**
+   * The start this player was mounted for: once the file is loaded, from the
+   * position the note was left at. The seek lands BEFORE the sound — playing
+   * first would let a moment of 0:00 out of the speaker.
+   */
   useEffect(() => {
-    if (!autoPlayRef.current) return;
-    if (!localUri || !status.isLoaded) return;
+    if (!awaitingStart || !status.isLoaded) return;
 
-    autoPlayRef.current = false;
+    setAwaitingStart(false);
 
     // Taking the floor stops whatever else was playing in the thread.
     claimAudioFocus(focusId, () => player.pause());
 
-    try {
-      player.play();
-    } catch {
-      setHasFailed(true);
+    const play = () => {
+      // Another note may have taken the floor while the seek was landing.
+      if (!holdsAudioFocus(focusId)) return;
+
+      try {
+        player.play();
+      } catch {
+        onFailed();
+      }
+    };
+
+    if (startAtSeconds <= 0) {
+      play();
+
+      return;
     }
-  }, [localUri, status.isLoaded, player, focusId]);
+
+    setPendingSeek({
+      fromSeconds: player.currentTime,
+      targetSeconds: startAtSeconds,
+    });
+
+    void player.seekTo(startAtSeconds).finally(play);
+  }, [
+    awaitingStart,
+    status.isLoaded,
+    focusId,
+    player,
+    startAtSeconds,
+    onFailed,
+  ]);
 
   // --------------------------------------------------------------- scrub
   /** The only writer of the scrub-pause debt, in either of its two forms. */
@@ -404,9 +845,9 @@ const AudioPlayerBubble = ({
     try {
       player.play();
     } catch {
-      setHasFailed(true);
+      onFailed();
     }
-  }, [player, focusId, setScrubPause, scrubRatio]);
+  }, [player, focusId, setScrubPause, scrubRatio, onFailed]);
 
   /** A drag the list took back: no seek was asked for, but sound may be owed. */
   const abortScrub = useCallback(() => {
@@ -428,9 +869,7 @@ const AudioPlayerBubble = ({
    */
   const commitSeek = useCallback(
     (ratio: number) => {
-      // Nothing to seek in a note that has not been fetched: the track is
-      // decoration until the file exists.
-      if (!localUri || totalSeconds <= 0) {
+      if (totalSeconds <= 0) {
         scrubRatio.value = NO_SCRUB;
         setScrubSeconds(null);
         resumeAfterScrub();
@@ -462,14 +901,7 @@ const AudioPlayerBubble = ({
       // Resuming first would play a moment of the passage just left behind.
       void player.seekTo(seconds).finally(resumeAfterScrub);
     },
-    [
-      player,
-      totalSeconds,
-      localUri,
-      playbackRatio,
-      scrubRatio,
-      resumeAfterScrub,
-    ],
+    [player, totalSeconds, playbackRatio, scrubRatio, resumeAfterScrub],
   );
 
   const seekGesture = useMemo(() => {
@@ -535,6 +967,9 @@ const AudioPlayerBubble = ({
    * continuous march, at the cost of trailing the sound by at most one poll.
    */
   useEffect(() => {
+    // Still loading: the head stays where the note was left.
+    if (awaitingStart) return;
+
     // A finger owns the head; the poll does not get to argue.
     if (scrubRatio.value !== NO_SCRUB) return;
 
@@ -567,6 +1002,7 @@ const AudioPlayerBubble = ({
     cancelAnimation(playbackRatio);
     playbackRatio.value = playedRatio;
   }, [
+    awaitingStart,
     playedRatio,
     status.currentTime,
     status.playing,
@@ -626,73 +1062,13 @@ const AudioPlayerBubble = ({
   }, [rail]);
 
   // -------------------------------------------------------------- actions
-  const startDownload = useCallback(() => {
-    if (downloadRef.current) return;
-
-    setHasFailed(false);
-    setDownloadRatio(0);
-    setIsDownloading(true);
-
-    const handle = downloadChatAudio({
-      messageId,
-      sourceUrl: url,
-      onProgress: (ratio) => {
-        if (mountedRef.current) setDownloadRatio(ratio);
-      },
-    });
-
-    downloadRef.current = handle;
-
-    handle.promise
-      .then((uri) => {
-        if (!mountedRef.current) return;
-
-        autoPlayRef.current = true;
-        setLocalUri(uri);
-      })
-      .catch(() => {
-        if (!mountedRef.current) return;
-
-        setHasFailed(true);
-      })
-      .finally(() => {
-        downloadRef.current = null;
-
-        if (!mountedRef.current) return;
-
-        setIsDownloading(false);
-        setDownloadRatio(null);
-      });
-  }, [messageId, url]);
-
-  const handleRetry = useCallback(() => {
-    setHasFailed(false);
-    setPlayRequested(false);
-
-    // The driver's own note, still uploading, has no remote copy to fetch —
-    // only the handle to the local file is worth rebuilding.
-    if (isLocalFileUri(url)) {
-      player.replace(url);
-      return;
-    }
-
-    // Everything else starts over from the network. Whatever failed — an
-    // expired signature, a connection that died mid-transfer, a file that
-    // will not decode — is not fixed by asking the same dead handle again.
-    startDownload();
-  }, [player, url, startDownload]);
-
   const handleToggle = useCallback(() => {
-    if (hasFailed) {
-      handleRetry();
-      return;
-    }
+    // Tapped again before the first sound: the driver changed their mind.
+    // Nothing is playing yet, so the player simply goes away again.
+    if (awaitingStart) {
+      releaseAudioFocus(focusId);
+      disarmAudioPlayer(focusId);
 
-    // The transfer owns the button until it is done.
-    if (isDownloading) return;
-
-    if (!localUri) {
-      startDownload();
       return;
     }
 
@@ -720,13 +1096,13 @@ const AudioPlayerBubble = ({
     // A finished note replays from the top instead of doing nothing.
     if (status.didJustFinish || playedRatio >= 1) void player.seekTo(0);
 
-    player.play();
+    try {
+      player.play();
+    } catch {
+      onFailed();
+    }
   }, [
-    hasFailed,
-    handleRetry,
-    isDownloading,
-    localUri,
-    startDownload,
+    awaitingStart,
     status.playing,
     status.didJustFinish,
     isScrubPaused,
@@ -734,6 +1110,7 @@ const AudioPlayerBubble = ({
     player,
     focusId,
     setScrubPause,
+    onFailed,
   ]);
 
   /**
@@ -752,8 +1129,7 @@ const AudioPlayerBubble = ({
 
       if (action !== "increment" && action !== "decrement") return;
 
-      // Decoration until there is a file to seek in, exactly as for a touch.
-      if (!localUri || totalSeconds <= 0) return;
+      if (totalSeconds <= 0) return;
 
       // Stepped from the position the driver is being SHOWN, not from the one
       // the player last admitted to: two quick steps while a seek is still in
@@ -768,152 +1144,19 @@ const AudioPlayerBubble = ({
         ),
       );
     },
-    [localUri, totalSeconds, elapsedMs, commitSeek],
+    [totalSeconds, elapsedMs, commitSeek],
   );
-
-  const handleCycleSpeed = useCallback(() => {
-    setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]);
-  }, [speed]);
-
-  // --------------------------------------------------------------- colors
-  const tint = onDarkBubble ? "#ffffff" : "#374151";
-  const track = onDarkBubble ? "rgba(255,255,255,0.35)" : "#d1d5db";
-  const fill = onDarkBubble ? "#ffffff" : "#2563eb";
-  const muted = onDarkBubble ? "rgba(255,255,255,0.75)" : "#6b7280";
-  const danger = onDarkBubble ? "#fecaca" : "#dc2626";
-
-  const buttonBackground = onDarkBubble ? "rgba(255,255,255,0.2)" : "#e5e7eb";
 
   // --------------------------------------------------------------- render
-  if (control === "retry") {
-    return (
-      <TouchableOpacity
-        onPress={handleRetry}
-        accessibilityRole="button"
-        accessibilityLabel="Áudio não carregou. Toque para tentar de novo."
-        className="flex-row items-center gap-2 py-1"
-        style={{ minWidth: 200 }}
-      >
-        <Ionicons name="alert-circle-outline" size={30} color={danger} />
-
-        <View className="flex-1">
-          <Text className="text-[13px] font-medium" style={{ color: danger }}>
-            Áudio indisponível
-          </Text>
-          <Text className="text-[11px]" style={{ color: muted }}>
-            Toque para tentar de novo
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  }
-
-  /**
-   * One row of the motif. It is drawn twice — once in the track colour and
-   * once in the fill colour behind a clip that ends exactly at the played
-   * proportion — so the head lands on a pixel, not on a whole bar. Rounding
-   * progress to the nearest bar is a 1/N error in the DRAWING, which is what a
-   * driver reads as "it seeked a bit off" even when the seek was exact.
-   */
-  const renderBars = (color: string) => (
-    <View
-      style={{
-        width: rail,
-        height: BAR_MAX_HEIGHT,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-      }}
-    >
-      {Array.from({ length: barCount }, (_unused, index) => (
-        <View
-          key={index}
-          style={{
-            width: AUDIO_BAR_WIDTH,
-            borderRadius: BAR_RADIUS,
-            height: Math.max(
-              BAR_MIN_HEIGHT,
-              BAR_MAX_HEIGHT * BAR_RHYTHM[index % BAR_RHYTHM.length],
-            ),
-            backgroundColor: color,
-          }}
-        />
-      ))}
-    </View>
-  );
-
-  const buttonLabel =
-    control === "download"
-      ? "Baixar mensagem de voz"
-      : control === "downloading"
-        ? "Baixando mensagem de voz"
-        : control === "pause"
-          ? "Pausar mensagem de voz"
-          : "Ouvir mensagem de voz";
-
-  const renderButtonContent = () => {
-    if (control === "buffering") {
-      return <ActivityIndicator size="small" color={tint} />;
-    }
-
-    // An unknown content length means an unknown ratio: a spinner says "no
-    // idea how long" honestly, a bar frozen at 0% does not.
-    if (control === "downloading" && downloadRatio === null) {
-      return <ActivityIndicator size="small" color={tint} />;
-    }
-
-    return (
-      <Ionicons
-        name={
-          control === "download" || control === "downloading"
-            ? "arrow-down"
-            : control === "pause"
-              ? "pause"
-              : "play"
-        }
-        size={18}
-        color={tint}
-        // Optical centring: the play triangle's mass sits to the left.
-        style={control === "play" ? { marginLeft: 2 } : undefined}
-      />
-    );
-  };
-
   return (
     <View className="py-1" style={{ minWidth: 210 }}>
       <View className="flex-row items-center gap-2.5">
-        <TouchableOpacity
+        <AudioRoundButton
+          control={control}
+          downloadRatio={null}
           onPress={handleToggle}
-          disabled={control === "downloading"}
-          accessibilityRole="button"
-          accessibilityLabel={buttonLabel}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          className="items-center justify-center overflow-hidden rounded-full"
-          style={{
-            height: BUTTON_SIZE,
-            width: BUTTON_SIZE,
-            backgroundColor: buttonBackground,
-          }}
-        >
-          {control === "downloading" && downloadRatio !== null ? (
-            // The button fills from the bottom as the bytes land: a progress
-            // indicator that needs no extra row and no SVG.
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: BUTTON_SIZE * downloadRatio,
-                backgroundColor: fill,
-                opacity: 0.35,
-              }}
-            />
-          ) : null}
-
-          {renderButtonContent()}
-        </TouchableOpacity>
+          palette={palette}
+        />
 
         <GestureDetector gesture={seekGesture}>
           <View
@@ -937,7 +1180,7 @@ const AudioPlayerBubble = ({
             style={{ paddingHorizontal: AUDIO_TRACK_PADDING }}
           >
             <View style={{ height: BAR_MAX_HEIGHT, width: rail }}>
-              {renderBars(track)}
+              <AudioBars rail={rail} barCount={barCount} color={palette.track} />
 
               <Animated.View
                 pointerEvents="none"
@@ -952,7 +1195,7 @@ const AudioPlayerBubble = ({
                   fillStyle,
                 ]}
               >
-                {renderBars(fill)}
+                <AudioBars rail={rail} barCount={barCount} color={palette.fill} />
               </Animated.View>
 
               <Animated.View
@@ -965,7 +1208,7 @@ const AudioPlayerBubble = ({
                     width: KNOB_SIZE,
                     height: KNOB_SIZE,
                     borderRadius: KNOB_SIZE / 2,
-                    backgroundColor: fill,
+                    backgroundColor: palette.fill,
                   },
                   knobStyle,
                 ]}
@@ -974,32 +1217,254 @@ const AudioPlayerBubble = ({
           </View>
         </GestureDetector>
 
-        <TouchableOpacity
-          onPress={handleCycleSpeed}
-          accessibilityRole="button"
-          accessibilityLabel={`Velocidade ${speed}x. Toque para mudar.`}
-          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-          className="rounded-full px-2 py-1"
-          style={{ backgroundColor: buttonBackground }}
-        >
-          <Text className="text-[11px] font-semibold" style={{ color: tint }}>
-            {speed}x
-          </Text>
-        </TouchableOpacity>
+        <SpeedPill speed={speed} onPress={onCycleSpeed} palette={palette} />
       </View>
 
-      <View className="mt-1 pl-[50px]">
-        <Text className="text-[11px]" style={{ color: muted }}>
-          {control === "downloading"
-            ? downloadRatio === null
-              ? "Baixando…"
-              : `Baixando… ${Math.round(downloadRatio * 100)}%`
-            : `${formatAudioClock(elapsedMs)} / ${formatAudioClock(
-                totalSeconds * 1000,
-              )}`}
-        </Text>
-      </View>
+      <AudioClockLine
+        palette={palette}
+        text={`${formatAudioClock(elapsedMs)} / ${formatAudioClock(
+          totalSeconds * 1000,
+        )}`}
+      />
     </View>
+  );
+};
+
+// ================================================================ bubble
+
+interface AudioPlayerBubbleProps {
+  /**
+   * The cache key. The url cannot be one: it is signed and expires, so the
+   * same note arrives under a new url on every load.
+   */
+  messageId: string;
+
+  url: string;
+  durationMs: number | null;
+
+  /** Adapts icon/track colors to the bubble behind it. */
+  onDarkBubble: boolean;
+}
+
+/**
+ * The voice-note player inside a bubble, on the WhatsApp model: a note this
+ * device does not have yet offers a DOWNLOAD arrow, not a play triangle. The
+ * tap fetches it into the app cache with visible progress and then plays; a
+ * note already cached plays instantly, and keeps playing with no signal at
+ * all, which is the entire point for a driver on the road.
+ *
+ * The bubble owns what outlives a player — the file, the download, the
+ * speed, where the note was left — and builds the native player only while it
+ * is the conversation's ARMED note (MOB-06). Every other note is drawn by
+ * `IdleAudioNote`, from plain props, with nothing native behind it.
+ */
+const AudioPlayerBubble = ({
+  messageId,
+  url,
+  durationMs,
+  onDarkBubble,
+}: AudioPlayerBubbleProps) => {
+  // Identity for the audio-focus arbiter: stable for this component's life,
+  // and unique even when the same note is rendered twice.
+  const focusId = useId();
+
+  const isArmed = useSyncExternalStore(
+    subscribeArmedAudioPlayer,
+    () => armedAudioPlayerId() === focusId,
+  );
+
+  // Probed once, as the bubble mounts: an existing file decides between the
+  // download arrow and the play triangle on the very first frame, and nothing
+  // is fetched to find out.
+  const [localUri, setLocalUri] = useState<string | null>(() =>
+    findCachedChatAudio(messageId, url),
+  );
+
+  const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const [downloadRatio, setDownloadRatio] = useState<number | null>(null);
+  const [hasFailed, setHasFailed] = useState<boolean>(false);
+
+  const [speed, setSpeed] = useState<PlaybackSpeed>(1);
+
+  // Where the note was left, and its decoded length once a player knew it.
+  const [positionSeconds, setPositionSeconds] = useState<number>(0);
+  const [decodedSeconds, setDecodedSeconds] = useState<number>(0);
+
+  // Bumped to build a fresh player on the same file after a failure.
+  const [playerGeneration, setPlayerGeneration] = useState<number>(0);
+
+  const downloadRef = useRef<ChatAudioDownload | null>(null);
+  const mountedRef = useRef<boolean>(true);
+
+  const colors = useThemeColors();
+  const palette = useMemo(
+    () => audioPalette(bubbleTones(colors, onDarkBubble)),
+    [colors, onDarkBubble],
+  );
+
+  const totalSeconds =
+    decodedSeconds > 0 ? decodedSeconds : (durationMs ?? 0) / 1000;
+
+  const resumeSeconds = audioResumeSeconds(positionSeconds, totalSeconds);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+
+      // A transfer nobody is waiting for any more. Scrolling a note off
+      // screen must not keep spending the driver's data.
+      downloadRef.current?.cancel();
+      downloadRef.current = null;
+
+      disarmAudioPlayer(focusId);
+    };
+  }, [focusId]);
+
+  /** Takes the conversation's one player; the armed render starts playback. */
+  const play = useCallback(() => {
+    setHasFailed(false);
+    armAudioPlayer(focusId);
+  }, [focusId]);
+
+  const startDownload = useCallback(() => {
+    if (downloadRef.current) return;
+
+    setHasFailed(false);
+    setDownloadRatio(0);
+    setIsDownloading(true);
+
+    const handle = downloadChatAudio({
+      messageId,
+      sourceUrl: url,
+      onProgress: (ratio) => {
+        if (mountedRef.current) setDownloadRatio(ratio);
+      },
+    });
+
+    downloadRef.current = handle;
+
+    handle.promise
+      .then((uri) => {
+        if (!mountedRef.current) return;
+
+        setLocalUri(uri);
+
+        // A download the driver started is a download they want to hear:
+        // playback follows the last byte without a second tap.
+        armAudioPlayer(focusId);
+      })
+      .catch(() => {
+        if (!mountedRef.current) return;
+
+        setHasFailed(true);
+      })
+      .finally(() => {
+        downloadRef.current = null;
+
+        if (!mountedRef.current) return;
+
+        setIsDownloading(false);
+        setDownloadRatio(null);
+      });
+  }, [messageId, url, focusId]);
+
+  const handleFailed = useCallback(() => {
+    setHasFailed(true);
+    disarmAudioPlayer(focusId);
+  }, [focusId]);
+
+  const handleRetry = useCallback(() => {
+    setHasFailed(false);
+
+    // The driver's own note, still uploading, has no remote copy to fetch —
+    // only the player on the local file is worth rebuilding.
+    if (isLocalFileUri(url)) {
+      setPlayerGeneration((current) => current + 1);
+      armAudioPlayer(focusId);
+
+      return;
+    }
+
+    // Everything else starts over from the network. Whatever failed — an
+    // expired signature, a connection that died mid-transfer, a file that
+    // will not decode — is not fixed by asking the same dead handle again.
+    startDownload();
+  }, [url, focusId, startDownload]);
+
+  const handleIdlePress = useCallback(() => {
+    if (hasFailed) {
+      handleRetry();
+      return;
+    }
+
+    // The transfer owns the button until it is done.
+    if (isDownloading) return;
+
+    if (!localUri) {
+      startDownload();
+      return;
+    }
+
+    play();
+  }, [hasFailed, handleRetry, isDownloading, localUri, startDownload, play]);
+
+  const handleCycleSpeed = useCallback(() => {
+    setSpeed((current) => nextSpeed(current));
+  }, []);
+
+  const handleDurationKnown = useCallback((seconds: number) => {
+    setDecodedSeconds(seconds);
+  }, []);
+
+  const handleDetach = useCallback((seconds: number) => {
+    if (mountedRef.current) setPositionSeconds(seconds);
+  }, []);
+
+  if (hasFailed) {
+    return <AudioRetryRow onRetry={handleRetry} palette={palette} />;
+  }
+
+  if (isArmed && localUri) {
+    return (
+      <ArmedAudioPlayer
+        key={playerGeneration}
+        focusId={focusId}
+        localUri={localUri}
+        fallbackDurationMs={durationMs}
+        startAtSeconds={resumeSeconds}
+        speed={speed}
+        palette={palette}
+        onCycleSpeed={handleCycleSpeed}
+        onDurationKnown={handleDurationKnown}
+        onDetach={handleDetach}
+        onFailed={handleFailed}
+      />
+    );
+  }
+
+  const control = resolveAudioControl({
+    isCached: Boolean(localUri),
+    isDownloading,
+    hasFailed,
+    isPreparing: false,
+    isPlaying: false,
+  });
+
+  return (
+    <IdleAudioNote
+      control={control}
+      downloadRatio={downloadRatio}
+      positionSeconds={resumeSeconds}
+      totalSeconds={totalSeconds}
+      seekable={Boolean(localUri)}
+      speed={speed}
+      palette={palette}
+      onPressButton={handleIdlePress}
+      onCycleSpeed={handleCycleSpeed}
+      onPosition={setPositionSeconds}
+    />
   );
 };
 

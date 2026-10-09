@@ -42,8 +42,18 @@ app-example
 .env*
 !.env.example
 
-# EAS credentials
+# EAS credentials, and any other service-account key (the Firebase admin SDK
+# key lives next to the repos, in google-firebase-services/; EAS uploads
+# whatever git sees).
 google-service-account.json
+*service-account*.json
+*firebase-adminsdk*.json
+
+# OTA code signing (docs/deploy.md, OTA signing section). The certificate is public and
+# EAS Build only sees what git sees, so it is let back in past `*.pem`; the
+# private key that signs every update never enters the repository.
+!certs/certificate.pem
+keys/
 # Firebase Android client config: carries the project's API key and is
 # supplied to EAS as a secret file. app.config.js already guards it with
 # fs.existsSync, so a checkout without it still runs (no FCM locally).
@@ -56,3 +66,16 @@ google-services.json
 *.apk
 *.aab
 *.ipa
+
+# Unit test coverage report (npm run test:coverage; CI publishes it)
+coverage/
+
+# Mutation testing (npm run test:mutation): Stryker sandbox and reports
+.stryker-tmp/
+reports/mutation/
+
+# Gradle output of the local Expo modules (modules/*/android), written by a
+# local `expo run:android`; EAS builds them from source.
+modules/*/android/build/
+modules/*/android/.gradle/
+modules/*/android/.cxx/

@@ -5,11 +5,11 @@ import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { BannerCollapse } from "@/components/ui/banner-collapse";
+import { useThemeColors } from "@/hooks/use-theme";
 
 import {
-  selectFailedCount,
+  selectNeedsAttentionCount,
   selectPendingCount,
-  selectUnclaimedCount,
   useOutboxStore,
 } from "@/store/outbox-store";
 
@@ -29,17 +29,18 @@ interface BannerContent {
  */
 const OutboxBanner = () => {
   const router = useRouter();
+  const colors = useThemeColors();
 
   const pendingCount = useOutboxStore(selectPendingCount);
-  const failedCount = useOutboxStore(selectFailedCount);
-  const unclaimedCount = useOutboxStore(selectUnclaimedCount);
 
   const isProcessing = useOutboxStore((state) => state.isProcessing);
 
-  // An unclaimed submission is grouped with the rejected ones rather than the
-  // waiting ones: both sit there until a person acts, and promising that it
-  // "will be sent once there is a connection" would be false.
-  const attentionCount = failedCount + unclaimedCount;
+  // Unclaimed and parked submissions are grouped with the rejected ones
+  // rather than the waiting ones: none leaves with a connection alone (a
+  // person, or the company re-enabling a module, has to act), and promising
+  // that it "will be sent once there is a connection" would be false. This
+  // strip is also the only way to the pending screen (MOB-03).
+  const attentionCount = useOutboxStore(selectNeedsAttentionCount);
   const total = pendingCount + attentionCount;
 
   // The last real content survives the exit animation — when the queue drains
@@ -68,16 +69,33 @@ const OutboxBanner = () => {
   const content = lastContent.current;
   if (!content) return null;
 
+  // Full class names, so Tailwind's scanner sees them. The detail is full
+  // white too: white/90 on the primary surface measured 4.49:1, under AA.
+  const tone = content.needsAttention
+    ? {
+        surface: "bg-destructive",
+        title: "text-destructive-foreground",
+        detail: "text-destructive-foreground",
+        icon: colors.destructiveForeground,
+      }
+    : {
+        surface: "bg-primary",
+        title: "text-primary-foreground",
+        detail: "text-primary-foreground",
+        icon: colors.primaryForeground,
+      };
+
   return (
     <BannerCollapse visible={total > 0}>
       <View
-        className={content.needsAttention ? "bg-danger-600" : "bg-primary-600"}
+        className={tone.surface}
       >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${content.label}. ${content.detail}`}
           // navigate (not push): a double-tap must not stack two copies.
           onPress={() => router.navigate("/pending-submissions")}
+          testID="outbox-banner"
           style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
           className="flex-row items-center gap-3 px-4 py-2.5"
         >
@@ -88,17 +106,17 @@ const OutboxBanner = () => {
                 : "cloud-upload-outline"
             }
             size={18}
-            color="#ffffff"
+            color={tone.icon}
           />
 
           <View className="flex-1">
-            <Text className="text-sm font-semibold text-white">
+            <Text className={`text-sm font-semibold ${tone.title}`}>
               {content.label}
             </Text>
-            <Text className="text-xs text-white/90">{content.detail}</Text>
+            <Text className={`text-xs ${tone.detail}`}>{content.detail}</Text>
           </View>
 
-          <Ionicons name="chevron-forward" size={16} color="#ffffff" />
+          <Ionicons name="chevron-forward" size={16} color={tone.icon} />
         </Pressable>
       </View>
     </BannerCollapse>

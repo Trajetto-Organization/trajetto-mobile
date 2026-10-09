@@ -1,0 +1,64 @@
+# Start the released route, arrive at the first stop and prove the delivery:
+# receipt photo from the camera, signature on screen, who received it.
+appId: com.trajetto.fleetmanager
+name: 01 Rota, chegada e comprovante
+tags:
+  - driver
+---
+- tapOn:
+    id: tab-deliveries
+- extendedWaitUntil:
+    visible: "Designadas · Rota 101.*"
+    timeout: 60000
+- assertVisible: "Cliente E2E 1"
+- tapOn:
+    id: start-route-button
+- assertVisible: "Iniciar a rota 101?"
+- tapOn:
+    id: start-route-modal-confirm
+- extendedWaitUntil:
+    visible: "Rota 101 iniciada!"
+    timeout: 60000
+- runFlow: subflows/system-dialogs.yaml
+- assertVisible: "Em rota · Rota 101.*"
+
+- runFlow: subflows/gps.yaml
+- tapOn: "Cliente E2E 1"
+- tapOn:
+    id: delivery-arrive-button
+- assertVisible: "Registrar chegada?"
+- tapOn:
+    id: arrival-modal-confirm
+- extendedWaitUntil:
+    notVisible:
+      id: delivery-arrive-button
+    timeout: 60000
+
+- tapOn:
+    id: delivery-deliver-button
+- assertVisible: "Comprovar entrega"
+- tapOn:
+    id: proof-receipt-photo
+- runFlow: subflows/take-photo.yaml
+- extendedWaitUntil:
+    visible: "Fotografar novamente"
+    timeout: 60000
+- tapOn:
+    id: proof-signature
+- runFlow: subflows/signature.yaml
+- tapOn:
+    id: proof-received-by
+- inputText: "Maria Recebedora"
+- hideKeyboard
+- tapOn:
+    id: proof-submit
+# Proved, the delivery leaves the driver's list.
+- extendedWaitUntil:
+    visible: "Esta entrega saiu da sua lista"
+    timeout: 120000
+- tapOn: "Voltar"
+- extendedWaitUntil:
+    visible: "Cliente E2E 2"
+    timeout: 30000
+- assertNotVisible: "Cliente E2E 1"
+- takeScreenshot: 01-entregue

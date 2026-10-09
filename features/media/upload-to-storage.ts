@@ -1,6 +1,7 @@
 import { FileSystemUploadType, uploadAsync } from "expo-file-system/legacy";
 
 import { apiClient } from "@/utils/api";
+import { hostOf } from "@/features/diagnostics/client-report-rules";
 
 export type UploadType =
   | "checklistPhotos"
@@ -21,6 +22,13 @@ export interface UploadFile {
   fileName?: string | null;
   fileSize?: number;
   mimeType?: string | null;
+
+  /**
+   * When the camera returned it (proof design §8.2), for the receipt's
+   * `photo_taken_at`. Kept with the draft; absent on a picked file or a
+   * capture recovered after the app was killed.
+   */
+  takenAt?: string;
 }
 
 export interface UploadEntry {
@@ -63,10 +71,36 @@ interface UploadToStorageOptions {
 }
 
 export class UploadError extends Error {
-  constructor(message: string) {
+  /**
+   * The HTTP status of the refused PUT, and the storage host it went to —
+   * never the signed URL (OBS-12). What tells a phone without signal from a
+   * bucket that refuses the signature (403): the message the driver reads is
+   * the same for both.
+   */
+  readonly status?: number;
+  readonly host?: string;
+
+  constructor(message: string, details: { status?: number; host?: string } = {}) {
     super(message);
     this.name = "UploadError";
+    this.status = details.status;
+    this.host = details.host;
   }
+}
+
+/**
+ * The driver stopped the upload: discarded the form, changed step, left.
+ *
+ * Named `AbortError` like every other cancellation in the app, NOT an
+ * `UploadError`. The queue reads an `UploadError` as the connection failing,
+ * which it is worth retrying — so a checklist the driver threw away used to be
+ * queued with a copy of its photos and sent on the next sweep.
+ */
+function createUploadAbortError(): Error {
+  const error = new Error("Envio cancelado.");
+  error.name = "AbortError";
+
+  return error;
 }
 
 // Enough to keep a mobile connection busy without opening twenty sockets at
@@ -123,9 +157,13 @@ export async function uploadToStorage({
   const files = pending.map(({ entry }) => describeFile(entry.file));
   const body = uploadType === "avatars" ? { files } : { uploadType, files };
 
-  const { uploads } = await apiClient.post<{ uploads: PresignedUpload[] }>(
+  if (signal?.aborted) throw createUploadAbortError();
+
+  // The signal goes with the presign too: leaving the screen while it is in
+  // flight must surface as the abort it is, not as whatever comes after.
+  const { uploads } = await apiClient.request<{ uploads: PresignedUpload[] }>(
     endpoint,
-    body,
+    { method: "POST", body, signal },
   );
 
   if (!uploads || uploads.length !== pending.length) {
@@ -155,8 +193,11 @@ export async function uploadToStorage({
       });
 
       if (result.status < 200 || result.status >= 300) {
+        if (signal?.aborted) throw createUploadAbortError();
+
         throw new UploadError(
           "Falha ao enviar uma das fotos. Verifique sua conexão e tente novamente.",
+          { status: result.status, host: hostOf(uploadUrl) },
         );
       }
 
@@ -172,9 +213,7 @@ export async function uploadToStorage({
     Array.from({ length: Math.min(CONCURRENCY, pending.length) }, worker),
   );
 
-  if (signal?.aborted) {
-    throw new UploadError("Envio cancelado.");
-  }
+  if (signal?.aborted) throw createUploadAbortError();
 
   return uploaded;
 }

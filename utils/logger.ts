@@ -6,6 +6,8 @@
  * - error(): Always logs errors (safe for production)
  */
 
+import { reportEvent } from "./telemetry";
+
 export const logger = {
   /**
    * Development-only logs (removed in production builds)
@@ -28,9 +30,20 @@ export const logger = {
   /**
    * Production-safe error logs
    * Use for errors that should be tracked (no sensitive data)
+   *
+   * Also handed to the telemetry pipeline, which is what takes it off the
+   * phone once a sink is registered: until now these lines — a dropped queue
+   * file, a failed logout cleanup — reached logcat and nobody. Only the
+   * leading description and the error's class go; the rest is often an error
+   * whose message can carry anything.
    */
   error: (...args: any[]) => {
     console.error(...args);
+
+    reportEvent("app_error", {
+      where: typeof args[0] === "string" ? args[0] : "unknown",
+      code: args.find((arg) => arg instanceof Error)?.name,
+    });
   },
 
   /**

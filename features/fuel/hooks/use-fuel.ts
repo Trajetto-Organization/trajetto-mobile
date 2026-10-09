@@ -6,7 +6,6 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useForm, type SubmitHandler } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 
 import Toast from "react-native-toast-message";
 import * as Haptics from "expo-haptics";
@@ -20,16 +19,28 @@ import { ApiError } from "@/utils/api";
 import { checkFuelPermission } from "@/utils/permissions";
 
 import {
+  FUEL_FORM_FIELDS,
   calculateTotalAmount,
-  isFuelComplete,
+  fuelAttachmentIssues,
 } from "@/features/fuel/fuel-rules";
 import { buildFuelDefaults } from "@/features/fuel/fuel-defaults";
+
+import {
+  LIVE_VALIDATION_FORM_OPTIONS,
+  canSubmitForm,
+  firstInvalidField,
+  messagesOf,
+} from "@/features/forms/live-validation";
+import { resolverWithVehicleMileage } from "@/features/forms/mileage-resolver";
+import { useLiveFields } from "@/features/forms/use-live-fields";
+import { useFieldFocus } from "@/features/forms/use-field-focus";
 
 import { useImageCapture } from "@/features/media/use-image-capture";
 import { useWizardSteps } from "@/features/submissions/use-wizard-steps";
 import { useDiscardConfirmation } from "@/features/submissions/use-discard-confirmation";
 
 import { submitOrQueue } from "@/features/submissions/submit-or-queue";
+import { queuedNotice } from "@/features/submissions/queue-decision";
 import {
   clearSubmissionId,
   createSubmissionStorageKey,
@@ -37,6 +48,7 @@ import {
 } from "@/features/submissions/submission-id";
 
 import { useDraftAutosave } from "@/features/submissions/use-draft-autosave";
+import { createDraftChangeGate } from "@/features/submissions/draft-change-gate";
 import {
   clearFuelDraft,
   deleteFuelDraftImage,
@@ -45,6 +57,8 @@ import {
   saveFuelDraft,
   type FuelDraft,
 } from "@/features/fuel/fuel-draft";
+import { useOdometerPrecheck } from "@/features/ai-precheck/use-photo-precheck";
+import type { StoredPrecheck } from "@/features/ai-precheck/device-precheck";
 
 interface StepData {
   branchId: string;
@@ -140,6 +154,10 @@ export const useFuel = () => {
   const odometerImageRef = useRef<ImagePicker.ImagePickerAsset | null>(null);
   const stepDataRef = useRef<Partial<StepData>>({});
 
+  // The phone's pre-check of the odometer photo (decision 14.2), kept for the
+  // draft the same way the photo is.
+  const precheckRef = useRef<StoredPrecheck | null>(null);
+
   const [locationData, setLocationData] = useState<{
     latitude: number;
     longitude: number;
@@ -166,22 +184,30 @@ export const useFuel = () => {
     [],
   );
 
-  const createDynamicFuelSchema = useCallback(() => {
-    const baseSchema = createFuelSchema;
+  // The defaults of the form as it opened: their date is the moment the km
+  // rule knows the reading is the newest (decision 16.703).
+  const initialDefaultsRef = useRef<ReturnType<typeof buildFuelDefaults> | null>(null);
+  if (!initialDefaultsRef.current) {
+    initialDefaultsRef.current = buildFuelDefaults({
+      vehicleId: vehicleId || "",
+      businessId: submissionBusinessId,
+    });
+  }
+  const initialDefaults = initialDefaultsRef.current;
 
-    if (vehicleData?.current_mileage) {
-      return baseSchema.extend({
-        current_mileage: baseSchema.shape.current_mileage.refine(
-          (val) => val > vehicleData.current_mileage,
-          {
-            message: `A quilometragem deve ser maior que a atual do veículo (${vehicleData.current_mileage?.toLocaleString()} km).`,
-          },
-        ),
-      });
-    }
+  const vehicleMileage = vehicleData?.current_mileage;
 
-    return baseSchema;
-  }, [vehicleData?.current_mileage]);
+  // The schema plus what only the loaded vehicle knows, checked live.
+  const resolver = useMemo(
+    () =>
+      resolverWithVehicleMileage<CreateFuelFormData>(createFuelSchema, {
+        mileageField: "current_mileage",
+        dateField: "refueling_date",
+        defaultDate: initialDefaults.refueling_date,
+        vehicleMileage,
+      }),
+    [initialDefaults.refueling_date, vehicleMileage],
+  );
 
   const handleLocationChange = (
     location: {
@@ -199,28 +225,40 @@ export const useFuel = () => {
     setIsLocationLoading(isLoading);
   };
 
-  const dynamicSchema = createDynamicFuelSchema();
-
   const {
     control,
     handleSubmit,
     formState: { errors },
     setValue,
     getValues,
+    getFieldState,
     reset,
     subscribe,
     watch,
     trigger,
   } = useForm<CreateFuelFormData>({
-    resolver: zodResolver(dynamicSchema) as any,
-    mode: "onChange",
-    defaultValues: buildFuelDefaults({
-      vehicleId: vehicleId || "",
-      businessId: submissionBusinessId,
-    }),
+    resolver,
+    ...LIVE_VALIDATION_FORM_OPTIONS,
+    defaultValues: initialDefaults,
   });
 
+  const fieldFocus = useFieldFocus();
+
+  // The vehicle's km may arrive after the driver typed theirs: the rule
+  // re-checks a km already visited instead of waiting for the next keystroke.
+  useEffect(() => {
+    const mileage = getFieldState("current_mileage");
+    if (mileage.isTouched || mileage.invalid) void trigger("current_mileage");
+  }, [vehicleMileage, getFieldState, trigger]);
+
+  const odometerPrecheck = useOdometerPrecheck(
+    odometerImage?.uri,
+    watch("current_mileage"),
+  );
+
   const markDraftPresent = useCallback(() => setHasDraft(true), []);
+
+  const [draftChangeGate] = useState(createDraftChangeGate);
 
   const draft = useDraftAutosave<FuelDraft<CreateFuelFormData, StepData>>({
     storageKey: submissionStorageKey,
@@ -240,6 +278,7 @@ export const useFuel = () => {
       },
       stepData: stepDataRef.current,
       odometerImage: odometerImageRef.current,
+      precheck: precheckRef.current ?? undefined,
       updatedAt: new Date().toISOString(),
     }),
   });
@@ -309,6 +348,14 @@ export const useFuel = () => {
           }
         });
 
+        // The pre-check of THIS photo and km, if it ran: a hint for the
+        // office, never a condition of the send (decision 14.2).
+        const devicePrecheck = odometerPrecheck.payloadFor(
+          odometerImage.uri,
+          data.current_mileage,
+        );
+        if (devicePrecheck) body.device_precheck = devicePrecheck;
+
         // Progress stays at full through the request that follows the upload,
         // so the bar reads "saving" instead of vanishing at the moment the
         // driver is watching it finish. The `finally` clears it on every path.
@@ -365,9 +412,11 @@ export const useFuel = () => {
             : {
                 type: "info",
                 text1: "Abastecimento salvo no aparelho",
-                text2: "Será enviado automaticamente quando houver conexão.",
+                // After a forced logout it waits for this driver, not for a
+                // connection (MOB-07).
+                text2: queuedNotice(outcome),
                 position: "top",
-                visibilityTime: 4000,
+                visibilityTime: outcome === "queued" ? 4000 : 6000,
               },
         );
 
@@ -404,6 +453,7 @@ export const useFuel = () => {
       calculatedTotal,
       draft,
       odometerImage,
+      odometerPrecheck,
       locationData,
       submissionBusinessId,
       submissionStorageKey,
@@ -421,6 +471,12 @@ export const useFuel = () => {
   useEffect(() => {
     odometerImageRef.current = odometerImage;
   }, [odometerImage]);
+
+  // A finished pre-check is saved with the draft, like the photo it read.
+  useEffect(() => {
+    precheckRef.current = odometerPrecheck.stored;
+    if (odometerPrecheck.stored) draft.schedule();
+  }, [draft, odometerPrecheck.stored]);
 
   // Restores a refuelling left half-filled, and lands the driver back on the
   // step they had reached rather than at the beginning.
@@ -449,6 +505,7 @@ export const useFuel = () => {
 
       setStepData(storedDraft.stepData);
       setOdometerImage(storedDraft.odometerImage);
+      odometerPrecheck.restore(storedDraft.precheck);
       setHasDraft(true);
 
       if (isDriver || storedDraft.stepData.fuelTypeId) {
@@ -483,10 +540,14 @@ export const useFuel = () => {
   useEffect(
     () =>
       subscribe({
-        formState: { values: true },
-        callback: () => draft.schedule(),
+        formState: { values: true, isDirty: true },
+        // Only the driver's edits make a draft: the screen's own fills
+        // (vehicle defaults, GPS) leave the form clean (draft-change-gate).
+        callback: (state) => {
+          if (draftChangeGate.accepts(state)) draft.schedule();
+        },
       }),
-    [draft, subscribe],
+    [draft, draftChangeGate, subscribe],
   );
 
   // The photo and the branch/driver/fuel-type choices live outside the form, so
@@ -500,6 +561,14 @@ export const useFuel = () => {
     draft.schedule();
   }, [draft, hasDraft, isDriver, odometerImage, stepData]);
 
+  // The photo is a file, not a form value: its message lives here, shown on
+  // a submit or once the driver removed it, gone as soon as one is attached.
+  const attachmentIssues = useMemo(
+    () => fuelAttachmentIssues({ hasOdometerPhoto: Boolean(odometerImage) }),
+    [odometerImage],
+  );
+  const attachments = useLiveFields({ issues: attachmentIssues, order: FUEL_FORM_FIELDS });
+
   const discardFuelDraft = useCallback(async () => {
     draft.release();
     submissionAbortControllerRef.current?.abort();
@@ -512,6 +581,9 @@ export const useFuel = () => {
     ]);
 
     reset();
+    draftChangeGate.reset();
+    // A fresh form: the photo area goes back to neutral like the text fields.
+    attachments.reset();
     setOdometerImage(null);
     odometerImageRef.current = null;
     setHasDraft(false);
@@ -541,6 +613,7 @@ export const useFuel = () => {
     draft.resume();
     void getOrCreateSubmissionId(submissionStorageKey).catch(() => undefined);
   }, [
+    attachments.reset,
     draft,
     isDriver,
     reset,
@@ -562,41 +635,60 @@ export const useFuel = () => {
   const watchedLiters = watch("liters_amount");
   const watchedPrice = watch("price_per_liter");
 
-  const watchedMileage = watch("current_mileage");
-  const watchedRefuelingDate = watch("refueling_date");
-
+  // Validated as it lands: a "localização é obrigatória" shown after a tap
+  // goes away when the GPS answers, and comes back if the position is lost.
   useEffect(() => {
-    if (locationData) {
-      setValue("latitude", locationData.latitude);
-      setValue("longitude", locationData.longitude);
-    }
-  }, [locationData, setValue]);
+    const shouldValidate = getFieldState("latitude").invalid;
 
-  const areAllRequiredFieldsFilled = useCallback(
-    () =>
-      isFuelComplete({
-        selection: stepData,
-        entries: {
-          refuelingDate: watchedRefuelingDate,
-          mileage: watchedMileage,
-          liters: watchedLiters,
-          pricePerLiter: watchedPrice,
-        },
-        isDriver,
-        hasOdometerPhoto: Boolean(odometerImage),
-        hasLocation: Boolean(locationData),
-      }),
-    [
-      isDriver,
-      stepData,
-      watchedRefuelingDate,
-      watchedMileage,
-      watchedLiters,
-      watchedPrice,
-      odometerImage,
-      locationData,
-    ],
-  );
+    setValue("latitude", locationData?.latitude as number, { shouldValidate });
+    setValue("longitude", locationData?.longitude as number, { shouldValidate });
+  }, [locationData, setValue, getFieldState]);
+
+  /**
+   * The tap on "Abastecer" (decision 16.700): everything is checked, nothing
+   * leaves while anything is invalid, and the first invalid field is brought
+   * into view — focused when it is a text field.
+   */
+  const submitForm = useCallback(() => {
+    const missingAttachment = attachments.attempt();
+
+    const refuse = (field: string | null, message?: string) => {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(
+        () => undefined,
+      );
+
+      if (field && (FUEL_FORM_FIELDS as readonly string[]).includes(field)) {
+        fieldFocus.focusField(field, message);
+        return;
+      }
+
+      // A field with no place on this screen (a selection made in an earlier
+      // step) still says what is wrong.
+      Toast.show({
+        type: "error",
+        text1: "Revise o abastecimento",
+        text2: message ?? "Há dados inválidos no abastecimento.",
+        position: "top",
+      });
+    };
+
+    return handleSubmit(
+      (data) => {
+        if (missingAttachment) {
+          return refuse(missingAttachment, attachmentIssues.odometer_photo ?? undefined);
+        }
+        return onSubmit(data);
+      },
+      (invalid) => {
+        const issues: Record<string, string> = {
+          ...messagesOf(invalid),
+          ...(missingAttachment ? { [missingAttachment]: attachmentIssues.odometer_photo ?? "" } : {}),
+        };
+        const first = firstInvalidField(FUEL_FORM_FIELDS, issues);
+        refuse(first, first ? issues[first] : undefined);
+      },
+    )();
+  }, [attachments, attachmentIssues, fieldFocus, handleSubmit, onSubmit]);
 
   /**
    * Replaces the odometer photo with the one just captured.
@@ -660,11 +752,16 @@ export const useFuel = () => {
     setShowImagePickerModal(true);
   }, []);
 
+  const touchAttachment = attachments.touch;
+
   const removeOdometerImage = useCallback(() => {
     deleteFuelDraftImage(odometerImageRef.current);
     odometerImageRef.current = null;
     setOdometerImage(null);
-  }, []);
+
+    // Taking the photo away is leaving the field empty.
+    touchAttachment("odometer_photo");
+  }, [touchAttachment]);
 
   const confirmLogout = useCallback(async () => {
     try {
@@ -765,6 +862,8 @@ export const useFuel = () => {
     setCalculatedTotal,
     odometerImage,
     removeOdometerImage,
+    odometerPrecheckWarning: odometerPrecheck.warning,
+    dismissOdometerPrecheck: odometerPrecheck.dismiss,
     isDraftReady,
     hasDraft,
     showDiscardDraftModal: discardConfirmation.isVisible,
@@ -773,17 +872,18 @@ export const useFuel = () => {
     vehicleData,
     isLoadingVehicle,
     control,
-    handleSubmit,
     errors,
+    odometerPhotoError: attachments.errorOf("odometer_photo"),
+    fieldFocus,
     setValue,
     trigger,
     permissions,
     stepInfo: getStepInfo(),
-    onSubmit,
+    submitForm,
+    canSubmit: canSubmitForm({ isBusy: isSubmitting || isLocationLoading }),
     goToNextStep,
     goToPrevStep,
     canProceedToNext,
-    areAllRequiredFieldsFilled,
     takePhoto,
     pickFromGallery,
     showImagePicker,

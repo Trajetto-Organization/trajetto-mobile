@@ -1,0 +1,17 @@
+# Signs in through the form. EMAIL and PASSWORD come from the caller
+# (scripts/e2e/run.sh passes the seeded driver's).
+appId: com.trajetto.fleetmanager
+---
+- extendedWaitUntil:
+    visible:
+      id: "login-email"
+    timeout: 120000
+- tapOn:
+    id: "login-email"
+- inputText: ${EMAIL}
+- tapOn:
+    id: "login-password"
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "login-submit"

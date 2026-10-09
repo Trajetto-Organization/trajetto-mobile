@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { AppState } from "react-native";
+import { Alert, AppState, Linking } from "react-native";
 
 import {
   AudioModule,
-  RecordingPresets,
   setAudioModeAsync,
   useAudioRecorder,
   type RecorderState,
@@ -22,6 +21,14 @@ import {
 } from "../chat-rules";
 
 import { stopChatAudio } from "../audio-focus";
+import { VOICE_NOTE_RECORDING_OPTIONS } from "../voice-note-preset";
+
+import {
+  microphoneAccessNotice,
+  microphoneNeedsRequest,
+  resolveMicrophoneAccess,
+  type MicrophoneAccess,
+} from "../microphone-permission";
 
 interface FinishedRecording {
   uri: string;
@@ -43,48 +50,92 @@ interface FinishedRecording {
 type RecorderPhase = "idle" | "recording" | "paused" | "stopping";
 
 /**
- * Voice notes for the road: AAC/M4A via the HIGH_QUALITY preset — what
- * expo-audio records on both platforms and the one compressed format every
- * browser on the SAC side plays back.
+ * The microphone permission. Anything short of a grant is requested: the
+ * silent check cannot tell a real block from a dismissed dialog or an expired
+ * one-time grant (see `microphone-permission.ts`), and a real block answers
+ * the request at once, without a dialog. A check that throws is its own
+ * answer: it is not "another app has the microphone", and telling the driver
+ * so would send them looking for the wrong culprit.
+ */
+async function ensureMicrophoneAccess(): Promise<MicrophoneAccess | "error"> {
+  try {
+    const current = await AudioModule.getRecordingPermissionsAsync();
+
+    if (!microphoneNeedsRequest(current)) return "granted";
+
+    return resolveMicrophoneAccess(
+      await AudioModule.requestRecordingPermissionsAsync(),
+      current,
+    );
+  } catch {
+    return "error";
+  }
+}
+
+/**
+ * Says why the recording did not start. A blocked permission gets a dialog
+ * with the way out — the system settings — because a toast would only repeat
+ * itself on every tap while the system never asks again.
+ */
+function tellAboutMicrophone(access: MicrophoneAccess | "error"): void {
+  if (access === "error") {
+    Toast.show({
+      type: "error",
+      text1: "Não foi possível verificar o microfone",
+      text2: "Tente de novo em instantes.",
+      position: "top",
+    });
+
+    return;
+  }
+
+  const notice = microphoneAccessNotice(access);
+
+  if (!notice) return;
+
+  if (notice.offersSettings) {
+    Alert.alert(notice.title, notice.message, [
+      { text: "Agora não", style: "cancel" },
+      {
+        text: "Abrir configurações",
+        onPress: () => {
+          void Linking.openSettings().catch(() => undefined);
+        },
+      },
+    ]);
+
+    return;
+  }
+
+  Toast.show({
+    type: "error",
+    text1: notice.title,
+    text2: notice.message,
+    position: "top",
+  });
+}
+
+/**
+ * Voice notes for the road: mono AAC/M4A tuned for speech (see
+ * `VOICE_NOTE_RECORDING_OPTIONS`), which every browser on the SAC side plays.
  *
- * THE LENGTH COMES FROM THE RECORDER, NEVER FROM A CLOCK HERE. That is the
- * one design decision everything else in this file follows from. `expo-audio`
- * moves the recorder on its own at every app-state transition — it pauses
- * whatever is capturing when the app leaves the foreground and resumes
- * whatever it finds paused when the app comes back, the driver's own hold
- * included — and it tells the JS side nothing. A `setInterval` counting wall
- * time cannot survive that: it keeps counting through a pause the system
- * imposed, and it stands still through a resume the system imposed. The file
- * sides with the recorder every time, so the recorder is asked.
- * `getStatus().durationMillis` is the module's own accumulation of the
- * stretches it actually captured, which is precisely what the file contains.
+ * The length comes from the recorder (`getStatus().durationMillis`), never
+ * from a clock here: `expo-audio` pauses and resumes the recorder on its own
+ * at app-state transitions without telling JS, so a wall-clock counter drifts
+ * from the file. `recorder.currentTime` is unused on purpose: its unit
+ * differs per platform.
  *
- * (`recorder.currentTime` is NOT that number and is deliberately unused: on
- * Android it is bridged to the recorder's start timestamp — an epoch
- * millisecond value — and on iOS to `AVAudioRecorder.currentTime` in seconds,
- * which reads 0 whenever the recorder is not running. The typings describe it
- * as "the current length of the recording, in seconds" on both.
- * `durationMillis` is the only field that means the same thing on each.)
+ * The driver's intent (held or recording) is re-imposed on every beat and on
+ * every return to the foreground, reading the recorder's own status instead
+ * of assuming an order between the native handler and this hook.
  *
- * On top of that, the driver's INTENT is re-imposed on every beat and on every
- * return to the foreground. A recording the driver held stays held; a
- * recording the system paused for the background picks up again once the app
- * is active. Nothing here assumes the native handler and this hook ran in any
- * particular order — the recorder's own status is read and corrected instead.
- *
- * The ceiling is enforced HERE rather than at the send, and it stops the
- * recording instead of rejecting it: what the driver already said is captured
- * and waiting on the send button. A limit that throws away two minutes of
- * speech to teach the driver about a limit is not a limit, it is a punishment.
- *
- * And every way this can fail SAYS SO. The microphone is where a bad build
- * goes quiet: a permission refused, a recorder left prepared by a start that
- * half-happened, a stop that came back without a file. None of those may reach
- * the driver as a button that does nothing — each one leaves a message behind
- * and leaves the recorder in a state the NEXT tap can start from.
+ * The ceiling stops the recording instead of rejecting it, so what was said
+ * waits on the send button. Every failure (permission, half-started
+ * recorder, stop without a file) leaves a message and a recorder the next
+ * tap can start from.
  */
 function useVoiceRecorder() {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(VOICE_NOTE_RECORDING_OPTIONS);
 
   const [phase, setPhase] = useState<RecorderPhase>("idle");
   const [recordingMs, setRecordingMs] = useState<number>(0);
@@ -133,6 +184,9 @@ function useVoiceRecorder() {
   // The stop already in flight. The ceiling and the send button can land on
   // the same beat, and stopping a recorder twice loses the file.
   const stoppingRef = useRef<Promise<FinishedRecording | null> | null>(null);
+
+  // The start in flight, so a double tap on the microphone is one start.
+  const startingRef = useRef<Promise<boolean> | null>(null);
 
   /**
    * Which recording the results still in flight belong to.
@@ -424,7 +478,7 @@ function useVoiceRecorder() {
    * driver and answers `false`. Callers fire it and forget it, which is only
    * honest because every way it can fail is handled right here.
    */
-  const start = useCallback(async (): Promise<boolean> => {
+  const startCapture = useCallback(async (): Promise<boolean> => {
     /**
      * The microphone joins the "one note at a time" arbiter, as a participant
      * and not as an exception.
@@ -442,20 +496,15 @@ function useVoiceRecorder() {
     // moment a new one is asked for.
     captureTokenRef.current += 1;
 
+    const access = await ensureMicrophoneAccess();
+
+    if (access !== "granted") {
+      tellAboutMicrophone(access);
+
+      return false;
+    }
+
     try {
-      const permission = await AudioModule.requestRecordingPermissionsAsync();
-
-      if (!permission.granted) {
-        Toast.show({
-          type: "error",
-          text1: "Permissão necessária",
-          text2: "É necessário permitir acesso ao microfone.",
-          position: "top",
-        });
-
-        return false;
-      }
-
       // iOS records nothing without this mode; restored on stop so playback
       // goes back to the speaker.
       await setAudioModeAsync({
@@ -493,6 +542,23 @@ function useVoiceRecorder() {
 
     return true;
   }, [recorder, releaseRecorder, startTicker, setPhaseNow]);
+
+  const start = useCallback((): Promise<boolean> => {
+    // The microphone button stays under the thumb while the permission is
+    // checked. A second tap in that window must not prepare the recorder a
+    // second time: Android refuses, and the recovery above would then stop
+    // the recording the first tap had just started.
+    if (startingRef.current) return startingRef.current;
+    if (phaseRef.current !== "idle") return Promise.resolve(false);
+
+    const starting = startCapture().finally(() => {
+      startingRef.current = null;
+    });
+
+    startingRef.current = starting;
+
+    return starting;
+  }, [startCapture]);
 
   /**
    * Holds the recording where it is, with the file still open.

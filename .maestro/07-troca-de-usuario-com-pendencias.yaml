@@ -1,0 +1,129 @@
+# A phone shared between shifts: the deliveries-only driver (session left by
+# flow 06) records an arrival with no signal and signs out with it still
+# queued. The fleet driver who signs in next must neither see nor send it
+# (no leak: it would go out under the wrong credentials), and signing out
+# again is the plain confirmation (it is not theirs to be warned about).
+# When the first driver comes back the arrival is still there and goes out
+# on its own (not lost). scripts/e2e/check-db.sh confirms whose it was.
+appId: com.trajetto.fleetmanager
+name: 07 Troca de usuário com envios pendentes
+tags:
+  - driver
+  - offline
+---
+- tapOn:
+    id: tab-deliveries
+- extendedWaitUntil:
+    visible: "Cliente E2E 1"
+    timeout: 60000
+# Started online: the route has to be on its way for an arrival.
+- tapOn:
+    id: start-route-button
+- tapOn:
+    id: start-route-modal-confirm
+- extendedWaitUntil:
+    visible: "Rota 101 iniciada!"
+    timeout: 60000
+- runFlow: subflows/system-dialogs.yaml
+
+- setAirplaneMode: enabled
+- extendedWaitUntil:
+    visible: "Sem conexão"
+    timeout: 60000
+- runFlow: subflows/gps.yaml
+- tapOn: "Cliente E2E 1"
+- tapOn:
+    id: delivery-arrive-button
+- tapOn:
+    id: arrival-modal-confirm
+- extendedWaitUntil:
+    visible: "1 envio pendente"
+    timeout: 120000
+- back
+
+# Signing out with it queued: the modal says it stays on this phone.
+- tapOn:
+    id: tab-vehicles
+- tapOn:
+    id: user-menu-button
+- tapOn:
+    id: logout-button
+- extendedWaitUntil:
+    visible: "Sair com pendências?"
+    timeout: 30000
+- assertVisible: "1 envio ainda não chegou à empresa.*"
+- takeScreenshot: 07-logout-com-pendencia
+- tapOn:
+    id: logout-confirm
+- extendedWaitUntil:
+    visible:
+      id: login-email
+    timeout: 60000
+
+# Network back before the next driver signs in: anything foreign that could
+# leak would leak now.
+- setAirplaneMode: disabled
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${DRIVER_EMAIL}
+      PASSWORD: ${DRIVER_PASSWORD}
+- extendedWaitUntil:
+    visible:
+      id: tab-deliveries
+    timeout: 60000
+- tapOn:
+    id: tab-deliveries
+- extendedWaitUntil:
+    visible:
+      id: deliveries-list
+    timeout: 60000
+# The other driver's arrival is not this session's queue.
+- assertNotVisible:
+    id: outbox-banner
+- assertNotVisible: ".*envio.* pendente.*"
+- assertNotVisible: ".*precisa.* de atenção"
+- takeScreenshot: 07-outro-motorista-sem-fila
+
+# Nothing of theirs on the phone: the plain confirmation.
+- tapOn:
+    id: tab-vehicles
+- tapOn:
+    id: user-menu-button
+- tapOn:
+    id: logout-button
+- extendedWaitUntil:
+    visible: "Sair da conta?"
+    timeout: 30000
+- assertNotVisible: "Sair com pendências?"
+- tapOn:
+    id: logout-confirm
+- extendedWaitUntil:
+    visible:
+      id: login-email
+    timeout: 60000
+
+# The owner is back: the queue sends itself, with no tap.
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${NOFLEET_EMAIL}
+      PASSWORD: ${DRIVER_PASSWORD}
+- extendedWaitUntil:
+    visible:
+      id: deliveries-list
+    timeout: 60000
+- extendedWaitUntil:
+    notVisible:
+      id: outbox-banner
+    timeout: 180000
+# The server now has the arrival: the stop offers the proof, not the arrival.
+- tapOn: "Cliente E2E 1"
+- extendedWaitUntil:
+    visible:
+      id: delivery-deliver-button
+    timeout: 60000
+- assertNotVisible:
+    id: delivery-arrive-button
+- takeScreenshot: 07-dono-sincronizado
+- back

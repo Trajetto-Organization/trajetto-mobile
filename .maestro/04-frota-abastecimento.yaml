@@ -1,0 +1,64 @@
+# Frota on: a refuelling of the driver's vehicle, with the odometer photo
+# from the camera and the position from the emulator's GPS.
+appId: com.trajetto.fleetmanager
+name: 04 Frota, abastecimento
+tags:
+  - driver
+  - fleet
+---
+- tapOn:
+    id: tab-vehicles
+- extendedWaitUntil:
+    visible:
+      id: vehicle-card
+    timeout: 60000
+- assertVisible: "E2E1A23|E2E-1A23"
+- tapOn:
+    id: vehicle-card
+- runFlow: subflows/gps.yaml
+- tapOn:
+    id: vehicle-action-fuel
+# A driver skips branch/driver/fuel-type: they come from the vehicle.
+- extendedWaitUntil:
+    visible:
+      id: fuel-mileage
+    timeout: 60000
+- tapOn:
+    id: fuel-mileage
+- inputText: "50120"
+- hideKeyboard
+- tapOn:
+    id: fuel-liters
+- inputText: "40"
+- hideKeyboard
+- tapOn:
+    id: fuel-price
+- inputText: "5,99"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: fuel-odometer-photo
+    direction: DOWN
+- tapOn:
+    id: fuel-odometer-photo
+- tapOn:
+    id: image-picker-camera
+- runFlow: subflows/take-photo.yaml
+# The on-device check cannot read a km off the virtual scene; it warns, it
+# does not block (decision 14.2).
+- runFlow:
+    when:
+      visible: "Enviar assim"
+    commands:
+      - tapOn: "Enviar assim"
+- extendedWaitUntil:
+    visible:
+      id: fuel-submit
+      enabled: true
+    timeout: 60000
+- tapOn:
+    id: fuel-submit
+- extendedWaitUntil:
+    visible: "Abastecimento criado!"
+    timeout: 120000
+- takeScreenshot: 04-abastecimento

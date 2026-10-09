@@ -79,7 +79,10 @@ describe("nobody at all", () => {
 });
 
 describe("an administrator", () => {
-  const admin = asUser({ role: "BUSINESS_ADMIN" });
+  const admin = asUser({
+    role: "BUSINESS_ADMIN",
+    enabledModules: ["FLEET", "DELIVERIES"],
+  });
 
   it("can do everything without a profile", () => {
     expect(checkPermission(admin, "fuel_manage", "write")).toBe(true);
@@ -87,6 +90,19 @@ describe("an administrator", () => {
       canRead: true,
       canWrite: true,
     });
+    expect(checkFuelPermission(admin).canWrite).toBe(true);
+    expect(checkChecklistPermission(admin).canWrite).toBe(true);
+  });
+
+  it("is not offered what the company did not hire", () => {
+    // The role bypasses permissions, never the plan (decision 4.3).
+    const deliveriesOnlyAdmin = asUser({
+      role: "BUSINESS_ADMIN",
+      enabledModules: ["DELIVERIES"],
+    });
+
+    expect(checkFuelPermission(deliveriesOnlyAdmin).canWrite).toBe(false);
+    expect(checkChecklistPermission(deliveriesOnlyAdmin).canWrite).toBe(false);
   });
 
   it("is still refused once their access is revoked", () => {
@@ -108,8 +124,37 @@ describe("an administrator", () => {
   });
 });
 
+describe("a MASTER looking at a company", () => {
+  it("gets the fleet forms only when that company hired Gestão de Frota", () => {
+    // `enabledModules` is the SELECTED company's plan for a MASTER, not the
+    // everything `/user/me` answers for the back office (decision 4.3).
+    const onFleetCompany = asUser({
+      role: "MASTER",
+      businessId: "b1",
+      enabledModules: ["FLEET"],
+    });
+    const onDeliveriesCompany = asUser({
+      role: "MASTER",
+      businessId: "b2",
+      enabledModules: ["DELIVERIES"],
+    });
+
+    expect(checkFuelPermission(onFleetCompany).canWrite).toBe(true);
+    expect(checkFuelPermission(onDeliveriesCompany).canWrite).toBe(false);
+    expect(checkChecklistPermission(onDeliveriesCompany).canWrite).toBe(false);
+  });
+
+  it("gets none while the company's plan is still unknown", () => {
+    // Just switched company: the plan is being fetched. Offering the forms in
+    // that window would be offering the previous company's plan.
+    expect(
+      checkFuelPermission(asUser({ role: "MASTER", businessId: "b2" })).canWrite,
+    ).toBe(false);
+  });
+});
+
 describe("a driver", () => {
-  const driver = asUser({ driverId: "d1" });
+  const driver = asUser({ driverId: "d1", enabledModules: ["FLEET"] });
 
   it("gets in without any profile at all", () => {
     // Drivers are not given an access profile: the app is their whole job, and
@@ -124,9 +169,8 @@ describe("a driver", () => {
     });
   });
 
-  it("records refuelling and checklists", () => {
-    // Both are things done at the pump and in the yard, which is the whole
-    // reason the app exists.
+  it("records refuelling and checklists when the company hired Gestão de Frota", () => {
+    // Both are things done at the pump and in the yard.
     expect(checkFuelPermission(driver)).toEqual({
       canRead: true,
       canWrite: true,
@@ -136,6 +180,64 @@ describe("a driver", () => {
       canWrite: true,
     });
     expect(canRefuelVehicles(driver)).toBe(true);
+  });
+
+  it("is offered neither when the company did not hire Gestão de Frota", () => {
+    /**
+     * MOB-02, and the case this test used to pin the other way round.
+     *
+     * Being a driver said "may refuel" regardless of the plan, so a driver of
+     * a company that only hired Entregas saw "Abastecer" and "Checklist" on
+     * every vehicle, filled the whole form, photographed the odometer — and
+     * the API refused it with MODULE_NOT_ENABLED, or the offline queue parked
+     * it. The role says who may use the module; the plan says whether it
+     * exists.
+     */
+    const deliveriesOnly = asUser({
+      driverId: "d1",
+      enabledModules: ["DELIVERIES"],
+    });
+
+    expect(checkFuelPermission(deliveriesOnly)).toEqual({
+      canRead: false,
+      canWrite: false,
+    });
+    expect(checkChecklistPermission(deliveriesOnly)).toEqual({
+      canRead: false,
+      canWrite: false,
+    });
+    expect(canRefuelVehicles(deliveriesOnly)).toBe(false);
+
+    // A plan that lists no module is not a plan with the fleet.
+    expect(
+      checkFuelPermission(asUser({ driverId: "d1", enabledModules: [] })).canWrite,
+    ).toBe(false);
+  });
+
+  it("keeps the fleet while the plan is unknown, as the builds without plans did", () => {
+    // Only a user persisted by those builds has no plan at all (/user/me
+    // always sends one). Cold-starting offline right after the update keeps
+    // that cached user, and reading "unknown" as "none" took refuelling and
+    // checklists away until the network came back.
+    const cached = asUser({ driverId: "d1" });
+
+    expect(checkFuelPermission(cached).canWrite).toBe(true);
+    expect(checkChecklistPermission(cached).canWrite).toBe(true);
+
+    // A MASTER's unknown plan is waited for instead (checking-modules).
+    expect(
+      checkFuelPermission(asUser({ role: "MASTER", businessId: "b2" })).canWrite,
+    ).toBe(false);
+  });
+
+  it("still reads the vehicles it drives without the module", () => {
+    // Vehicles are common ground: Entregas assigns them to routes too, and
+    // the API does not gate them by module.
+    expect(
+      checkVehiclePermission(
+        asUser({ driverId: "d1", enabledModules: ["DELIVERIES"] }),
+      ).canRead,
+    ).toBe(true);
   });
 
   it("is locked out once the driver record goes inactive", () => {
@@ -199,13 +301,43 @@ describe("an office user with a profile", () => {
     });
   });
 
-  it("is refused entry holding permissions that open no screen here", () => {
-    // The driver app is built around vehicles. Somebody whose profile only
-    // covers, say, accounts payable would land on an empty app — better to
-    // say so than to show them nothing and let them think it is broken.
-    expect(validateUserAccess(withProfile("fuel_manage", true, true))).toEqual({
+  it("is refused entry with a profile that grants nothing", () => {
+    // Keys present but every flag off: the same as no profile, and the same
+    // answer the API gives such a session.
+    expect(validateUserAccess(withProfile("vehicle_manage", false, false))).toEqual({
       hasAccess: false,
-      reason: "no_vehicle_permission",
+      reason: "no_permissions",
+    });
+  });
+
+  it("gets in with a delivery-only profile: a control-tower operator", () => {
+    /**
+     * CRIT-20. Entry used to demand `vehicle_manage`, so an operator whose
+     * profile covers only Entregas was turned away at login with "sem
+     * permissão para visualizar veículos" — while the web let them in and
+     * the API accepts the session. The app lets them in; what each screen
+     * shows is decided per screen, and "Início" says when nothing here is
+     * theirs.
+     */
+    expect(
+      validateUserAccess(
+        asUser({
+          enabledModules: ["DELIVERIES"],
+          profileAccess: {
+            permissions: [
+              { permissionKey: "delivery_manage", canRead: true, canWrite: false },
+            ],
+          },
+        } as unknown as Partial<User>),
+      ),
+    ).toEqual({ hasAccess: true });
+  });
+
+  it("gets in holding permissions that open no screen here", () => {
+    // Same rule for any profile that grants something: notifications reach
+    // them in the app, and the home screen explains the rest.
+    expect(validateUserAccess(withProfile("fuel_manage", true, true))).toEqual({
+      hasAccess: true,
     });
   });
 
@@ -213,5 +345,36 @@ describe("an office user with a profile", () => {
     expect(validateUserAccess(withProfile("vehicle_manage", true, false))).toEqual({
       hasAccess: true,
     });
+  });
+
+  it("gets the fleet forms from the profile, and only with the module", () => {
+    const refueller = asUser({
+      enabledModules: ["FLEET"],
+      profileAccess: {
+        permissions: [
+          { permissionKey: "fuel_manage", canRead: true, canWrite: true },
+          {
+            permissionKey: "vehicle_checklist_manage",
+            canRead: true,
+            canWrite: false,
+          },
+        ],
+      },
+    } as unknown as Partial<User>);
+
+    expect(checkFuelPermission(refueller)).toEqual({
+      canRead: true,
+      canWrite: true,
+    });
+
+    // Read-only is not write, whatever the module says.
+    expect(checkChecklistPermission(refueller)).toEqual({
+      canRead: true,
+      canWrite: false,
+    });
+
+    expect(
+      checkFuelPermission({ ...refueller, enabledModules: ["DELIVERIES"] }),
+    ).toEqual({ canRead: false, canWrite: false });
   });
 });

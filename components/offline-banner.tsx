@@ -3,6 +3,7 @@ import { Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { BannerCollapse } from "@/components/ui/banner-collapse";
+import { useThemeColors } from "@/hooks/use-theme";
 import { useConnectionStore } from "@/store/connection-store";
 
 /**
@@ -26,6 +27,8 @@ const OfflineBanner = () => {
     (state) => state.isApiUnreachable,
   );
 
+  const colors = useThemeColors();
+
   const isVisible = isDeviceOffline || isApiUnreachable;
 
   // The device being offline is the driver's own situation and needs no
@@ -46,19 +49,23 @@ const OfflineBanner = () => {
   return (
     <BannerCollapse visible={isVisible}>
       <View
+        testID="offline-banner"
         accessibilityRole="alert"
         // Hidden from screen readers too when it is not showing; an invisible
         // element is still announced otherwise.
         accessibilityElementsHidden={!isVisible}
         importantForAccessibility={isVisible ? "yes" : "no-hide-descendants"}
-        className="bg-amber-500"
+        // The deep warning surface (amber-700 in both themes): white on
+        // amber-500 measured 2.1:1, unreadable in the sun; this is about 5:1
+        // (ui-contrast.test.ts).
+        className="bg-warning"
       >
         <View className="flex-row items-center gap-3 px-4 py-2.5">
-          <Ionicons name={icon} size={18} color="#ffffff" />
+          <Ionicons name={icon} size={18} color={colors.warningForeground} />
 
           <View className="flex-1">
-            <Text className="text-sm font-semibold text-white">{title}</Text>
-            <Text className="text-xs text-white/90">{detail}</Text>
+            <Text className="text-sm font-semibold text-warning-foreground">{title}</Text>
+            <Text className="text-xs text-warning-foreground">{detail}</Text>
           </View>
         </View>
       </View>

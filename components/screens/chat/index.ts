@@ -5,4 +5,5 @@ export { ChatMediaViewer } from "./chat-media-viewer";
 export { ChatTypingIndicator } from "./typing-indicator";
 export { ChatRecordingIndicator } from "./recording-indicator";
 export { ChatComposer } from "./chat-composer";
-export type { DeliveryChip } from "./chat-composer";
+export { TicketPickerSheet } from "./ticket-picker-sheet";
+export { ChatMessageContextTags } from "./message-context-tags";

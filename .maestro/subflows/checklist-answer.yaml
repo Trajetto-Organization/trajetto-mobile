@@ -1,0 +1,16 @@
+# One checklist item: scroll to the field, open it and pick the option by its
+# handle plus label (the field shows the same label once it is answered).
+appId: com.trajetto.fleetmanager
+---
+- scrollUntilVisible:
+    element:
+      id: checklist-${FIELD}
+    direction: DOWN
+    # Centred: at the bottom edge the element sits under the sticky footer
+    # (Voltar / Criar Checklist), and the tap lands on the footer instead.
+    centerElement: true
+- tapOn:
+    id: checklist-${FIELD}
+- tapOn:
+    id: checklist-${FIELD}-option
+    text: ${OPTION}

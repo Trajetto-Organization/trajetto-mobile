@@ -32,16 +32,18 @@ const SignaturePad = ({ visible, onClose, onCapture }: SignaturePadProps) => {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="border-b border-gray-200 px-4 py-3">
-          <Text className="text-lg font-semibold text-gray-900">
+      <SafeAreaView className="flex-1 bg-surface">
+        <View className="border-b border-border px-4 py-3">
+          <Text className="text-lg font-semibold text-ink">
             Assinatura do recebedor
           </Text>
-          <Text className="text-sm text-gray-500">
+          <Text className="text-sm text-muted">
             Peça para quem recebeu assinar com o dedo no quadro abaixo.
           </Text>
         </View>
 
+        {/* The pad stays white paper with dark ink in both themes: the PNG
+        it saves is the proof the office and the shipper read on white. */}
         <View className="flex-1">
           <SignatureScreen
             ref={canvasRef}
@@ -53,29 +55,29 @@ const SignaturePad = ({ visible, onClose, onCapture }: SignaturePadProps) => {
           />
         </View>
 
-        <View className="flex-row gap-3 border-t border-gray-200 px-4 py-3">
+        <View className="flex-row gap-3 border-t border-border px-4 py-3">
           <TouchableOpacity
             onPress={onClose}
             accessibilityRole="button"
-            className="flex-1 items-center rounded-lg border border-gray-300 py-3"
+            className="flex-1 items-center rounded-lg border border-input bg-card py-3"
           >
-            <Text className="font-medium text-gray-700">Cancelar</Text>
+            <Text className="font-medium text-ink-soft">Cancelar</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => canvasRef.current?.clearSignature()}
             accessibilityRole="button"
-            className="flex-1 items-center rounded-lg border border-gray-300 py-3"
+            className="flex-1 items-center rounded-lg border border-input bg-card py-3"
           >
-            <Text className="font-medium text-gray-700">Limpar</Text>
+            <Text className="font-medium text-ink-soft">Limpar</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => canvasRef.current?.readSignature()}
             accessibilityRole="button"
-            className="flex-1 items-center rounded-lg bg-primary-600 py-3"
+            className="flex-1 items-center rounded-lg bg-primary py-3"
           >
-            <Text className="font-medium text-white">Confirmar</Text>
+            <Text className="font-medium text-primary-foreground">Confirmar</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

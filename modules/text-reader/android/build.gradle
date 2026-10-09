@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.trajetto.textreader'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.textreader"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // ML Kit Text Recognition v2, Latin script, model BUNDLED in the APK
+  // (decision 14.2): it must work offline from the first launch, so not the
+  // play-services-mlkit-text-recognition variant that downloads the model
+  // later. The version is pinned; ADR 0010 budgets +5 MB on arm64.
+  implementation "com.google.mlkit:text-recognition:16.0.1"
+}

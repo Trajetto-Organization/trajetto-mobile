@@ -14,6 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { chatPresenceHintAccessibilityLabel } from "@/features/chat/chat-rules";
+import { useThemeColors } from "@/hooks/use-theme";
 
 /** One full round trip of the wave, rest included. */
 const CYCLE_MS = 1400;
@@ -40,12 +41,14 @@ interface TypingDotProps {
   progress: SharedValue<number>;
   staticOpacity: number;
   reduceMotion: boolean;
+  color: string;
 }
 
 const TypingDot = ({
   progress,
   staticOpacity,
   reduceMotion,
+  color,
 }: TypingDotProps) => {
   const style = useAnimatedStyle(() => {
     if (reduceMotion) {
@@ -65,7 +68,7 @@ const TypingDot = ({
           width: DOT_SIZE,
           height: DOT_SIZE,
           borderRadius: DOT_SIZE / 2,
-          backgroundColor: "#9ca3af",
+          backgroundColor: color,
         },
         style,
       ]}
@@ -86,6 +89,7 @@ const TypingDot = ({
  */
 const ChatTypingIndicator = () => {
   const reduceMotion = useReducedMotion();
+  const colors = useThemeColors();
 
   const first = useSharedValue(0);
   const second = useSharedValue(0);
@@ -136,7 +140,7 @@ const ChatTypingIndicator = () => {
     >
       <View
         className="flex-row items-center gap-1.5 rounded-2xl rounded-bl-md
-        border border-gray-200 bg-white px-3.5 py-3"
+        border border-border bg-card px-3.5 py-3"
       >
         {DOT_INDEXES.map((index) => (
           <TypingDot
@@ -144,6 +148,7 @@ const ChatTypingIndicator = () => {
             progress={dots[index]}
             staticOpacity={STATIC_OPACITIES[index]}
             reduceMotion={reduceMotion}
+            color={colors.muted}
           />
         ))}
       </View>

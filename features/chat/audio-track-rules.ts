@@ -203,7 +203,42 @@ function audioSeekLanded(report: AudioSeekReport): boolean {
   );
 }
 
+/**
+ * How close to the end a note counts as finished when its player is rebuilt.
+ * The last status report of a note that played out lands a beat short of the
+ * duration, so "at the end" has to be a margin, not an equality.
+ */
+const AUDIO_RESUME_END_MARGIN_SECONDS = 0.5;
+
+/**
+ * Where a note picks up when its player is built again.
+ *
+ * A bubble only holds a native player while it is the conversation's armed
+ * note (MOB-06), so playing another note tears this one's player down. The
+ * driver must not notice: a note paused at 0:31 resumes at 0:31. A note that
+ * had played out starts over from the top instead of "resuming" into silence,
+ * and nonsense (a negative or non-finite report) is the start.
+ */
+function audioResumeSeconds(
+  positionSeconds: number,
+  totalSeconds: number,
+): number {
+  if (!Number.isFinite(positionSeconds) || positionSeconds <= 0) return 0;
+
+  if (totalSeconds > 0) {
+    if (positionSeconds >= totalSeconds - AUDIO_RESUME_END_MARGIN_SECONDS) {
+      return 0;
+    }
+
+    return Math.min(positionSeconds, totalSeconds);
+  }
+
+  return positionSeconds;
+}
+
 export {
+  AUDIO_RESUME_END_MARGIN_SECONDS,
+  audioResumeSeconds,
   AUDIO_TRACK_PADDING,
   AUDIO_BAR_WIDTH,
   AUDIO_BAR_MIN_GAP,

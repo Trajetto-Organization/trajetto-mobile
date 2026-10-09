@@ -73,9 +73,29 @@ const selectUnclaimedCount = (state: OutboxState): number =>
     (item) => classifyOwnership(item, getSubmissionOwner()) === "unclaimed",
   ).length;
 
+/**
+ * Refused because the company switched a module off. Neither waiting for a
+ * connection nor rejected on the merits: they go out by themselves once the
+ * module is back, and until then the driver has to be able to see them —
+ * they used to be counted nowhere (MOB-03).
+ */
+const selectParkedCount = (state: OutboxState): number =>
+  state.items.filter((item) => isOwn(item) && item.status === "parked").length;
+
+/**
+ * Everything that will not leave on its own with a connection: rejected,
+ * unclaimed or parked. What a "needs attention" strip should count.
+ */
+const selectNeedsAttentionCount = (state: OutboxState): number =>
+  selectFailedCount(state) +
+  selectUnclaimedCount(state) +
+  selectParkedCount(state);
+
 export {
   useOutboxStore,
   selectFailedCount,
+  selectNeedsAttentionCount,
+  selectParkedCount,
   selectPendingCount,
   selectUnclaimedCount,
 };

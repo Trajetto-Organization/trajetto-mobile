@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { AppState } from "react-native";
 
 import Constants from "expo-constants";
 import * as Location from "expo-location";
@@ -7,14 +8,16 @@ import { logger } from "@/utils/logger";
 import { asyncStorage } from "@/utils/storage";
 
 import {
-  PING_DISTANCE_METRES,
-  PING_INTERVAL_MS,
+  shouldTrack,
+  trackingRequestOptions,
   type RouteBearingDelivery,
   type TrackablePing,
 } from "./position-rules";
 
 import { shouldRequestBackground, trackingMode } from "./mode-rules";
 import { LOCATION_TASK, asPing } from "./background-task";
+import { locationAccessOf } from "./location-access-rules";
+import { useTrackingStatus } from "./tracking-status";
 
 import { flush, ingest, isStopped, resume } from "./reporter";
 
@@ -44,12 +47,12 @@ const ASKED_KEY = "driver_background_location_asked";
  * signal.
  */
 function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
-  const wanted = deliveries.some((delivery) =>
-    (delivery.stops ?? []).some((stop) => stop.route.status === "IN_PROGRESS"),
-  );
+  const wanted = shouldTrack(deliveries);
 
   /** Kept so the cleanup can stop whatever this run actually started. */
   const started = useRef<"background" | "foreground" | null>(null);
+
+  const retryToken = useTrackingStatus((state) => state.retryToken);
 
   const backgroundBuild = Boolean(
     (Constants.expoConfig?.extra as { backgroundTracking?: boolean } | undefined)
@@ -59,6 +62,10 @@ function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
   useEffect(() => {
     let disposed = false;
     let subscription: Location.LocationSubscription | null = null;
+
+    const { report } = useTrackingStatus.getState();
+
+    report({ wanted });
 
     const stopBackground = async () => {
       try {
@@ -93,10 +100,11 @@ function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
       const foregroundGranted =
         foreground.status === Location.PermissionStatus.GRANTED;
 
+      // The app still works without it, but the driver is told: the route
+      // runs and the central does not see them (MOB-TRK-5).
+      report({ access: locationAccessOf(foreground) });
+
       if (!foregroundGranted) {
-        // Not an error the driver is shown. They refused, or the phone is
-        // locked down by an MDM; either way the app still works and the map
-        // simply has no dot for them.
         logger.info("[Tracking] Permissão de localização não concedida");
         return;
       }
@@ -143,17 +151,21 @@ function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
 
       if (disposed || mode === "off") return;
 
+      // One set of options for both modes: every fifteen seconds whether the
+      // truck moves or not, so a parked truck still keeps its dot (MOB-TRK-2).
+      const request = trackingRequestOptions();
+
       if (mode === "background") {
         await Location.startLocationUpdatesAsync(LOCATION_TASK, {
           accuracy: Location.Accuracy.Balanced,
-          timeInterval: PING_INTERVAL_MS,
-          distanceInterval: PING_DISTANCE_METRES,
+          timeInterval: request.timeInterval,
+          distanceInterval: request.distanceInterval,
 
           // Batched by the OS while the screen is off. Waking the process for
           // every fix is what turns background tracking into the reason a
           // driver uninstalls the app.
-          deferredUpdatesInterval: PING_INTERVAL_MS,
-          deferredUpdatesDistance: PING_DISTANCE_METRES,
+          deferredUpdatesInterval: request.deferredUpdatesInterval,
+          deferredUpdatesDistance: request.deferredUpdatesDistance,
 
           pausesUpdatesAutomatically: false,
 
@@ -173,15 +185,28 @@ function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
       subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
-          timeInterval: PING_INTERVAL_MS,
-          distanceInterval: PING_DISTANCE_METRES,
+          timeInterval: request.timeInterval,
+          distanceInterval: request.distanceInterval,
         },
         (position) => {
           if (disposed) return;
 
-          void ingest([asPing(position)] as TrackablePing[]);
+          void ingest([asPing(position)] as TrackablePing[]).then(({ halt }) => {
+            // The API ended it — route over, or the phone refused (a module
+            // switched off): the GPS goes off now, not at the next list sync.
+            if (halt) {
+              subscription?.remove();
+              subscription = null;
+            }
+          });
         },
       );
+
+      if (disposed) {
+        subscription.remove();
+        subscription = null;
+        return;
+      }
 
       started.current = "foreground";
     };
@@ -202,7 +227,40 @@ function usePositionTracking(deliveries: RouteBearingDelivery[]): void {
       // the buffer until tomorrow.
       void flush();
     };
-  }, [wanted, backgroundBuild]);
+  }, [wanted, backgroundBuild, retryToken]);
+
+  // Coming back from the system settings with the permission switched on
+  // restarts tracking without waiting for the next route.
+  useEffect(() => {
+    if (!wanted) return;
+
+    const subscription = AppState.addEventListener("change", (next) => {
+      // Leaving the app: in foreground mode the fixes stop with it, and the
+      // points still buffered would reach the tower only when the driver
+      // came back (MOB-TRK-1). Sent now, while the process still runs.
+      if (next === "background") {
+        void flush().catch(() => undefined);
+        return;
+      }
+
+      if (next !== "active") return;
+
+      const { access, retry } = useTrackingStatus.getState();
+
+      if (access !== "denied" && access !== "blocked") return;
+
+      void Location.getForegroundPermissionsAsync()
+        .then((permission) => {
+          if (permission.status === Location.PermissionStatus.GRANTED) retry();
+        })
+        .catch(() => undefined);
+    });
+
+    return () => subscription.remove();
+  }, [wanted]);
+
+  // Nothing to warn about once this session stops tracking altogether.
+  useEffect(() => () => useTrackingStatus.getState().reset(), []);
 }
 
 export { ASKED_KEY, usePositionTracking };

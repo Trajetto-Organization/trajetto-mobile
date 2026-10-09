@@ -8,6 +8,8 @@ import {
   View,
 } from "react-native";
 
+import { useThemeColors } from "../../hooks/use-theme";
+
 interface DiscardDraftModalProps {
   visible: boolean;
   message: string;
@@ -24,6 +26,7 @@ export const DiscardDraftModal = ({
   isLoading = false,
 }: DiscardDraftModalProps) => {
   const { width } = useWindowDimensions();
+  const colors = useThemeColors();
   const closeWhenIdle = () => {
     if (!isLoading) onClose();
   };
@@ -46,19 +49,19 @@ export const DiscardDraftModal = ({
           accessibilityRole="alert"
           accessibilityViewIsModal
           accessibilityLabel={`Descartar rascunho. ${message}`}
-          className="overflow-hidden rounded-3xl bg-white shadow-2xl"
+          className="overflow-hidden rounded-3xl border border-border bg-card shadow-2xl"
           style={{ width: Math.min(width - 48, 340) }}
           onPress={(event) => event.stopPropagation()}
         >
-          <View className="bg-gray-50 px-6 pb-4 pt-6">
+          <View className="bg-subtle px-6 pb-4 pt-6">
             <View className="items-center">
-              <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-danger-100">
-                <Ionicons name="trash-outline" size={30} color="#dc2626" />
+              <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-destructive-soft">
+                <Ionicons name="trash-outline" size={30} color={colors.destructive} />
               </View>
-              <Text className="mb-2 text-xl font-bold text-gray-900">
+              <Text className="mb-2 text-xl font-bold text-ink">
                 Descartar rascunho?
               </Text>
-              <Text className="text-center text-sm leading-5 text-gray-600">
+              <Text className="text-center text-sm leading-5 text-muted">
                 {message}
               </Text>
             </View>
@@ -70,14 +73,14 @@ export const DiscardDraftModal = ({
               accessibilityLabel="Confirmar descarte do rascunho"
               accessibilityState={{ disabled: isLoading, busy: isLoading }}
               disabled={isLoading}
-              className="min-h-12 flex-row items-center justify-center rounded-lg bg-danger-600 px-4 py-3 disabled:opacity-50"
+              className="min-h-12 flex-row items-center justify-center rounded-lg bg-destructive px-4 py-3 disabled:opacity-50"
               onPress={onConfirm}
             >
               {isLoading ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={colors.destructiveForeground} />
               ) : null}
               <Text
-                className={`font-medium text-white ${isLoading ? "ml-2" : ""}`}
+                className={`font-medium text-destructive-foreground ${isLoading ? "ml-2" : ""}`}
               >
                 {isLoading ? "Descartando..." : "Confirmar descarte"}
               </Text>
@@ -88,10 +91,10 @@ export const DiscardDraftModal = ({
               accessibilityLabel="Cancelar descarte"
               accessibilityState={{ disabled: isLoading }}
               disabled={isLoading}
-              className="min-h-12 items-center justify-center rounded-lg bg-gray-100 px-4 py-3 disabled:opacity-50"
+              className="min-h-12 items-center justify-center rounded-lg border border-border bg-subtle px-4 py-3 disabled:opacity-50"
               onPress={onClose}
             >
-              <Text className="font-medium text-gray-700">Cancelar</Text>
+              <Text className="font-medium text-ink-soft">Cancelar</Text>
             </Pressable>
           </View>
         </Pressable>

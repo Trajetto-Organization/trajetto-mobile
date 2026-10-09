@@ -1,0 +1,22 @@
+# A driver whose account has two-factor on: the password alone does not open
+# the app, it leads to the code screen. The code is e-mailed; the next flow
+# gets it from scripts/e2e/run.sh (see 09b).
+appId: com.trajetto.fleetmanager
+name: 09 Dois fatores, senha
+tags:
+  - driver
+  - auth
+---
+- runFlow: subflows/logout.yaml
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${TWOFA_EMAIL}
+      PASSWORD: ${DRIVER_PASSWORD}
+- extendedWaitUntil:
+    visible: "Autenticação em Duas Etapas"
+    timeout: 60000
+- assertVisible: "Digite o código de 6 dígitos enviado para:"
+- assertNotVisible:
+    id: tab-deliveries
+- takeScreenshot: 09-tela-do-codigo

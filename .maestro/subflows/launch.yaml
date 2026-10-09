@@ -1,0 +1,46 @@
+# Opens the debug build on Metro, from a clean install state (no session, no
+# queue, no cache). Metro reaches the emulator over `adb reverse`, so the
+# bundle URL is localhost (scripts/e2e/emulator.sh).
+#
+# The deep link goes to a STOPPED app: a cold start straight into the project.
+# Sent to the dev launcher's server list instead, it was dropped or timed out
+# fetching the manifest, and the error screen's "Reload" hung the app (ANR).
+appId: com.trajetto.fleetmanager
+---
+# clearState also drops the runtime permissions; granted here so no
+# location or camera prompt covers the screen mid-flow. launchApp is the
+# only command that grants them, hence the launch before the deep link.
+- launchApp:
+    clearState: true
+    stopApp: true
+    permissions:
+      all: allow
+- stopApp
+- openLink: "trajetto://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
+- extendedWaitUntil:
+    visible: "Continue|E-mail|There was a problem loading the project.|Entregas|Início"
+    timeout: 300000
+# On a busy host Metro can take longer than the launcher's read timeout to
+# answer the manifest; a fresh cold start usually finds it ready.
+- repeat:
+    times: 4
+    while:
+      visible: "There was a problem loading the project."
+    commands:
+      - stopApp
+      - openLink: "trajetto://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
+      - extendedWaitUntil:
+          visible: "Continue|E-mail|There was a problem loading the project.|Entregas|Início"
+          timeout: 300000
+# The dev menu introduces itself on the first load after a clear state.
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+# ...and then stays open over the app.
+- runFlow:
+    when:
+      visible: "Performance monitor"
+    commands:
+      - pressKey: back

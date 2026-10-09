@@ -1,0 +1,91 @@
+# The dead zone: airplane mode on, arrival and proof at the last stop are
+# saved on the phone (outbox), the pending screen lists them, and once the
+# network is back the queue drains on its own: the proof's photo and
+# signature upload and the delivery leaves the list.
+appId: com.trajetto.fleetmanager
+name: 03 Offline, fila e sincronização
+tags:
+  - driver
+  - offline
+---
+- setAirplaneMode: enabled
+- extendedWaitUntil:
+    visible: "Sem conexão"
+    timeout: 60000
+
+- runFlow: subflows/gps.yaml
+- tapOn: "Cliente E2E 3"
+- tapOn:
+    id: delivery-arrive-button
+- tapOn:
+    id: arrival-modal-confirm
+# The toast lasts four seconds; the stop marked as arrived on the cached
+# list is what stays (the GPS fix can take a while on a fresh AVD).
+- extendedWaitUntil:
+    visible: "Chegada registrada às.*"
+    timeout: 120000
+- assertVisible: "1 envio pendente"
+
+- tapOn:
+    id: delivery-deliver-button
+- assertVisible: "Comprovar entrega"
+- tapOn:
+    id: proof-receipt-photo
+- runFlow: subflows/take-photo.yaml
+- extendedWaitUntil:
+    visible: "Fotografar novamente"
+    timeout: 60000
+- tapOn:
+    id: proof-signature
+- runFlow: subflows/signature.yaml
+- tapOn:
+    id: proof-received-by
+- inputText: "Joao Porteiro"
+- hideKeyboard
+- tapOn:
+    id: proof-submit
+
+# Both actions wait in the queue, nothing was rejected.
+- extendedWaitUntil:
+    visible:
+      id: outbox-banner
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "2 envios pendentes"
+    timeout: 120000
+- tapOn:
+    id: outbox-banner
+- extendedWaitUntil:
+    visible:
+      id: pending-list
+    timeout: 30000
+- assertVisible:
+    id: pending-item-delivery-arrival
+- assertVisible:
+    id: pending-item-delivery-delivered
+- takeScreenshot: 03-fila-offline
+
+# Back online: the queue sends itself, in order, with no tap.
+- setAirplaneMode: disabled
+- extendedWaitUntil:
+    notVisible:
+      id: pending-item-delivery-delivered
+    timeout: 180000
+- assertNotVisible: ".*precisa.* de atenção"
+- back
+- extendedWaitUntil:
+    notVisible:
+      id: outbox-banner
+    timeout: 60000
+- takeScreenshot: 03-sincronizado
+# The detail of the stop just proved now says it left the list.
+- runFlow:
+    when:
+      visible: "Esta entrega saiu da sua lista"
+    commands:
+      - tapOn: "Voltar"
+- extendedWaitUntil:
+    visible:
+      id: deliveries-list
+    timeout: 30000
+- assertNotVisible: "Cliente E2E 3"

@@ -7,18 +7,19 @@ interface VehicleCardProps {
   onPress?: () => void;
 }
 
-const getStatusColor = (status: Vehicle["status"]) => {
+// Background and text apart: a text colour on the badge's View never reaches
+// its Text in React Native, so the label used to render in the default black.
+const getStatusColor = (status: Vehicle["status"]): { badge: string; label: string } => {
   switch (status) {
     case "ACTIVE":
-      return "bg-success-100 text-success-800";
+      return { badge: "bg-success-soft", label: "text-success" };
     case "IN_ROUTE":
-      return "bg-blue-100 text-blue-800";
-    case "INACTIVE":
-      return "bg-gray-100 text-gray-800";
+      return { badge: "bg-primary-soft", label: "text-primary" };
     case "BLOCKED":
-      return "bg-red-100 text-red-800";
+      return { badge: "bg-destructive-soft", label: "text-destructive" };
+    case "INACTIVE":
     default:
-      return "bg-gray-100 text-gray-800";
+      return { badge: "bg-subtle", label: "text-ink-soft" };
   }
 };
 
@@ -89,34 +90,34 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
     vehicle.status === "INACTIVE" || vehicle.status === "BLOCKED";
 
   const isDisabled = isStatusDisabled || !hasActionPermission;
+  const statusColor = getStatusColor(vehicle.status || "INACTIVE");
 
   return (
     <TouchableOpacity
       onPress={handleCardPress}
       activeOpacity={isDisabled ? 1 : 0.7}
       disabled={isDisabled}
-      className={`bg-white rounded-lg
+      testID="vehicle-card"
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled }}
+      className={`bg-card rounded-lg
       shadow-sm border p-4 mb-3 ${
-        isDisabled ? "border-gray-300 opacity-60" : "border-gray-200"
+        isDisabled ? "border-input opacity-60" : "border-border"
       }`}
     >
       {/* Header: Brand/Model and Status */}
       <View className="flex-row justify-between items-start mb-3">
         <View className="flex-1">
-          <Text className="text-lg font-bold text-gray-900">
+          <Text className="text-lg font-bold text-ink">
             {safeString(vehicle.description)}
           </Text>
-          <Text className="text-sm text-gray-600">
+          <Text className="text-sm text-muted">
             {safeString(vehicle.brand)} • {safeString(vehicle.model)} •{" "}
             {getYearFromDate(vehicle.model_year)}
           </Text>
         </View>
-        <View
-          className={`px-3 py-1 rounded-full ${getStatusColor(
-            vehicle.status || "INACTIVE",
-          )}`}
-        >
-          <Text className="text-xs font-medium">
+        <View className={`px-3 py-1 rounded-full ${statusColor.badge}`}>
+          <Text className={`text-xs font-medium ${statusColor.label}`}>
             {getStatusText(vehicle.status || "INACTIVE")}
           </Text>
         </View>
@@ -126,14 +127,14 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       <View className="flex-row justify-between mb-3">
         <View>
           <Text
-            className="text-xs text-gray-500
+            className="text-xs text-muted
             uppercase tracking-wide mb-1"
           >
             Placa
           </Text>
           <Text
             className="text-base
-            font-semibold text-gray-900"
+            font-semibold text-ink"
           >
             {safeString(vehicle.license_plate)}
           </Text>
@@ -141,12 +142,12 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
 
         <View className="items-end">
           <Text
-            className="text-xs text-gray-500
+            className="text-xs text-muted
             uppercase tracking-wide mb-1"
           >
             Renavam
           </Text>
-          <Text className="text-base font-semibold text-gray-900">
+          <Text className="text-base font-semibold text-ink">
             {safeString(vehicle.renavam)}
           </Text>
         </View>
@@ -156,14 +157,14 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       <View className="flex-row justify-between items-end">
         <View>
           <Text
-            className="text-xs text-gray-500 
+            className="text-xs text-muted 
             uppercase tracking-wide mb-1"
           >
             Quilometragem Atual
           </Text>
           <Text
             className="text-base 
-            font-semibold text-gray-900"
+            font-semibold text-ink"
           >
             {formatMileage(vehicle.current_mileage)}
           </Text>
@@ -171,12 +172,12 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
 
         <View className="items-end">
           <Text
-            className="text-xs text-gray-500 
+            className="text-xs text-muted 
             uppercase tracking-wide mb-1"
           >
             Combustível
           </Text>
-          <Text className="text-sm font-medium text-gray-700">
+          <Text className="text-sm font-medium text-ink-soft">
             {safeString(vehicle.fuelTypeDescription)}
           </Text>
         </View>
@@ -185,27 +186,27 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       {/* Maintenance Info (if available) */}
       {vehicle.last_maintenance_mileage &&
       Number(vehicle.last_maintenance_mileage) > 0 ? (
-        <View className="mt-3 pt-3 border-t border-gray-100">
+        <View className="mt-3 pt-3 border-t border-border">
           <View className="flex-row justify-between">
             <View>
               <Text
-                className="text-xs text-gray-500 
+                className="text-xs text-muted 
                 uppercase tracking-wide mb-1"
               >
                 Última Manutenção
               </Text>
-              <Text className="text-sm text-gray-700">
+              <Text className="text-sm text-ink-soft">
                 {formatMileage(vehicle.last_maintenance_mileage)}
               </Text>
             </View>
             <View className="items-end">
               <Text
-                className="text-xs text-gray-500 
+                className="text-xs text-muted 
                 uppercase tracking-wide mb-1"
               >
                 Intervalo
               </Text>
-              <Text className="text-sm text-gray-700">
+              <Text className="text-sm text-ink-soft">
                 {formatMileage(vehicle.maintenance_interval_km)}
               </Text>
             </View>
@@ -217,8 +218,8 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
       {hasActionPermission &&
       !isStatusDisabled &&
       (vehicle.status === "ACTIVE" || vehicle.status === "IN_ROUTE") ? (
-        <View className="mt-3 pt-3 border-t border-gray-100">
-          <Text className="text-center text-primary-600 text-sm font-medium">
+        <View className="mt-3 pt-3 border-t border-border">
+          <Text className="text-center text-primary text-sm font-medium">
             Toque para ver as opções ⚡
           </Text>
         </View>
@@ -226,8 +227,8 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
 
       {/* Disabled State - Vehicle Status */}
       {isStatusDisabled ? (
-        <View className="mt-3 pt-3 border-t border-gray-100">
-          <Text className="text-center text-gray-400 text-sm font-medium">
+        <View className="mt-3 pt-3 border-t border-border">
+          <Text className="text-center text-muted text-sm font-medium">
             {vehicle.status === "BLOCKED"
               ? "🚫 Veículo bloqueado"
               : "⏸️ Veículo inativo"}
@@ -237,8 +238,8 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
 
       {/* Disabled State - No Permission */}
       {!hasActionPermission && !isStatusDisabled ? (
-        <View className="mt-3 pt-3 border-t border-gray-100">
-          <Text className="text-center text-gray-400 text-sm font-medium">
+        <View className="mt-3 pt-3 border-t border-border">
+          <Text className="text-center text-muted text-sm font-medium">
             🔒 Permissão de abastecimento ou checklist necessária
           </Text>
         </View>

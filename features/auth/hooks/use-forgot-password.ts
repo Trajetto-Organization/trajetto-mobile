@@ -12,6 +12,9 @@ import { forgotPasswordSchema, type ForgotPasswordFormData } from "@/schemas";
 import type { ForgotPasswordResponse } from "@/types";
 import { ApiError, apiClient } from "@/utils/api";
 
+import { LIVE_VALIDATION_FORM_OPTIONS } from "@/features/forms/live-validation";
+import { useFieldFocus } from "@/features/forms/use-field-focus";
+
 export const useForgotPassword = () => {
   const router = useRouter();
 
@@ -19,6 +22,8 @@ export const useForgotPassword = () => {
   const [emailSent, setEmailSent] = useState<boolean>(false);
 
   const [emailMessage, setEmailMessage] = useState<string>("");
+  const focus = useFieldFocus();
+
   const {
     control,
     handleSubmit,
@@ -27,6 +32,7 @@ export const useForgotPassword = () => {
   } = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(forgotPasswordSchema),
     defaultValues: { email: "" },
+    ...LIVE_VALIDATION_FORM_OPTIONS,
   });
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
@@ -64,20 +70,23 @@ export const useForgotPassword = () => {
     }
   };
 
+  // One field: a failed submit focuses it.
+  const submit = handleSubmit(onSubmit, () => focus.focusField("email"));
+
   return {
     control,
-    handleSubmit,
     errors,
     isSubmitting,
     emailSent,
     emailMessage,
-    onSubmit,
+    submit,
+    emailInputRef: focus.inputRef("email"),
     navigateBack: () => {
       if (router.canGoBack()) router.back();
       else router.replace("/login");
     },
     resendEmail: () => {
-      const email = getValues("email");
+      const email = getValues("email").trim();
       if (email && !isSubmitting) void onSubmit({ email });
     },
   };

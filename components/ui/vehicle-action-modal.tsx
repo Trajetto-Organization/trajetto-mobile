@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, Modal } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { Vehicle } from "../../types";
+import { useThemeColors } from "../../hooks/use-theme";
 
 interface VehicleActionModalProps {
   visible: boolean;
@@ -22,6 +23,8 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
   onFuelAction,
   onChecklistAction,
 }) => {
+  const colors = useThemeColors();
+
   if (!vehicle) return null;
 
   const isInteractable =
@@ -41,28 +44,28 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
       >
         <TouchableOpacity
           activeOpacity={1}
-          className="bg-white rounded-lg overflow-hidden"
+          className="bg-card rounded-lg overflow-hidden"
         >
           {/* Header */}
-          <View className="px-6 py-4 border-b border-gray-200">
+          <View className="px-6 py-4 border-b border-border">
             <View className="flex-row items-center justify-between">
               <View className="flex-1">
-                <Text className="font-bold text-lg text-gray-900">
+                <Text className="font-bold text-lg text-ink">
                   {vehicle.brand} {vehicle.model}
                 </Text>
-                <Text className="text-sm text-gray-600">
+                <Text className="text-sm text-muted">
                   {vehicle.license_plate}
                 </Text>
               </View>
               <TouchableOpacity onPress={onClose} className="ml-3 p-2">
-                <Ionicons name="close" size={24} color="#6b7280" />
+                <Ionicons name="close" size={24} color={colors.muted} />
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Actions */}
           <View className="p-6">
-            <Text className="text-base font-medium text-gray-900 mb-4">
+            <Text className="text-base font-medium text-ink mb-4">
               Selecione uma ação:
             </Text>
 
@@ -75,36 +78,34 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
                     onFuelAction();
                   }}
                   disabled={!isInteractable}
+                  testID="vehicle-action-fuel"
+                  accessibilityRole="button"
                   className={`flex-row items-center p-4 rounded-lg border ${
                     isInteractable
-                      ? "border-gray-200 bg-white"
-                      : "border-gray-100 bg-gray-50"
+                      ? "border-border bg-card"
+                      : "border-border bg-subtle"
                   }`}
                 >
                   <View
                     className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
-                      isInteractable ? "bg-blue-100" : "bg-gray-100"
+                      isInteractable ? "bg-primary-soft" : "bg-subtle"
                     }`}
                   >
                     <Ionicons
                       name="car"
                       size={24}
-                      color={isInteractable ? "#3b82f6" : "#9ca3af"}
+                      color={isInteractable ? colors.primary : colors.muted}
                     />
                   </View>
                   <View className="flex-1">
                     <Text
                       className={`font-medium ${
-                        isInteractable ? "text-gray-900" : "text-gray-400"
+                        isInteractable ? "text-ink" : "text-muted"
                       }`}
                     >
                       Abastecer Veículo
                     </Text>
-                    <Text
-                      className={`text-sm ${
-                        isInteractable ? "text-gray-600" : "text-gray-400"
-                      }`}
-                    >
+                    <Text className="text-sm text-muted">
                       Registrar abastecimento do veículo
                     </Text>
                   </View>
@@ -112,7 +113,7 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
                     <Ionicons
                       name="chevron-forward"
                       size={20}
-                      color="#9ca3af"
+                      color={colors.muted}
                     />
                   )}
                 </TouchableOpacity>
@@ -126,36 +127,34 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
                     onChecklistAction();
                   }}
                   disabled={!isInteractable}
+                  testID="vehicle-action-checklist"
+                  accessibilityRole="button"
                   className={`flex-row items-center p-4 rounded-lg border ${
                     isInteractable
-                      ? "border-gray-200 bg-white"
-                      : "border-gray-100 bg-gray-50"
+                      ? "border-border bg-card"
+                      : "border-border bg-subtle"
                   }`}
                 >
                   <View
                     className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
-                      isInteractable ? "bg-green-100" : "bg-gray-100"
+                      isInteractable ? "bg-success-soft" : "bg-subtle"
                     }`}
                   >
                     <Ionicons
                       name="checkmark-done"
                       size={24}
-                      color={isInteractable ? "#10b981" : "#9ca3af"}
+                      color={isInteractable ? colors.success : colors.muted}
                     />
                   </View>
                   <View className="flex-1">
                     <Text
                       className={`font-medium ${
-                        isInteractable ? "text-gray-900" : "text-gray-400"
+                        isInteractable ? "text-ink" : "text-muted"
                       }`}
                     >
                       Checklist Veicular
                     </Text>
-                    <Text
-                      className={`text-sm ${
-                        isInteractable ? "text-gray-600" : "text-gray-400"
-                      }`}
-                    >
+                    <Text className="text-sm text-muted">
                       Realizar inspeção do veículo
                     </Text>
                   </View>
@@ -163,7 +162,7 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
                     <Ionicons
                       name="chevron-forward"
                       size={20}
-                      color="#9ca3af"
+                      color={colors.muted}
                     />
                   )}
                 </TouchableOpacity>
@@ -172,10 +171,10 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
 
             {!isInteractable && (
               <View
-                className="mt-4 p-3 bg-yellow-50 
-                rounded-lg border border-yellow-200"
+                className="mt-4 p-3 bg-warning-soft 
+                rounded-lg border border-warning/40"
               >
-                <Text className="text-sm text-yellow-800 text-center">
+                <Text className="text-sm text-warning text-center">
                   {vehicle.status === "BLOCKED"
                     ? "🚫 Veículo bloqueado - ações não disponíveis"
                     : "⏸️ Veículo inativo - ações não disponíveis"}
@@ -188,12 +187,9 @@ export const VehicleActionModal: React.FC<VehicleActionModalProps> = ({
           <TouchableOpacity
             onPress={onClose}
             className="px-6 py-4 border-t 
-            border-gray-200 bg-gray-50"
+            border-border bg-subtle"
           >
-            <Text
-              className="text-center 
-              text-gray-600 font-medium"
-            >
+            <Text className="text-center text-ink-soft font-medium">
               Cancelar
             </Text>
           </TouchableOpacity>

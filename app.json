@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "owner": "trajetto",
     "orientation": "portrait",
-    "description": "Sistema completo de gestão de frotas para empresas. Controle abastecimentos, manutenções, motoristas e veículos em tempo real.",
+    "description": "Aplicativo do Trajetto para a operação em campo: abastecimentos e checklists dos veículos, rotas, comprovantes de entrega, ocorrências e chat com a central, mesmo sem conexão.",
     "icon": "./assets/images/icon.png",
     "scheme": "trajetto",
     "userInterfaceStyle": "automatic",
@@ -55,8 +55,15 @@
         "expo-image-picker",
         {
           "photosPermission": "O app acessa suas fotos para permitir que você escolha uma imagem.",
-          "cameraPermission": "O app acessa sua câmera para registrar fotos de abastecimentos e checklists.",
-          "microphonePermission": false
+          "cameraPermission": "O app acessa sua câmera para registrar fotos de abastecimentos e checklists."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "O $(PRODUCT_NAME) usa o microfone para gravar mensagens de voz no chat com a central.",
+          "recordAudioAndroid": true,
+          "enableBackgroundRecording": false
         }
       ],
       [
@@ -84,7 +91,9 @@
           "defaultChannel": "default"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/with-preview-abis",
+      "./plugins/with-ui-mode-config-change"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -34,34 +34,32 @@ export const MasterUserState: React.FC<MasterUserStateProps> = ({
 
   return (
     <SafeAreaView
-      className="flex-1 bg-gradient-to-br
-      from-primary-50 to-white"
+      className="flex-1 bg-background"
     >
       <View className="flex-1 justify-center items-center px-8">
         {/* Header illustration */}
         <View className="relative mb-8">
           <View
-            className="w-32 h-32 bg-gradient-to-br from-primary-500
-            to-primary-600 rounded-3xl items-center justify-center shadow-xl"
+            className="w-32 h-32 bg-primary rounded-3xl items-center justify-center shadow-xl"
           >
-            <Text className="text-6xl">🏢</Text>
+            <Text className="text-6xl text-primary-foreground">🏢</Text>
           </View>
           <View
-            className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400
-            rounded-full items-center justify-center"
+            className="absolute -top-2 -right-2 w-8 h-8 bg-warning-soft
+            border-2 border-background rounded-full items-center justify-center"
           >
-            <Text className="text-white text-xs font-bold">👑</Text>
+            <Text className="text-warning text-xs font-bold">👑</Text>
           </View>
         </View>
 
         <Text
           className="text-3xl font-bold
-          text-gray-900 mb-3 text-center"
+          text-ink mb-3 text-center"
         >
           Olá, Master! 👋
         </Text>
         <Text
-          className="text-gray-600 text-center
+          className="text-muted text-center
           mb-8 text-base leading-6 max-w-sm"
         >
           Para começar a gerenciar a frota, você precisa primeiro selecionar uma

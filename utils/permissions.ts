@@ -1,5 +1,9 @@
 import { User, PermissionKey, Permission } from "../types";
 
+import { FLEET_MODULE, hasModule } from "../features/access/module-rules";
+
+const NO_ACCESS = { canRead: false, canWrite: false } as const;
+
 export const checkPermission = (
   user: User | null,
   permissionKey: PermissionKey,
@@ -52,10 +56,17 @@ export const checkVehiclePermission = (
   return { canRead: false, canWrite: false };
 };
 
+/**
+ * Refuelling is a Gestão de Frota feature, for everyone — drivers, admins and
+ * a MASTER looking at a company alike. The role only decides WHO may use the
+ * module; whether the company hired it decides whether it exists at all
+ * (MOB-02: the phone offered it with the module off, and the API refused the
+ * finished form).
+ */
 export const checkFuelPermission = (
   user: User | null,
 ): { canRead: boolean; canWrite: boolean } => {
-  if (!user) return { canRead: false, canWrite: false };
+  if (!user || !hasModule(user, FLEET_MODULE)) return { ...NO_ACCESS };
 
   if (user.role === "MASTER" || user.role === "BUSINESS_ADMIN") {
     return { canRead: true, canWrite: true };
@@ -86,10 +97,11 @@ export const canRefuelVehicles = (user: User | null): boolean => {
   return permissions.canWrite;
 };
 
+/** Same rule as refuelling: a Gestão de Frota feature before a permission. */
 export const checkChecklistPermission = (
   user: User | null,
 ): { canRead: boolean; canWrite: boolean } => {
-  if (!user) return { canRead: false, canWrite: false };
+  if (!user || !hasModule(user, FLEET_MODULE)) return { ...NO_ACCESS };
 
   if (user.role === "MASTER" || user.role === "BUSINESS_ADMIN") {
     return { canRead: true, canWrite: true };
@@ -141,18 +153,17 @@ export const validateUserAccess = (
       return { hasAccess: true };
     }
 
-    // If not a driver, check for profileAccess and permissions
-    if (
-      !user.profileAccess?.permissions ||
-      user.profileAccess.permissions.length === 0
-    ) {
+    // Mirrors the API's session eligibility: an office user needs a profile
+    // that grants something. WHAT it grants is not the gate any more — a
+    // control-tower operator with only `delivery_manage` was refused at login
+    // for lacking `vehicle_manage` (CRIT-20). Each screen now decides what it
+    // shows, and the home screen says when nothing here is theirs.
+    const grantsSomething = (user.profileAccess?.permissions ?? []).some(
+      (permission) => permission.canRead || permission.canWrite,
+    );
+
+    if (!grantsSomething) {
       return { hasAccess: false, reason: "no_permissions" };
-    }
-
-    const hasVehicleAccess = hasAnyVehiclePermission(user);
-
-    if (!hasVehicleAccess) {
-      return { hasAccess: false, reason: "no_vehicle_permission" };
     }
 
     return { hasAccess: true };

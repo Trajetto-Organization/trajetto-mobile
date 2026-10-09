@@ -1,0 +1,15 @@
+# Android's own prompts that can cover the app on a fresh AVD: Google's
+# location-accuracy dialog (raised by the app's high-accuracy request) and,
+# should a grant from the launch not stick, the runtime permission prompt.
+appId: com.trajetto.fleetmanager
+---
+- runFlow:
+    when:
+      visible: "While using the app"
+    commands:
+      - tapOn: "While using the app"
+- runFlow:
+    when:
+      visible: "Turn on"
+    commands:
+      - tapOn: "Turn on"

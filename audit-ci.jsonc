@@ -1,0 +1,16 @@
+// Supply-chain gate (INFRA-16): `npx audit-ci` in ci.yml and deploy.yml fails
+// the build on a CRITICAL advisory in a PRODUCTION dependency (what ships in
+// the app bundle). The highs of `npm audit` today are build tooling (expo cli,
+// metro); Dependabot's security updates take care of those.
+//
+// An allowlist entry, when one is needed, says why the advisory does not
+// reach the app and when to look again ("Revisar até AAAA-MM-DD").
+{
+  "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
+  // package-lock.json is the lockfile.
+  "package-manager": "npm",
+  "critical": true,
+  "skip-dev": true,
+  "report-type": "important",
+  "allowlist": []
+}

@@ -1,45 +1,169 @@
-name: CI (branches)
+name: CI
 
-# Fast branch gate, mirroring the web/API repos. Runs on any branch other
-# than main/master so problems surface before the PR — not later, in the
-# middle of the EAS pipeline.
+# The one validation of the app, used in three places (docs/deploy.md, "Pipeline"):
+# - push to a work branch (anything but staging and main): the fast gate that
+#   answers "is this healthy enough to become a PR?";
+# - pull request to staging or to main: the same checks on the merge result;
+# - called by deploy.yml (workflow_call) before anything reaches EAS, on every
+#   push to staging and to main, so no build or OTA update skips them.
 #
-# Intentionally excluded: EAS builds, submit and OTA updates. All of that is
-# handled by deploy.yml once the code reaches main. Here there is only one
-# question: is this code healthy enough to become a PR?
+# Intentionally excluded: EAS builds, OTA updates and Play Store submits (all
+# in deploy.yml), and the Maestro E2E suite, which drives a real Android
+# emulator against a disposable API and runs on a workstation
+# (docs/testes.md, "E2E no emulador").
 on:
   push:
-    branches-ignore: [main, master]
+    branches-ignore: [main, master, staging]
+  pull_request:
+    branches: [staging, main, master]
+  workflow_call:
+    secrets:
+      API_REPO_READ_TOKEN:
+        required: false
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same work branch or PR makes the older run pointless.
+# On staging and main (only reached through deploy.yml) nothing is cancelled:
+# the caller serializes its own runs. When deploy.yml calls this file,
+# `github.workflow` is the caller's name, and the `ci-` prefix keeps this
+# group apart from the caller's.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !contains(fromJSON('["refs/heads/staging","refs/heads/main","refs/heads/master"]'), github.ref) }}
 
 jobs:
   validate:
-    name: Lint, type-check and unit tests
+    name: Lint, type-check, unit tests and Expo doctor
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: package-lock.json
+
+      # The socket tests borrow socket.io (the server) from the API's
+      # dependencies in ../trajetto-api and skip themselves without it.
+      # Checked out only when the read-only token exists (API_REPO_READ_TOKEN),
+      # moved out of the workspace at once so prettier and tsc never see it,
+      # and installed with --ignore-scripts. The token stays out of the job
+      # env and out of .git/config.
+      - name: Is the API checkout configured?
+        id: api
+        env:
+          TOKEN: ${{ secrets.API_REPO_READ_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::API_REPO_READ_TOKEN ausente: os testes de socket contra o servidor real foram pulados."
+          fi
+
+      # The same branch in the sibling repository first: a change that spans
+      # the repositories (routes, socket events) is tested against its own
+      # counterpart, not against their default branch. Falls back to the
+      # default branch when there is no branch of that name.
+      - name: Pick the sibling branches
+        id: refs
+        if: steps.api.outputs.enabled == 'true'
+        env:
+          TOKEN: ${{ secrets.API_REPO_READ_TOKEN }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          for pair in api:trajetto-api; do
+            key=${pair%%:*}
+            repo=${pair#*:}
+            if git -c "http.https://github.com/.extraheader=$auth" ls-remote --exit-code --heads \
+              "https://github.com/Trajetto-Organization/${repo}.git" "refs/heads/${BRANCH}" > /dev/null; then
+              echo "${key}=${BRANCH}" >> "$GITHUB_OUTPUT"
+              echo "${repo}: branch ${BRANCH}"
+            else
+              echo "${repo}: sem a branch ${BRANCH}; usando a padrão"
+            fi
+          done
+
+      - name: Check out the API next to this repository
+        if: steps.api.outputs.enabled == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Trajetto-Organization/trajetto-api
+          ref: ${{ steps.refs.outputs.api }}
+          token: ${{ secrets.API_REPO_READ_TOKEN }}
+          path: .siblings/trajetto-api
+          persist-credentials: false
+
+      - name: Install the API's runtime dependencies beside this repository
+        if: steps.api.outputs.enabled == 'true'
+        run: |
+          mv .siblings/trajetto-api ../trajetto-api
+          rmdir .siblings
+          cd ../trajetto-api
+          yarn install --frozen-lockfile --production --ignore-scripts
 
       - name: Install dependencies
         run: npm ci
 
-      # Cheapest check first — no point spending minutes on tsc if the code
-      # is not even formatted.
+      # A CRITICAL advisory in a production dependency fails the run
+      # (INFRA-16). Exceptions, reasoned and dated, go in audit-ci.jsonc.
+      - name: Audit production dependencies
+        run: npx --yes audit-ci@7.1.0 --config audit-ci.jsonc
+
       - name: Lint
         run: npm run lint
 
       - name: Type-check
         run: npm run typecheck
 
-      # The pure business rules (fuel/checklist) — the part of the app that
-      # must hold regardless of device or connectivity.
-      - name: Unit tests
-        run: npm test
+      # The pure business rules (offline queue, deliveries, occurrences,
+      # pauses, fuel, checklist) and the config guards. Unconditional: every
+      # trigger runs them. With coverage, measured, published and gated by the
+      # floor in vitest.config.ts (MOB-30): a run below it fails here.
+      - name: Unit tests (with coverage)
+        run: npm test -- --coverage --coverage.reporter=text-summary --coverage.reporter=json-summary --coverage.reporter=html
+
+      - name: Publish the coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage
+          retention-days: 14
+
+      # Expo SDK alignment and config sanity: a native dependency on the wrong
+      # version builds on EAS and crashes on the phone.
+      - name: Expo doctor
+        run: npm run doctor
+
+  # Secrets in the history (INFRA-21). Every commit, not only the diff: a key
+  # that reached any branch is already out, and EAS uploads whatever git sees.
+  # The CLI runs from its image, pinned by digest (gitleaks-action needs a
+  # paid license on organization repositories). A finding fails the job, and
+  # `--redact` keeps the secret out of the log.
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Scan every commit for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" --entrypoint sh \
+            zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            -c "git config --global --add safe.directory /repo && gitleaks git /repo --redact --no-banner --exit-code 1"

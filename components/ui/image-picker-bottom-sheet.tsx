@@ -11,6 +11,9 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 
+import { useThemeColors } from "../../hooks/use-theme";
+import { useCloseOnBack } from "../../hooks/use-close-on-back";
+
 interface ImagePickerBottomSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -30,9 +33,12 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
 }) => {
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets(); // 📱 Get safe area insets
+  const colors = useThemeColors();
 
   // Snap points for the bottom sheet
   const snapPoints = useMemo(() => ["42%"], []);
+
+  useCloseOnBack(visible, onClose);
 
   useEffect(() => {
     if (visible) {
@@ -85,11 +91,11 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
       backdropComponent={renderBackdrop}
       enablePanDownToClose
       backgroundStyle={{
-        backgroundColor: "#ffffff",
+        backgroundColor: colors.surface,
         borderRadius: 24,
       }}
       handleIndicatorStyle={{
-        backgroundColor: "#d1d5db",
+        backgroundColor: colors.input,
         width: 48,
         height: 6,
       }}
@@ -99,16 +105,15 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
         <View className="px-6 pt-2 pb-4">
           <View className="items-center">
             <View
-              className="w-16 h-16 bg-gradient-to-br
-              from-primary-500 to-primary-600 rounded-full
+              className="w-16 h-16 bg-primary rounded-full
               items-center justify-center shadow-lg mb-4"
             >
-              <Ionicons name="camera" size={32} color="white" />
+              <Ionicons name="camera" size={32} color={colors.primaryForeground} />
             </View>
-            <Text className="text-xl font-bold text-gray-900 mb-2">
+            <Text className="text-xl font-bold text-ink mb-2">
               {title}
             </Text>
-            <Text className="text-gray-600 text-center">{description}</Text>
+            <Text className="text-muted text-center">{description}</Text>
           </View>
         </View>
 
@@ -117,49 +122,53 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
           {/* Camera Option */}
           <TouchableOpacity
             onPress={handleTakePhoto}
+            testID="image-picker-camera"
+            accessibilityRole="button"
             activeOpacity={0.8}
-            className="flex-row items-center bg-gray-50
-            rounded-2xl p-4 border border-gray-200"
+            className="flex-row items-center bg-subtle
+            rounded-2xl p-4 border border-border"
           >
             <View
-              className="w-12 h-12 bg-blue-100
+              className="w-12 h-12 bg-primary-soft
               rounded-full items-center justify-center mr-4"
             >
-              <Ionicons name="camera" size={24} color="#3b82f6" />
+              <Ionicons name="camera" size={24} color={colors.primary} />
             </View>
             <View className="flex-1">
-              <Text className="text-base font-semibold text-gray-900 mb-1">
+              <Text className="text-base font-semibold text-ink mb-1">
                 Tirar Foto
               </Text>
-              <Text className="text-sm text-gray-500">
+              <Text className="text-sm text-muted">
                 Use a câmera do dispositivo
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
           </TouchableOpacity>
 
           {/* Gallery Option */}
           <TouchableOpacity
             onPress={handlePickFromGallery}
+            testID="image-picker-gallery"
+            accessibilityRole="button"
             activeOpacity={0.8}
-            className="flex-row items-center bg-gray-50
-            rounded-2xl p-4 border border-gray-200"
+            className="flex-row items-center bg-subtle
+            rounded-2xl p-4 border border-border"
           >
             <View
-              className="w-12 h-12 bg-purple-100
+              className="w-12 h-12 bg-subtle border border-border
               rounded-full items-center justify-center mr-4"
             >
-              <Ionicons name="image" size={24} color="#8b5cf6" />
+              <Ionicons name="image" size={24} color={colors.inkSoft} />
             </View>
             <View className="flex-1">
-              <Text className="text-base font-semibold text-gray-900 mb-1">
+              <Text className="text-base font-semibold text-ink mb-1">
                 Escolher da Galeria
               </Text>
-              <Text className="text-sm text-gray-500">
+              <Text className="text-sm text-muted">
                 Selecione uma foto existente
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
           </TouchableOpacity>
         </View>
 
@@ -170,10 +179,10 @@ export const ImagePickerBottomSheet: React.FC<ImagePickerBottomSheetProps> = ({
         >
           <TouchableOpacity
             onPress={onClose}
-            className="bg-gray-100 rounded-2xl py-4 px-6"
+            className="bg-subtle rounded-2xl py-4 px-6"
             activeOpacity={0.8}
           >
-            <Text className="text-center text-gray-700 font-semibold">
+            <Text className="text-center text-ink-soft font-semibold">
               Cancelar
             </Text>
           </TouchableOpacity>

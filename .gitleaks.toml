@@ -1,0 +1,20 @@
+# gitleaks config for the "Secret scan" job of ci.yml (INFRA-21). gitleaks
+# reads it from the repository root on its own.
+#
+# Every default rule stays on. The one exception: `generic-api-key`, a
+# heuristic that fires on any `PASSWORD = "..."`, is quieted on the tests'
+# fixtures (fake passwords and tokens) and on .env.example's empty
+# assignments, as in the API and the web. Only that rule, only those paths: a
+# provider key (Expo, Google, GitHub, ...) committed in a test still fails the
+# job. Any other false positive goes in a .gitleaksignore, by fingerprint.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake credentials in test fixtures and the env example"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^tests/''',
+  '''^\.env\.example$''',
+]

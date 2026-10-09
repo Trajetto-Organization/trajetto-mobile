@@ -219,6 +219,208 @@ function mergeIncomingMessage(
   return [...list, incoming].sort(byConversationOrder);
 }
 
+/**
+ * The optimistic copy a server message is about to replace, if any.
+ *
+ * Only a submission-id match counts, and only when the server id is not in
+ * the list yet — the same test `mergeIncomingMessage` uses to decide to swap.
+ * The caller needs it BEFORE the swap: a voice note recorded on this phone
+ * has to be filed under the server id first, or the bubble that remounts
+ * under that id asks the driver to download their own note (MOB-21).
+ */
+function findOptimisticCopy(
+  list: ClientChatMessage[],
+  incoming: ChatMessage,
+): ClientChatMessage | null {
+  if (!incoming.client_submission_id) return null;
+  if (list.some((message) => message.id === incoming.id)) return null;
+
+  return (
+    list.find(
+      (message) =>
+        message.client_submission_id === incoming.client_submission_id,
+    ) ?? null
+  );
+}
+
+/** A message the server has not confirmed: still sending, or failed. */
+function isUnconfirmed(message: ClientChatMessage): boolean {
+  return Boolean(message.pending || message.failed);
+}
+
+/** The keyset cursor the API pages history with. */
+interface ChatHistoryCursor {
+  created_at: string;
+  id: string;
+}
+
+/** One page of `/chat/list-messages`, newest first as the API answers. */
+interface ChatHistoryPage {
+  data: ChatMessage[];
+  nextCursor: ChatHistoryCursor | null;
+}
+
+interface ChatHistory {
+  /** Ascending, as the screen renders it. */
+  messages: ClientChatMessage[];
+
+  /** Where "Mensagens anteriores" continues from; `null` when nothing is older. */
+  nextCursor: ChatHistoryCursor | null;
+}
+
+/**
+ * Folds the NEWEST page into a conversation that is already on screen — the
+ * resync after a reconnection, a return to the foreground or a pull to
+ * refresh (MOB-05).
+ *
+ * The old reload replaced the list with the forty newest messages, which
+ * threw away whatever the driver had paged in with "Mensagens anteriores". A
+ * resync has no business doing that: it only has to add what was missed. So
+ * the page is merged by identity — a message already on screen is refreshed
+ * in place (its attachment arrives freshly signed), an optimistic copy is
+ * swapped for the server's, anything new is sorted in — and the paging cursor
+ * is left where the loaded history ends.
+ *
+ * The one exception is a GAP. When more messages arrived while the driver was
+ * away than one page holds, the page no longer reaches back to what is on
+ * screen, and merging would stitch two stretches of the thread together with
+ * a hole between them that no cursor would ever fill. The page then REPLACES
+ * the history (see `takeNewestPage`) and brings its own cursor, so "Mensagens
+ * anteriores" pages back through the missing stretch. Messages marked
+ * `afterGap` do not count as "on screen" for that test: the live socket can
+ * deliver the newest message of a thread whose middle it missed.
+ */
+function mergeNewestPage(
+  current: ClientChatMessage[],
+  currentCursor: ChatHistoryCursor | null,
+  page: ChatHistoryPage,
+): ChatHistory {
+  const incoming = [...page.data].sort(byConversationOrder);
+
+  if (incoming.length === 0) {
+    return { messages: current, nextCursor: currentCursor };
+  }
+
+  // A message the socket delivered after a drop may sit above a hole: it
+  // says nothing about how far the loaded history really reaches.
+  const contiguous = current.filter(
+    (message) => !isUnconfirmed(message) && !message.afterGap,
+  );
+
+  const newestLoaded = contiguous.reduce<ClientChatMessage | null>(
+    (newest, message) =>
+      !newest || byConversationOrder(message, newest) > 0 ? message : newest,
+    null,
+  );
+
+  // The page reaches what is on screen when it holds the whole thread, or
+  // when its oldest message is not newer than the newest one already loaded.
+  const reachesLoaded =
+    !page.nextCursor ||
+    (newestLoaded !== null && byConversationOrder(incoming[0], newestLoaded) <= 0);
+
+  if (!newestLoaded || !reachesLoaded) return takeNewestPage(current, page);
+
+  const fresh = new Map(incoming.map((message) => [message.id, message]));
+
+  // Refreshed in place: same identity, freshly signed attachment.
+  let merged: ClientChatMessage[] = current.map(
+    (message) => fresh.get(message.id) ?? message,
+  );
+
+  incoming.forEach((message) => {
+    merged = mergeIncomingMessage(merged, message);
+  });
+
+  return { messages: merged, nextCursor: currentCursor };
+}
+
+/**
+ * The newest page AS the history, with its own cursor: the first load, and a
+ * resync that found a gap (`mergeNewestPage`).
+ *
+ * Two kinds of message on screen survive it. Sends still on their way or
+ * failed, which exist only on this phone (unless the page already confirms
+ * them). And anything NEWER than the page's newest message: the socket is
+ * global and already connected while the GET is in flight, so a SAC message
+ * can arrive by `chatMessage` after the server took the page's snapshot. The
+ * page cannot hold it, and dropping it would leave it invisible and unread
+ * until some later catch-up (MOB-05).
+ */
+function takeNewestPage(
+  current: ClientChatMessage[],
+  page: ChatHistoryPage,
+): ChatHistory {
+  const incoming = [...page.data].sort(byConversationOrder);
+  const newestOfPage = incoming[incoming.length - 1] ?? null;
+
+  const kept = current.filter((message) => {
+    if (isUnconfirmed(message)) {
+      // An unconfirmed copy the page already confirms is replaced, not kept.
+      return (
+        !message.client_submission_id ||
+        !incoming.some(
+          (fresh) => fresh.client_submission_id === message.client_submission_id,
+        )
+      );
+    }
+
+    // An empty page is a snapshot of an empty thread: whatever the socket
+    // brought since is newer than all of it.
+    return !newestOfPage || byConversationOrder(message, newestOfPage) > 0;
+  });
+
+  return {
+    messages: [...incoming, ...kept].sort(byConversationOrder),
+    nextCursor: page.nextCursor,
+  };
+}
+
+/**
+ * Drops the `afterGap` mark once a catch-up that began with the socket up has
+ * landed: that page plus what the socket delivered meanwhile is the whole
+ * thread, so nothing on screen sits above a hole any more. The same array
+ * comes back when nothing was marked, so a catch-up that found no gap does
+ * not re-render the list.
+ */
+function clearGapMarks(list: ClientChatMessage[]): ClientChatMessage[] {
+  if (!list.some((message) => message.afterGap)) return list;
+
+  return list.map((message) => {
+    if (!message.afterGap) return message;
+
+    const unmarked = { ...message };
+    delete unmarked.afterGap;
+
+    return unmarked;
+  });
+}
+
+/**
+ * The `readAt` to report for what is on screen, or `null` when there is
+ * nothing to report.
+ *
+ * The newest message FROM THE OPERATION the driver actually has in front of
+ * them, as the server stamped it — never "now". Without it the API stamps its
+ * own clock and the SAC sees blue checks on messages this phone never
+ * received (MOB-05). It is the same instant the delivery receipt uses, for
+ * the same reason: the server's `created_at` of something this device holds.
+ *
+ * A message marked `afterGap` is left out: the cursor covers everything
+ * before it, and below it may sit a stretch of the thread this phone never
+ * received. The catch-up that closes the gap swaps it for the server's copy,
+ * which is reported then.
+ */
+function readCursorFor(
+  displayed: ClientChatMessage[],
+  myUserId: string,
+): string | null {
+  return newestDeliverableAt(
+    displayed.filter((message) => !message.afterGap),
+    myUserId,
+  );
+}
+
 /** The HTTP confirmation of an optimistic send. */
 function confirmOptimistic(
   list: ClientChatMessage[],
@@ -837,6 +1039,12 @@ export {
   latestIso,
   newestDeliverableAt,
   mergeIncomingMessage,
+  findOptimisticCopy,
+  isUnconfirmed,
+  mergeNewestPage,
+  takeNewestPage,
+  clearGapMarks,
+  readCursorFor,
   confirmOptimistic,
   markSendFailed,
   markSendPending,
@@ -876,4 +1084,7 @@ export type {
   ChatImageCandidate,
   ChatImageBatch,
   ChatFeedItem,
+  ChatHistory,
+  ChatHistoryCursor,
+  ChatHistoryPage,
 };

@@ -52,18 +52,18 @@ export const Header: React.FC<HeaderProps> = ({
       <View className="px-6 pt-8">
         <View className="flex-row justify-between items-start">
           <View className="flex-1">
-            <Text className="text-sm font-medium mb-1">{getGreeting()}</Text>
-            <Text className="text-2xl font-bold mb-1" numberOfLines={1}>
+            <Text className="text-sm font-medium text-muted mb-1">{getGreeting()}</Text>
+            <Text className="text-2xl font-bold text-ink mb-1" numberOfLines={1}>
               {truncateName(user?.name || "")}
             </Text>
             <View className="flex-row items-center">
-              <View className="bg-blue-100 rounded-full px-3 py-1 mr-2">
-                <Text className="text-xs font-medium text-blue-800">
+              <View className="bg-primary-soft rounded-full px-3 py-1 mr-2">
+                <Text className="text-xs font-medium text-primary">
                   {pageTitle}
                 </Text>
               </View>
-              <View className="bg-slate-100 rounded-full px-3 py-1">
-                <Text className="text-xs font-medium text-slate-800">
+              <View className="bg-subtle border border-border rounded-full px-3 py-1">
+                <Text className="text-xs font-medium text-ink-soft">
                   {getUserRoleDisplay()}
                 </Text>
               </View>
@@ -78,9 +78,8 @@ export const Header: React.FC<HeaderProps> = ({
             {user?.role === "MASTER" && onSwitchBusiness && (
               <TouchableOpacity
                 onPress={onSwitchBusiness}
-                className="rounded-full"
+                className="rounded-full bg-primary-soft"
                 style={{
-                  backgroundColor: "rgba(59, 130, 246, 0.2)",
                   width: 40,
                   height: 40,
                   alignItems: "center",
@@ -95,6 +94,9 @@ export const Header: React.FC<HeaderProps> = ({
             {/* User Avatar Button */}
             <TouchableOpacity
               onPress={() => setShowUserDrawer(true)}
+              testID="user-menu-button"
+              accessibilityRole="button"
+              accessibilityLabel="Abrir menu do usuário"
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Avatar

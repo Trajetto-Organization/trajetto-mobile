@@ -7,6 +7,7 @@ import { useBranchInfiniteScroll, useDebounce } from "../../hooks";
 import type { Branch } from "../../hooks/use-branch-infinite-scroll";
 
 import { LoadingSpinner, Button, Input } from "../ui";
+import { useThemeColors } from "../../hooks/use-theme";
 
 interface BranchSelectionProps {
   businessId: string;
@@ -20,6 +21,7 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
   onSelectBranch,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const colors = useThemeColors();
   const debouncedSearch = useDebounce(searchQuery.trim());
 
   const {
@@ -53,11 +55,11 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
       >
         <Text
           className="text-xl font-bold
-          text-gray-900 mb-4 text-center"
+          text-ink mb-4 text-center"
         >
           Erro ao carregar filiais
         </Text>
-        <Text className="text-gray-600 text-center mb-8">{error}</Text>
+        <Text className="text-muted text-center mb-8">{error}</Text>
         <Button onPress={handleRefresh}>Tentar novamente</Button>
       </View>
     );
@@ -71,14 +73,14 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="Buscar filial por nome..."
-          className="bg-white border-gray-200 rounded-2xl"
+          className="rounded-2xl"
           rightIcon={
             searchQuery.length > 0 ? (
               <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <Ionicons name="close" size={18} color="#6b7280" />
+                <Ionicons name="close" size={18} color={colors.muted} />
               </TouchableOpacity>
             ) : (
-              <Ionicons name="search" size={18} color="#9ca3af" />
+              <Ionicons name="search" size={18} color={colors.muted} />
             )
           }
         />
@@ -87,10 +89,10 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
       {/* Selected Branch Indicator */}
       {selectedBranchId && (
         <View
-          className="mb-4 p-3 bg-green-50
-          rounded-lg border border-green-200"
+          className="mb-4 p-3 bg-success-soft
+          rounded-lg border border-success/40"
         >
-          <Text className="text-sm text-green-800 font-medium">
+          <Text className="text-sm text-success font-medium">
             ✓ Filial selecionada
           </Text>
         </View>
@@ -101,7 +103,7 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
         <LoadingSpinner text="Carregando filiais..." />
       ) : filteredBranches.length === 0 ? (
         <View className="flex-1 justify-center items-center">
-          <Text className="text-gray-600 text-center">
+          <Text className="text-muted text-center">
             {debouncedSearch
               ? "Nenhuma filial encontrada para esta busca"
               : "Nenhuma filial encontrada"}
@@ -129,32 +131,32 @@ export const BranchSelection: React.FC<BranchSelectionProps> = ({
           renderItem={({ item: branch }) => (
             <TouchableOpacity
               onPress={() => onSelectBranch(branch)}
-              className={`bg-white rounded-lg p-4 mb-3 border ${
+              className={`rounded-lg p-4 mb-3 border ${
                 selectedBranchId === branch.id
-                  ? "border-primary-500 bg-primary-50"
-                  : "border-gray-200"
+                  ? "border-primary bg-primary-soft"
+                  : "border-border bg-card"
               }`}
             >
               <View className="flex-row items-center justify-between">
                 <View className="flex-1">
-                  <Text className="font-bold text-gray-900 mb-1">
+                  <Text className="font-bold text-ink mb-1">
                     {branch.corporate_reason}
                   </Text>
                   {branch.fantasy_name && (
-                    <Text className="text-sm text-gray-600 mb-2">
+                    <Text className="text-sm text-muted mb-2">
                       {branch.fantasy_name}
                     </Text>
                   )}
-                  <Text className="text-xs text-gray-500">
+                  <Text className="text-xs text-muted">
                     {branch.city}, {branch.uf}
                   </Text>
                 </View>
                 {selectedBranchId === branch.id && (
                   <View
-                    className="w-6 h-6 bg-primary-500
+                    className="w-6 h-6 bg-primary
                     rounded-full items-center justify-center"
                   >
-                    <Ionicons name="checkmark" size={16} color="white" />
+                    <Ionicons name="checkmark" size={16} color={colors.primaryForeground} />
                   </View>
                 )}
               </View>

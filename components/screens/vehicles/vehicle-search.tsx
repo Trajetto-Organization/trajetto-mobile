@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { Input } from "../../ui";
+import { useThemeColors } from "@/hooks/use-theme";
 
 interface VehicleSearchProps {
   searchQuery: string;
@@ -21,6 +22,7 @@ export const VehicleSearch: React.FC<VehicleSearchProps> = ({
   vehiclesCount,
 }) => {
   const hasSearchResults = debouncedSearch && debouncedSearch.length > 0;
+  const colors = useThemeColors();
 
   return (
     <View className="mt-6 mb-2">
@@ -28,9 +30,10 @@ export const VehicleSearch: React.FC<VehicleSearchProps> = ({
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Buscar veículo por placa, modelo..."
-        placeholderTextColor="#9ca3af"
-        className="bg-white/90 backdrop-blur-sm
-        border-gray-200 rounded-2xl shadow-sm"
+        placeholderTextColor={colors.muted}
+        // The field paints its own themed surface; a white wrapper here
+        // showed as a light halo around it in the dark theme.
+        className="rounded-2xl"
         style={{
           fontSize: 16,
           paddingHorizontal: 20,
@@ -40,21 +43,21 @@ export const VehicleSearch: React.FC<VehicleSearchProps> = ({
           searchQuery.length > 0 ? (
             <TouchableOpacity
               onPress={onClearSearch}
-              className="p-1 rounded-full bg-gray-100"
+              className="p-1 rounded-full bg-subtle"
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="close" size={18} color="#6b7280" />
+              <Ionicons name="close" size={18} color={colors.muted} />
             </TouchableOpacity>
           ) : (
             <View className="p-1">
-              <Ionicons name="search" size={18} color="#9ca3af" />
+              <Ionicons name="search" size={18} color={colors.muted} />
             </View>
           )
         }
       />
       {hasSearchResults && (
         <Text
-          className="text-xs text-gray-500 mt-2 ml-4"
+          className="text-xs text-muted mt-2 ml-4"
           numberOfLines={1}
           ellipsizeMode="tail"
         >

@@ -1,0 +1,18 @@
+# Signs out from the user drawer and waits for the login form. The drawer
+# lives in the "Início" header, the one tab every session has (deliveries-only
+# drivers included). The queue is empty by now: the modal is the plain
+# confirmation.
+appId: com.trajetto.fleetmanager
+---
+- tapOn:
+    id: tab-vehicles
+- tapOn:
+    id: user-menu-button
+- tapOn:
+    id: logout-button
+- tapOn:
+    id: logout-confirm
+- extendedWaitUntil:
+    visible:
+      id: login-email
+    timeout: 60000

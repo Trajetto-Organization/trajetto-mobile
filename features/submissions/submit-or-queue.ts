@@ -16,8 +16,17 @@ import {
 
 import {
   decideSubmissionFailure,
+  isCancellation,
   photosForQueue,
+  queuedOutcome,
+  type QueuedOutcome,
 } from "@/features/submissions/queue-decision";
+
+import {
+  getSubmissionPersistenceEpoch,
+  holdSubmissionDrafts,
+} from "@/features/submissions/submission-id";
+import { getSubmissionOwner } from "@/features/submissions/submission-owner";
 
 interface SubmitOrQueueInput {
   /** Idempotency key. The same value identifies the queued item. */
@@ -40,9 +49,21 @@ interface SubmitOrQueueInput {
 
   signal?: AbortSignal;
   onProgress?: (uploaded: number, total: number) => void;
+
+  /**
+   * The API's answer, when it was sent at the tap. For the kinds that keep
+   * something from it (kind-effects); the queue hands a later send's answer
+   * to the same code. A throw here never turns a sent item into a failure.
+   */
+  onSent?: (response: unknown) => void | Promise<void>;
 }
 
-type SubmitOutcome = "sent" | "queued";
+/**
+ * "queued-signed-out" and "queued-until-update" are additive: a caller that
+ * only checks for "sent" treats them as queued, which they are — only the
+ * wording differs.
+ */
+type SubmitOutcome = "sent" | QueuedOutcome;
 
 /**
  * Sends a submission, or hands it to the queue if the network would not have it.
@@ -70,7 +91,18 @@ async function submitOrQueue({
   photoField,
   signal,
   onProgress,
+  onSent,
 }: SubmitOrQueueInput): Promise<SubmitOutcome> {
+  // Captured before anything is sent. A 401 that cannot be refreshed logs the
+  // driver out from INSIDE the request, so by the time its error lands here
+  // the session — and the owner the queue would stamp — is already gone.
+  const ownerUserId = getSubmissionOwner();
+  const sessionEpoch = getSubmissionPersistenceEpoch();
+
+  // That same logout deletes every draft, and the photos being sent are draft
+  // files until the queue has made its own copy.
+  const releaseDrafts = holdSubmissionDrafts(submissionId);
+
   // Keys are recorded as they land so that a failure partway through twenty
   // photos is not thrown away: whatever reached storage is handed to the queue,
   // which then only has to send the rest.
@@ -88,12 +120,26 @@ async function submitOrQueue({
 
     const payload = buildPhotoPayload(photoField, body, uploaded);
 
-    await apiClient.request(endpoint, {
+    const response = await apiClient.request<unknown>(endpoint, {
       method: "POST",
       body: payload,
       signal,
-      headers: { "Idempotency-Key": submissionId },
+      headers: {
+        "Idempotency-Key": submissionId,
+
+        // The send, by the clock that stamped the body's `occurred_at`. The
+        // queue's resends add the same header (MOB-08).
+        "X-Client-Sent-At": new Date().toISOString(),
+      },
     });
+
+    // Swallowed here, before the catch below can see it: the record landed,
+    // and an effect that fails must not queue it again or report it refused.
+    try {
+      await onSent?.(response);
+    } catch {
+      // Best-effort by contract (see `onSent`).
+    }
 
     return "sent";
   } catch (error) {
@@ -103,17 +149,23 @@ async function submitOrQueue({
       storage upload, and the rule it was hiding is the one that decides
       whether a driver's afternoon survives.
     */
-    const outcome = decideSubmissionFailure({
-      isAbort: error instanceof Error && error.name === "AbortError",
-      description: describeFailure(error),
-    });
+    const description = describeFailure(error);
 
-    if (outcome !== "queued") throw error;
+    const failure = {
+      isAbort: isCancellation(error, signal),
+      sessionEnded:
+        ownerUserId !== null &&
+        getSubmissionPersistenceEpoch() !== sessionEpoch,
+      description,
+    };
+
+    if (decideSubmissionFailure(failure) !== "queued") throw error;
 
     await enqueueSubmission({
       id: submissionId,
       kind,
       businessId,
+      ownerUserId: ownerUserId ?? undefined,
       vehicleId,
       vehicleLabel,
       endpoint,
@@ -121,9 +173,18 @@ async function submitOrQueue({
       uploadType,
       photoField,
       photos: photosForQueue(entries, landedKeys),
+
+      // A 429 or 503 on the first try: the queue waits it out too.
+      retryAfterMs: description.retryAfterMs,
     });
 
-    return "queued";
+    // "queued-signed-out" when it waits for this driver to sign in again, and
+    // "queued-until-update" when it waits for the app's update, rather than
+    // for a connection, so the screen does not promise the wrong thing
+    // (MOB-07, GAP5-2).
+    return queuedOutcome(failure);
+  } finally {
+    releaseDrafts();
   }
 }
 

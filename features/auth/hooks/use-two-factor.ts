@@ -12,6 +12,10 @@ import Toast from "react-native-toast-message";
 import { twoFactorSchema, type TwoFactorFormData } from "@/schemas";
 import { useAuthStore, useTwoFactorStore } from "@/store";
 
+import { LIVE_VALIDATION_FORM_OPTIONS } from "@/features/forms/live-validation";
+import { useFieldFocus } from "@/features/forms/use-field-focus";
+import type { OtpInputRef } from "react-native-otp-entry";
+
 export const useTwoFactor = () => {
   const router = useRouter();
 
@@ -43,6 +47,7 @@ export const useTwoFactor = () => {
 
   const resendInFlight = useRef(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
+  const focus = useFieldFocus();
 
   const {
     control,
@@ -52,6 +57,7 @@ export const useTwoFactor = () => {
   } = useForm<TwoFactorFormData>({
     resolver: zodResolver(twoFactorSchema),
     defaultValues: { code: "" },
+    ...LIVE_VALIDATION_FORM_OPTIONS,
   });
 
   const watchedCode = watch("code");
@@ -91,7 +97,7 @@ export const useTwoFactor = () => {
       Toast.show({
         type: "error",
         text1: "Erro",
-        text2: "E-mail nao encontrado. Faca login novamente.",
+        text2: "E-mail não encontrado. Faça login novamente.",
         position: "top",
         visibilityTime: 4_000,
       });
@@ -108,7 +114,7 @@ export const useTwoFactor = () => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         Toast.show({
           type: "success",
-          text1: "Autenticacao concluida!",
+          text1: "Autenticação concluída!",
           text2: "Bem-vindo ao Trajetto",
           position: "top",
           visibilityTime: 3_000,
@@ -122,8 +128,8 @@ export const useTwoFactor = () => {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Toast.show({
         type: "error",
-        text1: "Codigo invalido",
-        text2: result.error || "Verifique o codigo e tente novamente",
+        text1: "Código inválido",
+        text2: result.error || "Verifique o código e tente novamente",
         position: "top",
         visibilityTime: 4_000,
       });
@@ -131,7 +137,7 @@ export const useTwoFactor = () => {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Toast.show({
         type: "error",
-        text1: "Erro de verificacao",
+        text1: "Erro de verificação",
         text2: "Ocorreu um erro inesperado. Tente novamente.",
         position: "top",
         visibilityTime: 4_000,
@@ -153,8 +159,8 @@ export const useTwoFactor = () => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         Toast.show({
           type: "success",
-          text1: "Codigo reenviado",
-          text2: "Verifique seu e-mail para o novo codigo",
+          text1: "Código reenviado",
+          text2: "Verifique seu e-mail para o novo código",
           position: "top",
           visibilityTime: 3_000,
         });
@@ -162,7 +168,7 @@ export const useTwoFactor = () => {
         Toast.show({
           type: "error",
           text1: "Erro ao reenviar",
-          text2: result.error || "Nao foi possivel reenviar o codigo",
+          text2: result.error || "Não foi possível reenviar o código",
           position: "top",
           visibilityTime: 4_000,
         });
@@ -171,7 +177,7 @@ export const useTwoFactor = () => {
       Toast.show({
         type: "error",
         text1: "Erro ao reenviar",
-        text2: "Nao foi possivel reenviar o codigo. Tente novamente.",
+        text2: "Não foi possível reenviar o código. Tente novamente.",
         position: "top",
         visibilityTime: 4_000,
       });
@@ -180,17 +186,20 @@ export const useTwoFactor = () => {
     }
   };
 
+  // The button is enabled with any number of digits (decision 16.701): the
+  // tap says what is missing and puts the cursor back in the code.
+  const submit = handleSubmit(onSubmit, () => focus.focusField("code"));
+
   return {
     email,
     control,
-    handleSubmit,
     errors,
     isSubmitting,
     isCodeComplete,
-    watchedCode,
     resendTimer,
     showBackModal,
-    onSubmit,
+    submit,
+    codeInputRef: focus.inputRef<OtpInputRef>("code"),
     handleResendCode,
     handleBackToLogin: () => setShowBackModal(true),
     confirmBackToLogin: () => {

@@ -1,0 +1,128 @@
+name: OTA rollback
+
+# Puts an older, already published OTA update group back in front of the
+# phones (docs/deploy.md, "Rollback"). The app's equivalent of redeploying an
+# older immutable image tag: `eas update:republish` copies that exact group
+# (same bundle, same runtime) as the newest update of its branch, so every
+# binary on that runtime takes it on its next launch.
+#
+# Find the group id with `eas update:list --branch <channel>` or on expo.dev
+# (Updates). The group must belong to the chosen channel's branch, and this is
+# enforced: `update:republish --group` republishes onto the group's OWN branch,
+# so a production group run under the staging environment (no reviewers)
+# would roll production back without approval. The job reads the group's
+# branch first and refuses any mismatch. A broken binary is not fixed here:
+# that needs a new build (or a store rollback).
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Canal (branch do EAS Update) que volta"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      group:
+        description: "ID do grupo de atualização a republicar (eas update:list)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ota-rollback-${{ github.event.inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  republish:
+    name: Republish an older update group
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ github.event.inputs.channel }}
+
+    steps:
+      - name: Validate the inputs
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GROUP: ${{ github.event.inputs.group }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::EXPO_TOKEN ausente: configure o secret antes do rollback (docs/variaveis-de-ambiente.md)."
+            exit 1
+          fi
+          if ! printf '%s' "$GROUP" | grep -Eq '^[0-9a-fA-F-]{36}$'; then
+            echo "::error::O grupo deve ser o UUID mostrado por eas update:list."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # 8.2.1
+        with:
+          eas-version: 21.7.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `update:republish --group` writes onto the branch the group belongs
+      # to, whatever channel was picked. The environment (and its required
+      # reviewers) comes from the picked channel, so the two must match.
+      - name: Check that the group belongs to the chosen channel
+        env:
+          GROUP: ${{ github.event.inputs.group }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+        run: |
+          if ! eas update:view "$GROUP" --json > "$RUNNER_TEMP/group.json"; then
+            echo "::error::Não consegui ler o grupo $GROUP no EAS (eas update:view)."
+            exit 1
+          fi
+          branches=$(jq -r '[.[] | (.branch | if type == "object" then .name else . end)] | unique | join(",")' "$RUNNER_TEMP/group.json")
+          if [ "$branches" != "$CHANNEL" ]; then
+            echo "::error::O grupo $GROUP pertence à branch '${branches:-desconhecida}' do EAS, não a '$CHANNEL'. Escolha o canal do próprio grupo (o ambiente e seus revisores vêm do canal escolhido)."
+            exit 1
+          fi
+          echo "Grupo $GROUP confirmado na branch $CHANNEL."
+
+      # Same rule as deploy.yml: with a committed certificate the republished
+      # group must be signed again, or the binaries refuse it.
+      - name: Prepare the OTA signing key
+        id: signing
+        env:
+          PRIVATE_KEY: ${{ secrets.EXPO_UPDATE_PRIVATE_KEY }}
+        run: |
+          if [ -n "$PRIVATE_KEY" ]; then
+            umask 077
+            mkdir -p "$RUNNER_TEMP/ota-signing"
+            printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/ota-signing/private-key.pem"
+            echo "args=--private-key-path $RUNNER_TEMP/ota-signing/private-key.pem" >> "$GITHUB_OUTPUT"
+          elif [ -f certs/certificate.pem ]; then
+            echo "::error::certs/certificate.pem existe e EXPO_UPDATE_PRIVATE_KEY não está neste ambiente: o grupo republicado seria recusado pelos aparelhos."
+            exit 1
+          fi
+
+      - name: Republish the update group
+        env:
+          GROUP: ${{ github.event.inputs.group }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+          SIGNING_ARGS: ${{ steps.signing.outputs.args }}
+        run: |
+          # shellcheck disable=SC2086
+          eas update:republish --group "$GROUP" --platform android \
+            --message "Rollback de $CHANNEL para o grupo $GROUP (por $GITHUB_ACTOR)" \
+            --non-interactive $SIGNING_ARGS
+
+      - name: Remove the OTA signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ota-signing"

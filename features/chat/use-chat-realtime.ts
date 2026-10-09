@@ -7,13 +7,15 @@ import Toast from "react-native-toast-message";
 import type { Socket } from "socket.io-client";
 
 import { useAuthStore } from "@/store/auth-store";
-import { queryClient } from "@/providers/query-provider";
 
 import { apiClient } from "@/utils/api";
-import { initializeSocket } from "@/utils/socket";
+import { initializeSocket, socketCarriedLastAbsence } from "@/utils/socket";
 
 import { latestIso, newestDeliverableAt } from "./chat-rules";
+import { conversationIsFocused } from "./conversation-presence";
 import { markChatDelivered } from "./mark-delivered";
+import { requestChatUnreadRefresh } from "./unread-refresh";
+import { refreshLinkedChatMessages } from "./linked-messages";
 
 import type { ChatMessage, ChatMessagesResponse } from "./types";
 
@@ -118,10 +120,16 @@ function useChatRealtime(): void {
    * those messages. Confirming without fetching — a `Date.now()` receipt and
    * no request — would be cheaper and would be a lie, marking as delivered
    * messages this phone has never seen.
+   *
+   * With the conversation on screen this steps aside: the conversation
+   * fetches the same head of the thread on the same return or reconnection
+   * and confirms delivery from it, so a second download would only cost the
+   * driver's data plan.
    */
   const reconcileDelivery = useCallback(async () => {
     const now = Date.now();
 
+    if (conversationIsFocused() && AppState.currentState === "active") return;
     if (reconcilingRef.current) return;
     if (now - lastReconcileAtRef.current < RECONCILE_MIN_INTERVAL_MS) return;
 
@@ -170,6 +178,11 @@ function useChatRealtime(): void {
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
 
+      // The socket stayed up through the absence and delivered every
+      // message live, receipts included: nothing landed unheard (MOB-20).
+      // After a pause, the reconnection's `connect` reconciles anyway.
+      if (socketCarriedLastAbsence()) return;
+
       void reconcileDelivery();
     });
 
@@ -205,7 +218,12 @@ function useChatRealtime(): void {
         scheduleDelivery(incoming.threadId, deliveredAt);
       }
 
-      queryClient.invalidateQueries({ queryKey: ["chat-unread"] });
+      // One badge refetch per burst, shared with the conversation's read
+      // cursor: a broadcast is not twenty `list-threads` calls (MOB-09).
+      requestChatUnreadRefresh();
+
+      // A message about a delivery or a route: its previews are stale.
+      refreshLinkedChatMessages(incoming);
 
       // On the conversation screen the message is already on screen.
       if (pathname === "/chat") return;

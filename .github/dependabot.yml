@@ -1,0 +1,56 @@
+# Dependency updates (INFRA-16).
+#
+# Security updates also need "Dependabot alerts" and "Dependabot security
+# updates" switched on in the repository (or organization) settings; this
+# file adds the scheduled version updates:
+# - npm: minor and patch grouped into one weekly PR. The Expo SDK decides the
+#   minor/major versions of expo-*, react and react-native together (`npx
+#   expo install --fix` after an SDK upgrade), so only their patches come
+#   from here.
+# - github-actions: every action is pinned by commit SHA with its version in
+#   a comment, and Dependabot moves both together.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "expo"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "expo-*"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "@expo/*"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "react"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "react-dom"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "react-native"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "react-native-*"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "@react-native/*"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+    commit-message:
+      prefix: chore(deps)
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore(ci)

@@ -7,11 +7,21 @@ import type { TrackablePing } from "./position-rules";
 
 import {
   afterFlushFailure,
+  afterFlushForbidden,
   afterFlushSuccess,
+  afterSignedOut,
+  claimFor,
+  classifyBatchFailure,
   ingestInto,
   restoreFrom,
+  shouldHaltTracking,
+  splitRefused,
+  takeFlushBatch,
+  type BatchFailure,
   type TrackingState,
 } from "./state-rules";
+
+import { settleWithin } from "./settle-within";
 
 /**
  * The one pipeline a fix goes through, whoever noticed it.
@@ -75,61 +85,272 @@ async function writeState(state: TrackingState): Promise<void> {
   await asyncStorage.setItem(STATE_KEY, state);
 }
 
+/** Where the auth store persists the signed-in user (see store/auth-store.ts). */
+const AUTH_STORE_KEY = "auth-store";
+
 /**
- * Sends what is buffered, and obeys the API's verdict.
+ * Who is signed in, read from storage rather than from the store.
  *
- * The buffer is cleared BEFORE the request and put back on failure. Points
- * arriving mid-request belong to the next batch: counted in this one they
- * would be sent twice, dropped they would be lost.
+ * The background task is a second JavaScript context where the auth store may
+ * never have hydrated; the persisted copy is the one thing both contexts
+ * share. Logging out clears it, so a flush after logout finds nobody and sends
+ * nothing — the points wait for their owner or are dropped for the next user.
  */
-async function flush(): Promise<{ sent: number; stopped: boolean }> {
-  return serialise(async () => {
-    const state = await readState();
+async function currentUserId(): Promise<string | null> {
+  const persisted = await asyncStorage.getItem<{
+    state?: { user?: { id?: string } | null };
+  }>(AUTH_STORE_KEY);
 
-    if (state.buffer.length === 0) return { sent: 0, stopped: state.stopped };
+  return persisted?.state?.user?.id ?? null;
+}
 
-    const sending = state.buffer;
+/** One request carrying a batch of points, with whatever credentials apply. */
+type PostPings = (pings: TrackablePing[]) => Promise<RecordResponse>;
 
-    await writeState({ ...state, buffer: [] });
+/** The ordinary send: the session's token, refreshed when it expires. */
+const postWithSession: PostPings = (pings) =>
+  apiClient.post<RecordResponse>("/route/positions", { pings });
+
+interface BatchOutcome {
+  delivered: number;
+  unsent: TrackablePing[];
+  tracking: boolean | null;
+
+  /** Why the batch stopped short, when it did. */
+  failure: Exclude<BatchFailure, "invalid"> | null;
+}
+
+/**
+ * Sends one batch, halving it when the API refuses it as invalid.
+ *
+ * A 400 is a verdict on the points, not on the moment — sending the same batch
+ * again gets the same answer forever. A 403 from the API is a verdict on the
+ * phone, and a 401 on the session (`classifyBatchFailure`). Anything else (no
+ * signal, 5xx, 429) stops here and hands back what was not sent, in order.
+ */
+async function sendBatch(
+  batch: TrackablePing[],
+  post: PostPings,
+): Promise<BatchOutcome> {
+  const pending = [batch];
+
+  let delivered = 0;
+  let tracking: boolean | null = null;
+
+  while (pending.length > 0) {
+    const piece = pending.shift() as TrackablePing[];
 
     try {
-      const response = await apiClient.post<RecordResponse>(
-        "/route/positions",
-        { pings: sending },
-      );
+      const response = await post(piece);
 
-      const after = await readState();
-      const tracking = response.data.tracking;
-
-      await writeState(afterFlushSuccess(after, tracking, Date.now()));
-      await asyncStorage.removeItem(LEGACY_BUFFER_KEY);
-
-      return { sent: sending.length, stopped: !tracking };
+      delivered += piece.length;
+      tracking = response.data.tracking;
     } catch (error) {
-      const after = await readState();
+      const failure = classifyBatchFailure(error);
 
-      await writeState(afterFlushFailure(after, sending));
+      if (failure === "invalid") {
+        const halves = splitRefused(piece);
 
-      logger.warn("[Tracking] Falha ao enviar posições", error);
+        if (halves.length === 0) {
+          // Only when it was taken: the point itself is where the driver was
+          // (personal data), and these lines reach logcat in production.
+          logger.warn(
+            "[Tracking] Ponto recusado pela API, descartado",
+            piece[0]?.recorded_at,
+          );
+        }
 
-      return { sent: 0, stopped: after.stopped };
+        pending.unshift(...halves);
+        continue;
+      }
+
+      return {
+        delivered,
+        unsent: [piece, ...pending].flat(),
+        tracking,
+        failure,
+      };
     }
+  }
+
+  return { delivered, unsent: [], tracking, failure: null };
+}
+
+/**
+ * The flush loop, for one known user and one way of posting.
+ *
+ * In pieces of at most MAX_FLUSH_BATCH: the buffer can hold more than one
+ * request may carry. Each piece leaves the buffer BEFORE its request and goes
+ * back at the front on failure, so nothing is sent twice or lost, and a
+ * failure mid-way keeps everything after it for the next flush.
+ *
+ * Must run inside `serialise`.
+ */
+async function flushAs(
+  userId: string,
+  post: PostPings,
+): Promise<{ sent: number; stopped: boolean }> {
+  const saved = await readState();
+
+  let state = claimFor(saved, userId);
+
+  if (state !== saved) await writeState(state);
+
+  let sent = 0;
+
+  while (state.buffer.length > 0) {
+    const { sending, rest } = takeFlushBatch(state.buffer);
+
+    await writeState({ ...state, buffer: rest });
+
+    const outcome = await sendBatch(sending, post);
+    const after = await readState();
+
+    sent += outcome.delivered;
+
+    if (outcome.failure === "forbidden") {
+      await writeState(afterFlushForbidden(after));
+
+      logger.warn("[Tracking] API recusou as posições deste aparelho; rastreamento parado");
+
+      return { sent, stopped: true };
+    }
+
+    if (outcome.failure === "signed-out") {
+      await writeState(afterSignedOut(after, outcome.unsent));
+
+      return { sent, stopped: true };
+    }
+
+    if (outcome.unsent.length > 0) {
+      await writeState(afterFlushFailure(after, outcome.unsent));
+
+      logger.warn("[Tracking] Falha ao enviar posições");
+
+      return { sent, stopped: after.stopped };
+    }
+
+    state = afterFlushSuccess(
+      after,
+      outcome.tracking ?? !after.stopped,
+      Date.now(),
+    );
+
+    // No route running any more: what is left has nowhere to go, and kept
+    // it would be filed under whatever route starts next.
+    if (state.stopped) state = { ...state, buffer: [] };
+
+    await writeState(state);
+    await asyncStorage.removeItem(LEGACY_BUFFER_KEY);
+  }
+
+  return { sent, stopped: state.stopped };
+}
+
+/** Sends what is buffered, oldest first, and obeys the API's verdict. */
+async function flush(): Promise<{ sent: number; stopped: boolean }> {
+  return serialise(async () => {
+    const userId = await currentUserId();
+
+    // Nobody signed in: nothing can be sent as anyone.
+    if (!userId) return { sent: 0, stopped: (await readState()).stopped };
+
+    return flushAs(userId, postWithSession);
   });
 }
 
-/** A batch of fixes, from wherever they came. */
-async function ingest(fixes: TrackablePing[]): Promise<{ kept: number }> {
+/** How long a logout waits for the route's last stretch to go out. */
+const SIGN_OUT_FLUSH_TIMEOUT_MS = 4_000;
+
+/**
+ * The last stretch of the route, sent while the session still exists (MOB-24).
+ *
+ * The flush on the way out used to run after the logout had already cleared
+ * the session: it found nobody signed in and sent nothing, and the next
+ * driver on the phone discarded the buffer. So the logout calls this FIRST,
+ * with the user and the token it is about to throw away.
+ *
+ * The token goes in the header with `requiresAuth: false`, like the remote
+ * logout's own calls: no refresh, and no forced logout triggered from inside
+ * a logout. A token that no longer works is a 401 — the points stay for this
+ * driver's next sign-in. Bounded, because signing out must not wait on a
+ * dead network. Resolves to how many points went out; never rejects.
+ */
+async function flushBeforeSignOut(input: {
+  userId: string | null;
+  accessToken: string | null;
+  timeoutMs?: number;
+}): Promise<number> {
+  const { userId, accessToken } = input;
+
+  if (!userId || !accessToken) return 0;
+
+  const timeoutMs = input.timeoutMs ?? SIGN_OUT_FLUSH_TIMEOUT_MS;
+
+  const post: PostPings = (pings) =>
+    apiClient.request<RecordResponse>("/route/positions", {
+      method: "POST",
+      body: { pings },
+      requiresAuth: false,
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeoutMs,
+    });
+
+  const outcome = await settleWithin(
+    serialise(async () => {
+      const saved = await readState();
+
+      // Nothing of this driver's to send: the logout touches nothing here.
+      if (saved.ownerId !== userId || saved.buffer.length === 0) {
+        return { sent: 0, stopped: saved.stopped };
+      }
+
+      return flushAs(userId, post);
+    }),
+    timeoutMs,
+  );
+
+  return outcome?.sent ?? 0;
+}
+
+/**
+ * A batch of fixes, from wherever they came.
+ *
+ * `halt` tells the caller to stop asking the OS for more: the API said the
+ * route is over or refused the phone, or nobody is signed in any more
+ * (`shouldHaltTracking`).
+ */
+async function ingest(
+  fixes: TrackablePing[],
+): Promise<{ kept: number; halt: boolean }> {
   const outcome = await serialise(async () => {
-    const result = ingestInto(await readState(), fixes);
+    const userId = await currentUserId();
+
+    // A fix after logout belongs to nobody the API would file it under.
+    if (!userId) {
+      return { kept: 0, flushNow: false, signedIn: false, stopped: false };
+    }
+
+    const result = ingestInto(claimFor(await readState(), userId), fixes);
 
     await writeState(result.state);
 
-    return result;
+    return {
+      kept: result.kept,
+      flushNow: result.flushNow,
+      signedIn: true,
+      stopped: result.state.stopped,
+    };
   });
 
-  if (outcome.flushNow) await flush();
+  const stopped = outcome.flushNow
+    ? (await flush()).stopped
+    : outcome.stopped;
 
-  return { kept: outcome.kept };
+  return {
+    kept: outcome.kept,
+    halt: shouldHaltTracking({ signedIn: outcome.signedIn, stopped }),
+  };
 }
 
 /** Whether the API has told us to stop following this driver. */
@@ -154,8 +375,10 @@ async function resume(): Promise<void> {
 
 export {
   LEGACY_BUFFER_KEY,
+  SIGN_OUT_FLUSH_TIMEOUT_MS,
   STATE_KEY,
   flush,
+  flushBeforeSignOut,
   ingest,
   isStopped,
   readState,

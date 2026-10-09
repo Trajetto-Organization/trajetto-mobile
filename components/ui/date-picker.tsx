@@ -56,9 +56,9 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   return (
     <View className={className}>
       {label && (
-        <Text className="text-gray-700 font-medium mb-2">
+        <Text className="text-ink-soft font-medium mb-2">
           {label}
-          {required && <Text className="text-red-500"> *</Text>}
+          {required && <Text className="text-destructive"> *</Text>}
         </Text>
       )}
 
@@ -66,20 +66,20 @@ export const DatePicker: React.FC<DatePickerProps> = ({
         onPress={showDatePicker}
         disabled={disabled}
         className={cn(
-          "border rounded-lg px-3 py-3 bg-white flex-row justify-between items-center",
-          error ? "border-danger-500" : "border-gray-300",
-          disabled && "bg-gray-100 opacity-60",
+          "border rounded-lg px-3 py-3 bg-card flex-row justify-between items-center",
+          error ? "border-destructive" : "border-input",
+          disabled && "bg-subtle opacity-60",
         )}
       >
         <Text
-          className={cn("text-base", value ? "text-gray-900" : "text-gray-500")}
+          className={cn("text-base", value ? "text-ink" : "text-muted")}
         >
           {value ? formatDate(value) : placeholder}
         </Text>
-        <Text className="text-gray-400 text-lg">📅</Text>
+        <Text className="text-muted text-lg">📅</Text>
       </TouchableOpacity>
 
-      {error && <Text className="text-danger-600 text-sm mt-1">{error}</Text>}
+      {error && <Text className="text-destructive text-sm mt-1">{error}</Text>}
 
       {showPicker && (
         <DateTimePicker

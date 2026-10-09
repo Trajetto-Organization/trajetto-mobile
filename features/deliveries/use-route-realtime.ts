@@ -6,7 +6,9 @@ import type { Socket } from "socket.io-client";
 import { useAuthStore } from "@/store/auth-store";
 import { queryClient } from "@/providers/query-provider";
 
-import { initializeSocket } from "@/utils/socket";
+import { initializeSocket, onRealtimeResync } from "@/utils/socket";
+
+import { announcePlanChange } from "./plan-change-notice";
 
 const ROUTE_EVENT = "routeEvent";
 
@@ -40,7 +42,12 @@ function useRouteRealtime(): void {
     const handleRouteEvent = (incoming: unknown) => {
       if (disposed) return;
 
-      const event = incoming as { type?: string; routeCode?: number } | null;
+      const event = incoming as {
+        type?: string;
+        routeId?: string;
+        routeCode?: number;
+        planVersion?: number;
+      } | null;
 
       if (!event?.type) return;
 
@@ -49,9 +56,10 @@ function useRouteRealtime(): void {
       });
 
       /**
-       * Only the two the driver has to know about, and only as a toast.
+       * Only the ones the driver has to know about, and only as a toast.
        *
-       * A released route is work arriving; a cancelled one is work leaving,
+       * A released route is work arriving; a cancelled one is work leaving;
+       * a changed one is the day's plan moving under them,
        * and a driver who is not told keeps driving to an address nobody
        * expects them at any more. The rest — started, completed, a stop
        * settling — are things this phone just DID, and telling somebody what
@@ -65,6 +73,19 @@ function useRouteRealtime(): void {
             ? `A rota ${event.routeCode} está disponível.`
             : "Sua rota do dia está disponível.",
           position: "top",
+        });
+
+        return;
+      }
+
+      // A released route's stops or order changed under the driver (route
+      // design §6.3). Shared with the sync's notice, so the refetch above does
+      // not say it again.
+      if (event.type === "route.stops_changed") {
+        announcePlanChange({
+          routeId: event.routeId ?? "",
+          code: event.routeCode,
+          planVersion: event.routeId ? event.planVersion : undefined,
         });
 
         return;
@@ -100,8 +121,24 @@ function useRouteRealtime(): void {
         // the fast path, not the only one.
       });
 
+    /*
+      The route and delivery events emitted while the socket was down are
+      gone — the API has no replay — so a reconnection refetches the same list
+      both events invalidate. No toast: nothing is known about what changed,
+      only that something may have. `useDeliveryRealtime` shares the key, so
+      this one subscription covers both.
+    */
+    const stopResync = onRealtimeResync(() => {
+      if (disposed) return;
+
+      void queryClient.invalidateQueries({
+        queryKey: ["my-deliveries", businessId],
+      });
+    });
+
     return () => {
       disposed = true;
+      stopResync();
       boundSocket?.off(ROUTE_EVENT, handleRouteEvent);
     };
   }, [isAuthenticated, businessId, driverId]);

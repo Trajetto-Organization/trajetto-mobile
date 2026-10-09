@@ -1,48 +1,397 @@
-name: EAS Build and Submit
+name: Release (EAS)
 
+# From a commit to the drivers' phones (docs/deploy.md, "Pipeline").
+#
+#   work branch --PR--> staging --PR (merge commit)--> main
+#
+# - push to staging: CI (ci.yml) -> OTA update on the "staging" channel and,
+#   when something native changed, an internal staging APK on EAS.
+# - push to main: CI -> proof that the same commit went green on staging ->
+#   OTA update on the "production" channel and, when something native
+#   changed, a production AAB on EAS (submitted to the Play internal track
+#   when PLAY_SUBMIT_ENABLED is on).
+# - manual run: one EAS build of any profile, after CI.
+#
+# The app cannot "build once, promote by digest" across environments the way
+# the API and web images do: EXPO_PUBLIC_* values (the API URL above all) are
+# baked into the JavaScript bundle and the binary at build time, so a staging
+# artifact talks to the staging API forever. What is promoted is the COMMIT:
+# main only ships a commit whose staging run succeeded, and its production
+# artifacts come from that exact tree, with the production EAS environment.
+#
+# Every EAS step skips with a notice while EXPO_TOKEN is not configured, so
+# the pipeline is green before the Expo robot token exists.
 on:
   push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+    branches: [staging, main]
   workflow_dispatch:
     inputs:
       profile:
-        description: "Build profile"
+        description: "Perfil de build do eas.json"
         required: true
-        default: "preview"
+        default: "staging"
         type: choice
         options:
           - development
           - preview
+          - staging
           - production
 
 permissions:
   contents: read
 
+# Releases of one branch run one at a time and are never cancelled midway:
+# a half-published OTA or a queued-then-cancelled build is worse than a wait.
 concurrency:
-  group: eas-${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.profile || 'preview' }}
+  group: release-${{ github.ref }}-${{ github.event.inputs.profile || 'push' }}
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: EAS Build
+  # The whole CI (audit, lint, typecheck, unit tests with the coverage floor,
+  # expo-doctor, gitleaks over the history). Nothing below starts without it.
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+    secrets:
+      API_REPO_READ_TOKEN: ${{ secrets.API_REPO_READ_TOKEN }}
+
+  # What this push changes. `app`: anything besides docs, tests and CI (an
+  # OTA of an unchanged bundle is noise). `native`: anything that can change
+  # the runtime fingerprint, which only a new binary delivers.
+  #
+  # The base is the last commit this workflow released successfully on this
+  # branch, not `github.event.before`: GitHub drops a PENDING run of the same
+  # concurrency group when a newer push arrives, and a native change in the
+  # dropped push would otherwise never be diffed (an OTA would then target a
+  # runtime no installed binary has). With no successful run yet, or a base
+  # that is not an ancestor of this commit, `before` is used; when that is
+  # unreadable too, everything counts as changed.
+  plan:
+    name: What this push ships
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+      native: ${{ steps.diff.outputs.native }}
 
     steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Classify the changed files
+        id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          app=true
+          native=true
+          base=$(gh api             "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?branch=${GITHUB_REF_NAME}&event=push&status=success&per_page=1"             --jq '.workflow_runs[0].head_sha // empty' 2>/dev/null || true)
+          if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null             && git merge-base --is-ancestor "$base" "$GITHUB_SHA"; then
+            echo "Base: último release verde desta branch, $base."
+          else
+            base="$BEFORE"
+            echo "Sem release verde utilizável nesta branch: base é o push anterior ($base)."
+          fi
+          if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            app=false
+            native=false
+            git diff --name-only "$base" "$GITHUB_SHA" > "$RUNNER_TEMP/changed.txt"
+            while IFS= read -r file; do
+              case "$file" in
+                docs/* | tests/* | .github/* | .maestro/* | scripts/e2e/* | *.md) ;;
+                *) app=true ;;
+              esac
+              case "$file" in
+                package.json | package-lock.json | app.json | app.config.js | eas.json \
+                  | plugins/* | modules/* | assets/* | certs/*) native=true ;;
+              esac
+            done < "$RUNNER_TEMP/changed.txt"
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "native=$native" >> "$GITHUB_OUTPUT"
+          echo "Muda o app: $app. Muda o lado nativo (pede binário novo): $native."
+          if [ "$app" = false ]; then
+            echo "::notice::Só docs, testes ou CI mudaram: nada é publicado no EAS."
+          fi
+
+  # main ships only what staging already validated. The shipped commit is the
+  # merge commit's second parent (the staging head that was merged) or, on a
+  # fast-forward, the pushed commit itself. Squash and GitHub's "Rebase and
+  # merge" create commits staging never ran, and are refused here: merge
+  # staging into main with a merge commit (docs/deploy.md).
+  staging-evidence:
+    name: Was this commit green on staging?
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout repository (full history, for the tree check)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Find the successful staging run of the shipped commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git rev-parse --verify --quiet "HEAD^2" > /dev/null; then
+            shipped=$(git rev-parse "HEAD^2")
+            echo "Merge commit: o commit de staging é o segundo pai, $shipped."
+            # The second parent is only "what ships" when the merge tree is
+            # exactly the staging tree that ran green. A hotfix or revert made
+            # only on main, or a merge resolution, makes the trees differ.
+            # Earlier release merge commits that exist only on main are fine:
+            # they carry no change of their own.
+            if ! git diff --quiet "HEAD^2" HEAD; then
+              echo "::error::A árvore do merge commit difere da do commit de staging $shipped (hotfix ou revert só em main, ou resolução de conflito): essa árvore nunca rodou em staging. Leve a correção por staging (docs/deploy.md, \"Pipeline\")."
+              exit 1
+            fi
+          else
+            shipped="$GITHUB_SHA"
+            echo "Fast-forward: o commit de staging é o próprio $shipped."
+          fi
+          count=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?branch=staging&event=push&status=success&head_sha=${shipped}" \
+            --jq '.total_count')
+          if [ "${count:-0}" -lt 1 ]; then
+            echo "::error::O commit $shipped não tem execução verde deste workflow na branch staging. Publique em staging primeiro e faça o merge em main com merge commit (squash e o rebase do GitHub criam commits que staging nunca validou)."
+            exit 1
+          fi
+          echo "Validado em staging: $count execução(ões) verde(s) para $shipped."
+
+  staging:
+    name: Staging (OTA and internal APK)
+    needs: [checks, plan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging' && needs.plan.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+
+    steps:
+      - name: Is EAS configured?
+        id: eas
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::EXPO_TOKEN ausente: nada foi publicado no EAS (OTA e build de staging pulados)."
+          fi
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        if: steps.eas.outputs.enabled == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        if: steps.eas.outputs.enabled == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      # Pinned by commit (INFRA-16): this step receives EXPO_TOKEN.
+      - name: Setup Expo and EAS
+        if: steps.eas.outputs.enabled == 'true'
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # 8.2.1
+        with:
+          eas-version: 21.7.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        if: steps.eas.outputs.enabled == 'true'
+        run: npm ci
+
+      # A binary with certs/certificate.pem refuses any update not signed by
+      # the matching private key (docs/deploy.md, "OTA assinada"). The key
+      # reaches CI only as the environment secret EXPO_UPDATE_PRIVATE_KEY,
+      # lives in a 0600 file under RUNNER_TEMP and is removed at the end.
+      # Staging may publish unsigned only while no certificate is committed,
+      # because then its binaries accept unsigned updates anyway.
+      - name: Prepare the OTA signing key
+        id: signing
+        if: steps.eas.outputs.enabled == 'true'
+        env:
+          PRIVATE_KEY: ${{ secrets.EXPO_UPDATE_PRIVATE_KEY }}
+        run: |
+          if [ -n "$PRIVATE_KEY" ]; then
+            umask 077
+            mkdir -p "$RUNNER_TEMP/ota-signing"
+            printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/ota-signing/private-key.pem"
+            echo "args=--private-key-path $RUNNER_TEMP/ota-signing/private-key.pem" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [ -f certs/certificate.pem ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::certs/certificate.pem existe e EXPO_UPDATE_PRIVATE_KEY não está no ambiente staging: OTA de staging pulada (os binários recusariam um bundle sem assinatura)."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Sem certificado de OTA no repositório: a atualização de staging sai sem assinatura."
+          fi
+
+      - name: Publish the OTA update to the staging channel
+        if: steps.eas.outputs.enabled == 'true' && steps.signing.outputs.publish == 'true'
+        env:
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          SIGNING_ARGS: ${{ steps.signing.outputs.args }}
+        run: |
+          message="$(printf '%s' "$HEAD_MESSAGE" | head -n 1 | cut -c1-200) (${GITHUB_SHA::7})"
+          # shellcheck disable=SC2086
+          eas update --branch staging --environment staging --platform android \
+            --message "$message" --non-interactive $SIGNING_ARGS
+
+      # --no-wait: the build runs on EAS, not here, so a green step means
+      # "queued". The APK and its install link are on expo.dev (Builds).
+      - name: Queue the staging build on EAS (native change)
+        if: steps.eas.outputs.enabled == 'true' && needs.plan.outputs.native == 'true'
+        run: |
+          eas build --platform android --profile staging --non-interactive --no-wait
+
+      - name: Remove the OTA signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ota-signing"
+
+  production:
+    name: Production (OTA and store build)
+    needs: [checks, plan, staging-evidence]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Required reviewers are set on this environment (docs/deploy.md): the
+    # job waits for an approval before it touches the drivers' phones.
+    environment: production
+
+    steps:
+      - name: Is EAS configured?
+        id: eas
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::EXPO_TOKEN ausente: nada foi publicado no EAS (OTA e build de produção pulados)."
+          fi
+
+      - name: Checkout repository
+        if: steps.eas.outputs.enabled == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node.js
+        if: steps.eas.outputs.enabled == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      # Pinned by commit (INFRA-16): this step receives EXPO_TOKEN, and the
+      # production profile can auto-submit to the Play Store.
+      - name: Setup Expo and EAS
+        if: steps.eas.outputs.enabled == 'true'
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # 8.2.1
+        with:
+          eas-version: 21.7.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        if: steps.eas.outputs.enabled == 'true'
+        run: npm ci
+
+      # Production never publishes unsigned: without the certificate AND the
+      # key, whoever holds EXPO_TOKEN could reach every phone. Until both
+      # exist, production OTA stays a manual, signed `npm run update:production`.
+      - name: Prepare the OTA signing key
+        id: signing
+        if: steps.eas.outputs.enabled == 'true'
+        env:
+          PRIVATE_KEY: ${{ secrets.EXPO_UPDATE_PRIVATE_KEY }}
+        run: |
+          if [ -f certs/certificate.pem ] && [ -n "$PRIVATE_KEY" ]; then
+            umask 077
+            mkdir -p "$RUNNER_TEMP/ota-signing"
+            printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/ota-signing/private-key.pem"
+            echo "args=--private-key-path $RUNNER_TEMP/ota-signing/private-key.pem" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::OTA de produção pulada: exige certs/certificate.pem no repositório e EXPO_UPDATE_PRIVATE_KEY no ambiente production."
+          fi
+
+      - name: Publish the OTA update to the production channel
+        if: steps.eas.outputs.enabled == 'true' && steps.signing.outputs.publish == 'true'
+        env:
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          SIGNING_ARGS: ${{ steps.signing.outputs.args }}
+        run: |
+          message="$(printf '%s' "$HEAD_MESSAGE" | head -n 1 | cut -c1-200) (${GITHUB_SHA::7})"
+          # shellcheck disable=SC2086
+          eas update --branch production --environment production --platform android \
+            --message "$message" --non-interactive $SIGNING_ARGS
+
+      # The store build: an AAB with the versionCode EAS increments. With the
+      # repository variable PLAY_SUBMIT_ENABLED=true (after the first AAB was
+      # uploaded by hand and the Play service account is in the EAS
+      # credentials), EAS submits it to the internal track.
+      - name: Queue the production build on EAS (native change)
+        if: steps.eas.outputs.enabled == 'true' && needs.plan.outputs.native == 'true'
+        env:
+          PLAY_SUBMIT_ENABLED: ${{ vars.PLAY_SUBMIT_ENABLED }}
+        run: |
+          if [ "$PLAY_SUBMIT_ENABLED" = "true" ]; then
+            eas build --platform android --profile production --auto-submit-with-profile production --non-interactive --no-wait
+          else
+            echo "::notice::PLAY_SUBMIT_ENABLED desligada: o AAB fica no EAS, sem envio à Play Store."
+            eas build --platform android --profile production --non-interactive --no-wait
+          fi
+
+      - name: Remove the OTA signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ota-signing"
+
+  # A build of any profile on demand (Actions -> Release (EAS) -> Run
+  # workflow). Production waits for the production environment's reviewers.
+  manual-build:
+    name: Manual EAS build
+    needs: checks
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ github.event.inputs.profile == 'production' && 'production' || 'staging' }}
+
+    steps:
+      - name: Is EAS configured?
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::EXPO_TOKEN ausente: configure o secret antes de pedir um build manual (docs/variaveis-de-ambiente.md)."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Setup Expo and EAS
-        if: github.event_name != 'pull_request'
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # 8.2.1
         with:
           eas-version: 21.7.0
           token: ${{ secrets.EXPO_TOKEN }}
@@ -50,23 +399,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate TypeScript, lint and Expo configuration
+      - name: Queue the build on EAS
+        env:
+          PROFILE: ${{ github.event.inputs.profile }}
+          PLAY_SUBMIT_ENABLED: ${{ vars.PLAY_SUBMIT_ENABLED }}
         run: |
-          npm run typecheck
-          npm run lint
-          npm run doctor
-
-      - name: Build on EAS (Auto Push)
-        if: github.event_name == 'push'
-        run: |
-          eas build --platform android --profile preview --non-interactive --no-wait
-
-      - name: Build on EAS (Manual - Production)
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'production'
-        run: |
-          eas build --platform android --profile production --auto-submit --auto-submit-with-profile production --non-interactive --no-wait
-
-      - name: Build on EAS (Manual - Other)
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile != 'production'
-        run: |
-          eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive --no-wait
+          if [ "$PROFILE" = "production" ] && [ "$PLAY_SUBMIT_ENABLED" = "true" ]; then
+            eas build --platform android --profile production --auto-submit-with-profile production --non-interactive --no-wait
+          else
+            eas build --platform android --profile "$PROFILE" --non-interactive --no-wait
+          fi

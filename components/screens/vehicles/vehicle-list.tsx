@@ -5,6 +5,7 @@ import { LoadingSpinner, VehicleSkeletonList } from "../../ui";
 import { VehicleEmptyState } from "./vehicle-empty-state";
 
 import { Vehicle } from "@/types";
+import { useThemeColors } from "@/hooks/use-theme";
 
 interface VehicleListProps {
   vehicles: Vehicle[];
@@ -37,6 +38,7 @@ export const VehicleList: React.FC<VehicleListProps> = ({
   isDriverWithoutVehicles = false,
   hasActionPermission,
 }) => {
+  const colors = useThemeColors();
   const hasSearchResults = Boolean(
     debouncedSearch && debouncedSearch.length > 0,
   );
@@ -102,8 +104,9 @@ export const VehicleList: React.FC<VehicleListProps> = ({
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={["#3b82f6"]}
-          tintColor="#3b82f6"
+          colors={[colors.primarySurface]}
+          tintColor={colors.primary}
+          progressBackgroundColor={colors.card}
           progressViewOffset={20}
         />
       }

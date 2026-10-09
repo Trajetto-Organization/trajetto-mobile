@@ -1,0 +1,32 @@
+# A driver of a company without Frota: the app opens on the deliveries of the
+# day; "Início" only carries the account (bell, drawer), with no vehicle, no
+# fuel and no checklist.
+appId: com.trajetto.fleetmanager
+name: 06 Módulo Frota desligado
+tags:
+  - driver
+  - gating
+---
+- runFlow: subflows/logout.yaml
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${NOFLEET_EMAIL}
+      PASSWORD: ${DRIVER_PASSWORD}
+- extendedWaitUntil:
+    visible: "Cliente E2E 1"
+    timeout: 60000
+- assertVisible:
+    id: deliveries-list
+- tapOn:
+    id: tab-vehicles
+- extendedWaitUntil:
+    visible:
+      id: user-menu-button
+    timeout: 30000
+- assertNotVisible:
+    id: vehicle-card
+- assertNotVisible:
+    id: vehicle-action-fuel
+- assertVisible: "Suas entregas ficam na aba Entregas"
+- takeScreenshot: 06-sem-frota

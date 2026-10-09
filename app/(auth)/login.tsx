@@ -1,10 +1,11 @@
 import {
   View,
   Text,
-  KeyboardAvoidingView,
   TouchableOpacity,
   Image,
 } from "react-native";
+
+import { KeyboardAvoidingView } from "../../components/ui/keyboard-avoiding-view";
 
 import TrajettoLogo from "../../assets/images/trajetto-logo.png";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -12,26 +13,27 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Controller } from "react-hook-form";
 
 import { Button, Input } from "../../components/ui";
+import { LegalLinks } from "../../components/legal-links";
 import { useLogin } from "@/features/auth/hooks";
 
 const LoginScreen = () => {
   const {
     control,
-    handleSubmit,
     errors,
     isSubmitting,
-    onSubmit,
+    submit,
+    inputRef,
     navigateToForgotPassword,
   } = useLogin();
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView behavior={"height"} className="flex-1">
+    <SafeAreaView className="flex-1 bg-background">
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
         <View className="flex-1 px-6 justify-center">
           {/* Logo and Title */}
           <View className="items-center mb-8">
             <View
-              className="w-24 h-24 bg-primary-600
+              className="w-24 h-24 bg-primary
               rounded-full items-center justify-center mb-6 overflow-hidden"
             >
               <Image
@@ -46,15 +48,15 @@ const LoginScreen = () => {
             </View>
             <Text
               className="text-3xl font-bold
-              text-gray-900 mb-2"
+              text-ink mb-2"
             >
               Trajetto
             </Text>
             <Text
-              className="text-gray-600
+              className="text-muted
               text-center text-base"
             >
-              Gestão de frota inteligente
+              Gestão de frotas e entregas
             </Text>
           </View>
 
@@ -66,6 +68,8 @@ const LoginScreen = () => {
               render={({ field: { onChange, onBlur, value } }) => (
                 <Input
                   label="E-mail"
+                  testID="login-email"
+                  inputRef={inputRef("email")}
                   placeholder="Digite seu e-mail"
                   value={value}
                   onChangeText={onChange}
@@ -84,6 +88,8 @@ const LoginScreen = () => {
               render={({ field: { onChange, onBlur, value } }) => (
                 <Input
                   label="Senha"
+                  testID="login-password"
+                  inputRef={inputRef("password")}
                   placeholder="Digite sua senha"
                   value={value}
                   onChangeText={onChange}
@@ -99,7 +105,8 @@ const LoginScreen = () => {
 
           <View className="gap-2">
             <Button
-              onPress={handleSubmit(onSubmit)}
+              onPress={submit}
+              testID="login-submit"
               loading={isSubmitting}
               fullWidth
               className="mt-8"
@@ -114,13 +121,17 @@ const LoginScreen = () => {
               className="items-center py-3"
             >
               <Text
-                className="text-primary-600
+                className="text-primary
                 font-medium"
               >
                 Esqueci minha senha
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Play requires the privacy policy inside an app that collects
+              location; reachable before signing in. */}
+          <LegalLinks className="mt-6" />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -22,52 +22,71 @@ import {
   useUnreadNotificationsCount,
   type AppNotification,
 } from "@/features/notifications/use-notifications";
+import { openableNotificationLink } from "@/features/notifications/notification-link-rules";
+import {
+  PROOF_FEEDBACK_NOTIFICATION_TYPE,
+  notificationDeliveryTarget,
+} from "@/features/notifications/proof-feedback-rules";
+import { hasDeliveriesAccess } from "@/features/access/module-rules";
+import { useAuthStore } from "@/store/auth-store";
+import { useThemeColors } from "@/hooks/use-theme";
 
 import { refreshWithConnectionFeedback } from "@/utils/pull-to-refresh";
 import { StatusBanners } from "@/components/status-banners";
 
 interface TypeVisual {
   icon: keyof typeof Ionicons.glyphMap;
-  color: string;
+  /** The theme token the icon is drawn in (a value, so it follows the theme). */
+  tone: "destructive" | "warning" | "success" | "primary" | "inkSoft";
+  /** The icon's round chip, a soft tint of the same family. */
   chip: string;
 }
 
 /**
  * One accent per notification type, mirroring the web bell: the color does
- * the first pass of reading so the driver can scan the list by kind.
+ * the first pass of reading so the driver can scan the list by kind. Only
+ * the theme's state colours, so each one reads on both themes' cards; the
+ * module accents are left to identify the modules (docs/arquitetura.md, theme section, rule 11).
  */
 const TYPE_VISUAL: Record<string, TypeVisual> = {
   fine: {
     icon: "alert-circle-outline",
-    color: "#dc2626",
-    chip: "bg-red-500/10",
+    tone: "destructive",
+    chip: "bg-destructive-soft",
   },
   "service-order": {
     icon: "construct-outline",
-    color: "#d97706",
-    chip: "bg-amber-500/10",
+    tone: "warning",
+    chip: "bg-warning-soft",
   },
   "account-payable": {
     icon: "receipt-outline",
-    color: "#059669",
-    chip: "bg-emerald-500/10",
+    tone: "success",
+    chip: "bg-success-soft",
   },
+  // Unread rows sit on primary-soft already: the primary chip is the card.
   "kanban-card": {
     icon: "grid-outline",
-    color: "#7c3aed",
-    chip: "bg-violet-500/10",
+    tone: "primary",
+    chip: "bg-card",
   },
   "master-user": {
     icon: "person-outline",
-    color: "#0284c7",
-    chip: "bg-sky-500/10",
+    tone: "inkSoft",
+    chip: "bg-subtle",
+  },
+  // The automatic reading of a proof photo pointed at a problem (6.9).
+  [PROOF_FEEDBACK_NOTIFICATION_TYPE]: {
+    icon: "document-text-outline",
+    tone: "warning",
+    chip: "bg-warning-soft",
   },
 };
 
 const DEFAULT_VISUAL: TypeVisual = {
   icon: "notifications-outline",
-  color: "#2563eb",
-  chip: "bg-primary-600/10",
+  tone: "primary",
+  chip: "bg-card",
 };
 
 const relativeDate = (value: string): string => {
@@ -93,13 +112,14 @@ const relativeDate = (value: string): string => {
 /**
  * The notification list — the bell's destination.
  *
- * Tapping a card only marks it read: the links notifications carry point at
- * the web dashboard, and the driver's actionable work already lives in the
- * app's own screens. Read state syncs optimistically so the list feels
- * instant even on a slow connection.
+ * Tapping a card marks it read and follows its web link, if it has one; a
+ * proof warning opens its delivery in the app instead, where the driver can
+ * act on it. Read state syncs optimistically so the list feels instant even
+ * on a slow connection.
  */
 const NotificationsScreen = () => {
   const router = useRouter();
+  const colors = useThemeColors();
 
   const {
     notifications,
@@ -113,6 +133,11 @@ const NotificationsScreen = () => {
 
   const unreadCount = useUnreadNotificationsCount();
   const { mutate: markAsRead } = useMarkNotificationRead();
+
+  // A proof warning opens its delivery here, in the app (decision 6.9).
+  const canOpenDeliveries = useAuthStore((state) =>
+    hasDeliveriesAccess(state.user),
+  );
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -134,12 +159,28 @@ const NotificationsScreen = () => {
 
     // Kanban, service orders, master users — the subject of many
     // notifications lives on the web dashboard. Tapping marks it read and
-    // follows the same link the web bell would, in the browser.
+    // follows the same link the web bell would, in the browser. Only a web
+    // link: `openURL` would follow `intent://`, `tel:` or any app's scheme.
+    const link = openableNotificationLink(item.link);
+
+    // What the row is about lives in the app: its link points at the web
+    // inbox, which is no use to a driver in the street.
+    const deliveryId = notificationDeliveryTarget(item, canOpenDeliveries);
+
     const handlePress = () => {
       if (!item.read) markAsRead(item.id);
 
-      if (item.link) {
-        void Linking.openURL(item.link).catch(() => undefined);
+      if (deliveryId) {
+        router.navigate({
+          pathname: "/delivery-detail",
+          params: { id: deliveryId },
+        });
+
+        return;
+      }
+
+      if (link) {
+        void Linking.openURL(link).catch(() => undefined);
       }
     };
 
@@ -148,19 +189,19 @@ const NotificationsScreen = () => {
         activeOpacity={0.7}
         onPress={handlePress}
         className={`mb-3 rounded-xl border p-4 ${
-          item.read ? "border-gray-200 bg-white" : "border-primary-200 bg-primary-50"
+          item.read ? "border-border bg-card" : "border-primary/40 bg-primary-soft"
         }`}
       >
         <View className="flex-row items-start gap-3">
           <View
             className={`h-9 w-9 items-center justify-center rounded-full ${
-              item.read ? "bg-gray-100" : visual.chip
+              item.read ? "bg-subtle" : visual.chip
             }`}
           >
             <Ionicons
               name={visual.icon}
               size={18}
-              color={item.read ? "#6b7280" : visual.color}
+              color={item.read ? colors.muted : colors[visual.tone]}
             />
           </View>
 
@@ -169,35 +210,42 @@ const NotificationsScreen = () => {
               <Text
                 className={`flex-1 text-base ${
                   item.read
-                    ? "font-medium text-gray-700"
-                    : "font-semibold text-gray-900"
+                    ? "font-medium text-ink-soft"
+                    : "font-semibold text-ink"
                 }`}
                 numberOfLines={1}
               >
                 {item.title}
               </Text>
-              <Text className="text-xs text-gray-400">
+              <Text className="text-xs text-muted">
                 {relativeDate(item.created_at)}
               </Text>
             </View>
 
-            <Text className="mt-1 text-sm text-gray-600" numberOfLines={3}>
+            <Text className="mt-1 text-sm text-muted" numberOfLines={3}>
               {item.message}
             </Text>
 
-            {item.link && (
+            {deliveryId ? (
               <View className="mt-2 flex-row items-center gap-1">
-                <Ionicons name="open-outline" size={12} color="#6b7280" />
-                <Text className="text-xs text-gray-500">
+                <Ionicons name="cube-outline" size={12} color={colors.muted} />
+                <Text className="text-xs text-muted">
+                  Toque para ver a entrega
+                </Text>
+              </View>
+            ) : link ? (
+              <View className="mt-2 flex-row items-center gap-1">
+                <Ionicons name="open-outline" size={12} color={colors.muted} />
+                <Text className="text-xs text-muted">
                   Toque para abrir no sistema
                 </Text>
               </View>
-            )}
+            ) : null}
           </View>
 
           {/* Same red as the bell badge — one "attention" color everywhere. */}
           {!item.read && (
-            <View className="mt-1 h-2.5 w-2.5 rounded-full bg-danger-600" />
+            <View className="mt-1 h-2.5 w-2.5 rounded-full bg-destructive" />
           )}
         </View>
       </TouchableOpacity>
@@ -206,23 +254,23 @@ const NotificationsScreen = () => {
 
   return (
     <ProtectedRoute>
-      <SafeAreaView className="flex-1 bg-gray-50">
+      <SafeAreaView className="flex-1 bg-background">
         {/* Header */}
-        <View className="flex-row items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
+        <View className="flex-row items-center gap-3 border-b border-border bg-surface px-4 py-3">
           <TouchableOpacity
             onPress={() => router.back()}
             accessibilityRole="button"
             accessibilityLabel="Voltar"
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={22} color="#111827" />
+            <Ionicons name="arrow-back" size={22} color={colors.ink} />
           </TouchableOpacity>
 
           <View className="flex-1">
-            <Text className="text-lg font-bold text-gray-900">
+            <Text className="text-lg font-bold text-ink">
               Notificações
             </Text>
-            <Text className="text-xs text-gray-500">
+            <Text className="text-xs text-muted">
               {unreadCount === 0
                 ? "Tudo em dia"
                 : `${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`}
@@ -246,6 +294,9 @@ const NotificationsScreen = () => {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={() => void handleRefresh()}
+                colors={[colors.primarySurface]}
+                tintColor={colors.primary}
+                progressBackgroundColor={colors.card}
               />
             }
             onEndReached={loadMore}
@@ -262,14 +313,14 @@ const NotificationsScreen = () => {
                 <Ionicons
                   name={isError ? "cloud-offline-outline" : "notifications-off-outline"}
                   size={40}
-                  color="#9ca3af"
+                  color={colors.muted}
                 />
-                <Text className="mt-4 text-center text-base font-semibold text-gray-700">
+                <Text className="mt-4 text-center text-base font-semibold text-ink-soft">
                   {isError
                     ? "Não foi possível carregar"
                     : "Nenhuma notificação"}
                 </Text>
-                <Text className="mt-1 text-center text-sm text-gray-500">
+                <Text className="mt-1 text-center text-sm text-muted">
                   {isError
                     ? "Verifique sua conexão e puxe para atualizar."
                     : "Novos avisos aparecerão aqui."}

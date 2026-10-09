@@ -4,6 +4,7 @@ import { TouchableOpacity } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { Input } from "../ui";
+import { useThemeColors } from "../../hooks/use-theme";
 
 interface SearchWithDebounceProps {
   value: string;
@@ -18,19 +19,21 @@ export const SearchWithDebounce: React.FC<SearchWithDebounceProps> = ({
   placeholder = "Buscar...",
   className,
 }) => {
+  const colors = useThemeColors();
+
   return (
     <Input
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      className={className || "bg-white border-gray-200 rounded-2xl"}
+      className={className || "rounded-2xl"}
       rightIcon={
         value.length > 0 ? (
           <TouchableOpacity onPress={() => onChangeText("")}>
-            <Ionicons name="close" size={18} color="#6b7280" />
+            <Ionicons name="close" size={18} color={colors.muted} />
           </TouchableOpacity>
         ) : (
-          <Ionicons name="search" size={18} color="#9ca3af" />
+          <Ionicons name="search" size={18} color={colors.muted} />
         )
       }
     />

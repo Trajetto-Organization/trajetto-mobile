@@ -1,0 +1,23 @@
+# Clean install state, login through the form with the seeded driver of the
+# company with Frota and Entregas. The next flows continue this session.
+appId: com.trajetto.fleetmanager
+name: 00 Login do motorista
+tags:
+  - driver
+---
+- runFlow: subflows/launch.yaml
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${DRIVER_EMAIL}
+      PASSWORD: ${DRIVER_PASSWORD}
+- extendedWaitUntil:
+    visible: "Login realizado com sucesso!"
+    timeout: 60000
+# Frota on: the app opens on "Início", with the three tabs.
+- assertVisible:
+    id: tab-vehicles
+- assertVisible:
+    id: tab-deliveries
+- assertVisible:
+    id: tab-chat

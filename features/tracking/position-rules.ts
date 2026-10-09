@@ -39,15 +39,47 @@ function shouldTrack(deliveries: RouteBearingDelivery[]): boolean {
 }
 
 /**
- * How often the device is asked for a fix.
+ * How often the device is asked for a fix: every fifteen seconds, moving or
+ * not. A truck at 60 km/h covers 250 metres in that time, which is enough to
+ * see which street it took.
  *
- * Fifteen seconds and fifty metres, whichever comes first. A truck at 60 km/h
- * covers 250 metres in fifteen seconds, which is enough resolution to see
- * which street it took; asking more often buys a smoother line and costs a
- * driver their afternoon of battery.
+ * No distance floor. There used to be one of fifty metres, and on Android it
+ * is an AND, not an OR: the provider delivers nothing until the phone moves
+ * that far. A truck parked at a stop produced no fix at all, the stationary
+ * keepalive below never fired, and every stop longer than ten minutes went
+ * grey on the tower as "sem reportar" (MOB-TRK-2). The phone's own stationary
+ * filter decides what is worth keeping; the OS only has to keep answering.
  */
 const PING_INTERVAL_MS = 15_000;
-const PING_DISTANCE_METRES = 50;
+const PING_DISTANCE_METRES = 0;
+
+/**
+ * How long the OS may hold fixes before waking the background task.
+ *
+ * With no distance floor a parked truck would otherwise wake the JavaScript
+ * runtime every fifteen seconds for fixes the filter then drops. A minute
+ * costs nothing on the tower — the buffer only goes out every two minutes —
+ * and is well inside the five-minute keepalive.
+ */
+const DEFERRED_UPDATES_INTERVAL_MS = 60_000;
+
+/**
+ * What the OS is asked for, in either mode. One place, so the foreground
+ * watcher and the background task cannot drift apart.
+ */
+function trackingRequestOptions(): {
+  timeInterval: number;
+  distanceInterval: number;
+  deferredUpdatesInterval: number;
+  deferredUpdatesDistance: number;
+} {
+  return {
+    timeInterval: PING_INTERVAL_MS,
+    distanceInterval: PING_DISTANCE_METRES,
+    deferredUpdatesInterval: DEFERRED_UPDATES_INTERVAL_MS,
+    deferredUpdatesDistance: PING_DISTANCE_METRES,
+  };
+}
 
 /**
  * How often the buffer is sent.
@@ -69,6 +101,17 @@ const FLUSH_AT_COUNT = 20;
  * looking for, and a trail with a gap in the middle beats no trail at all.
  */
 const MAX_BUFFERED = 900;
+
+/**
+ * The most one request carries, well under the API's 500.
+ *
+ * The buffer used to go out whole. Past 500 points every flush was refused,
+ * the batch went back into the buffer, and the buffer — capped at 900, never
+ * below 500 again — was refused on every flush after that: tracking dead on
+ * that phone for good, across routes and logins, with nothing but a warning in
+ * the log. A flush now sends the buffer in pieces of this size.
+ */
+const MAX_FLUSH_BATCH = 200;
 
 function shouldFlush(props: {
   buffered: number;
@@ -101,8 +144,9 @@ function appendPing(
 /**
  * Whether a new fix is worth keeping at all.
  *
- * A parked truck still produces a fix every fifteen seconds, each one a few
- * metres from the last because GPS jitters. Storing those is storing nothing —
+ * A parked truck still produces a fix every fifteen seconds (see
+ * `trackingRequestOptions`), each one a few metres from the last because GPS
+ * jitters. Storing those is storing nothing —
  * 240 rows an hour that draw a dot on top of a dot — so a fix that has not
  * moved and has not waited is dropped on the phone, before it costs a request.
  *
@@ -151,9 +195,11 @@ function shouldKeepPing(
 }
 
 export {
+  DEFERRED_UPDATES_INTERVAL_MS,
   FLUSH_AT_COUNT,
   FLUSH_INTERVAL_MS,
   MAX_BUFFERED,
+  MAX_FLUSH_BATCH,
   PING_DISTANCE_METRES,
   PING_INTERVAL_MS,
   STATIONARY_KEEPALIVE_MS,
@@ -163,6 +209,7 @@ export {
   shouldFlush,
   shouldKeepPing,
   shouldTrack,
+  trackingRequestOptions,
   type RouteBearingDelivery,
   type TrackablePing,
 };

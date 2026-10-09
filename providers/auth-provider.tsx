@@ -7,6 +7,7 @@ import { useAuthStore } from "../store";
 import { apiClient } from "../utils/api";
 
 import { logger } from "../utils/logger";
+import { socketCarriedLastAbsence } from "../utils/socket";
 
 let initializationPromise: Promise<void> | null = null;
 
@@ -44,6 +45,12 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       appState.current = nextState;
 
       if (!becameActive) return;
+
+      // Back from a glance at another app with the socket up the whole
+      // time: a revocation, a permission or a module change would have
+      // arrived on it, so there is nothing for /user/me to find (MOB-20).
+      if (socketCarriedLastAbsence()) return;
+
       const now = Date.now();
 
       if (now - lastResumeCheckAt.current < 3_000) return;

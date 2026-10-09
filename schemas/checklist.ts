@@ -5,7 +5,7 @@ import {
   hasSpaceAtEdges,
   isEmptyOrWhitespace,
   isValidDateString,
-} from "@/utils";
+} from "@/utils/formatters";
 
 export const createChecklistSchema = z.object({
   current_mileage: z.preprocess(

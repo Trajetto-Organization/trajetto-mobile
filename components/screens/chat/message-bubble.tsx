@@ -1,5 +1,6 @@
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
+import { Image } from "expo-image";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import {
@@ -7,8 +8,13 @@ import {
   resolveOwnMessageCheck,
 } from "@/features/chat/chat-rules";
 
+import { chatImageSource } from "@/features/chat/media-viewer-rules";
+
 import type { ClientChatMessage } from "@/features/chat/types";
+import { bubbleTones } from "@/features/chat/bubble-tones";
+import { useThemeColors } from "@/hooks/use-theme";
 import { AudioPlayerBubble } from "./audio-player";
+import { ChatMessageContextTags } from "./message-context-tags";
 
 import {
   MEDIA_BUBBLE_PADDING,
@@ -58,6 +64,9 @@ const ChatMessageBubble = ({
   onPressDelivery,
   onRetry,
 }: ChatMessageBubbleProps) => {
+  const colors = useThemeColors();
+  const tones = bubbleTones(colors, isMine);
+
   const check = resolveOwnMessageCheck({
     createdAt: message.created_at,
     pending: message.pending,
@@ -86,7 +95,7 @@ const ChatMessageBubble = ({
         <Ionicons
           name="time-outline"
           size={13}
-          color="#bfdbfe"
+          color={tones.check}
           accessibilityLabel="Enviando"
         />
       );
@@ -100,7 +109,7 @@ const ChatMessageBubble = ({
         <Ionicons
           name="checkmark"
           size={14}
-          color="#bfdbfe"
+          color={tones.check}
           accessibilityLabel="Enviada"
         />
       );
@@ -110,7 +119,7 @@ const ChatMessageBubble = ({
       <Ionicons
         name="checkmark-done"
         size={14}
-        color={check === "read" ? "#7dd3fc" : "#bfdbfe"}
+        color={check === "read" ? tones.checkRead : tones.check}
         accessibilityLabel={
           check === "read" ? "Lida pela operação" : "Recebida pela operação"
         }
@@ -128,7 +137,7 @@ const ChatMessageBubble = ({
         }
       >
         {showSenderName && (
-          <Text className="mb-0.5 px-1 text-xs font-medium text-gray-500">
+          <Text className="mb-0.5 px-1 text-xs font-medium text-muted">
             {message.sender.name}
           </Text>
         )}
@@ -138,8 +147,8 @@ const ChatMessageBubble = ({
           onPress={message.failed ? () => onRetry(message) : undefined}
           className={`rounded-2xl ${
             isMine
-              ? "rounded-br-md bg-blue-600"
-              : "rounded-bl-md border border-gray-200 bg-white"
+              ? "rounded-br-md bg-primary"
+              : "rounded-bl-md border border-border bg-card"
           } ${message.pending ? "opacity-70" : ""}`}
           style={
             hasImage
@@ -155,11 +164,11 @@ const ChatMessageBubble = ({
               <Ionicons
                 name="megaphone-outline"
                 size={12}
-                color={isMine ? "#bfdbfe" : "#6b7280"}
+                color={tones.meta}
               />
               <Text
                 className={`text-[11px] font-medium ${
-                  isMine ? "text-blue-100" : "text-gray-500"
+                  isMine ? "text-primary-foreground/95" : "text-muted"
                 }`}
               >
                 Aviso em massa
@@ -167,30 +176,12 @@ const ChatMessageBubble = ({
             </View>
           )}
 
-          {message.delivery && (
-            <TouchableOpacity
-              onPress={() => onPressDelivery(message.delivery!.id)}
-              accessibilityRole="button"
-              accessibilityLabel={`Abrir entrega de ${message.delivery.recipient_name}`}
-              className={`mb-1.5 flex-row items-center gap-1.5 rounded-lg px-2 py-1.5 ${
-                isMine ? "bg-blue-500" : "bg-gray-100"
-              }`}
-            >
-              <Ionicons
-                name="cube-outline"
-                size={14}
-                color={isMine ? "#ffffff" : "#374151"}
-              />
-              <Text
-                numberOfLines={1}
-                className={`flex-1 text-xs ${
-                  isMine ? "text-white" : "text-gray-700"
-                }`}
-              >
-                Entrega: {message.delivery.recipient_name}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <ChatMessageContextTags
+            delivery={message.delivery}
+            route={message.route}
+            isMine={isMine}
+            onPressDelivery={onPressDelivery}
+          />
 
           {message.kind === "IMAGE" && message.attachment_url && (
             <TouchableOpacity
@@ -199,13 +190,17 @@ const ChatMessageBubble = ({
               accessibilityLabel="Ampliar imagem"
               className="mb-1 overflow-hidden rounded-lg"
             >
+              {/* Keyed by message, not by the signed url: a new signature on
+              every listing must not mean a new download (MOB-08). */}
               <Image
-                source={{ uri: message.attachment_url }}
+                source={chatImageSource(message.attachment_url, message.id)}
+                recyclingKey={message.id}
+                cachePolicy="memory-disk"
+                contentFit="cover"
                 style={{
                   width: MEDIA_CONTENT_WIDTH,
                   height: SINGLE_IMAGE_HEIGHT,
                 }}
-                resizeMode="cover"
               />
             </TouchableOpacity>
           )}
@@ -222,7 +217,7 @@ const ChatMessageBubble = ({
           {message.body ? (
             <Text
               className={`text-[15px] leading-5 ${
-                isMine ? "text-white" : "text-gray-900"
+                isMine ? "text-primary-foreground" : "text-ink"
               }`}
               style={hasImage ? { width: MEDIA_CONTENT_WIDTH } : undefined}
             >
@@ -233,7 +228,7 @@ const ChatMessageBubble = ({
           <View className="mt-0.5 flex-row items-center justify-end gap-1">
             <Text
               className={`text-[10px] ${
-                isMine ? "text-blue-100" : "text-gray-400"
+                isMine ? "text-primary-foreground/95" : "text-muted"
               }`}
             >
               {formatMessageClock(message.created_at)}
@@ -249,8 +244,8 @@ const ChatMessageBubble = ({
             accessibilityLabel="Reenviar mensagem"
             className="mt-1 flex-row items-center gap-1 px-1"
           >
-            <Ionicons name="refresh" size={12} color="#dc2626" />
-            <Text className="text-xs font-medium text-red-600">
+            <Ionicons name="refresh" size={12} color={colors.destructive} />
+            <Text className="text-xs font-medium text-destructive">
               Não enviada — toque para reenviar
             </Text>
           </TouchableOpacity>

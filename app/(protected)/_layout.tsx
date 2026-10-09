@@ -11,18 +11,25 @@ import { useDeliveryRealtime } from "@/features/deliveries/use-delivery-realtime
 import { useRouteRealtime } from "@/features/deliveries/use-route-realtime";
 
 import { useMyDeliveries } from "@/features/deliveries/hooks/use-my-deliveries";
+import { useRecoverDeliveryCapture } from "@/features/deliveries/hooks/use-recover-delivery-capture";
+import { useRecoverPauseHandoffs } from "@/features/pauses/use-recover-pause-handoffs";
 import { usePositionTracking } from "@/features/tracking/use-position-tracking";
 
-const ProtectedLayout = () => {
-  // Mounted once for the whole protected area rather than per screen: the
-  // submission queue has to keep running while the driver navigates, and
-  // network state is not something any single screen owns.
-  useNetworkStatus();
-  useOutboxSync();
+import { useAppSurfaces } from "@/features/access/use-app-surfaces";
+import { useBusinessModules } from "@/features/access/use-business-modules";
+import { useCatalogRealtime } from "@/features/catalog/use-catalog-realtime";
 
-  useNotificationsRealtime();
-  usePushNotifications();
-
+/**
+ * Everything that only exists with Entregas, mounted only for a session that
+ * has it (MOB-10).
+ *
+ * Mounted for everyone, the chat reconciliation asked `/chat/list-messages`
+ * and the deliveries list asked `/delivery/my-deliveries` on every connect
+ * and every return to the foreground — a MASTER, an admin or a driver of a
+ * company without Entregas collected a 403 each time. Unmounting also stops
+ * everything cleanly when the module is switched off mid-shift.
+ */
+const DeliveriesRealtime = () => {
   useChatRealtime();
 
   // A stop cancelled from the panel used to vanish from the list on the next
@@ -48,12 +55,73 @@ const ProtectedLayout = () => {
 
   usePositionTracking(deliveries);
 
+  // A proof or occurrence photo the camera took while Android killed the
+  // app goes back to its draft, and the driver back to that screen (MOB-12).
+  // Here and not on the Entregas tab: after the kill the app lands on its
+  // home, which for a fleet driver is Início, and the tab never mounted.
+  useRecoverDeliveryCapture();
+
+  // Same reason for a pause gesture the app was killed while handing over
+  // to the queue (decision 6.1): it is queued now, not when the driver
+  // happens to open the Entregas tab or taps the next pause.
+  useRecoverPauseHandoffs();
+
+  return null;
+};
+
+const ProtectedLayout = () => {
+  // Mounted once for the whole protected area rather than per screen: the
+  // submission queue has to keep running while the driver navigates, and
+  // network state is not something any single screen owns.
+  useNetworkStatus();
+  useOutboxSync();
+
+  useNotificationsRealtime();
+  usePushNotifications();
+
+  // A MASTER's company plan (decision 4.3); a no-op for everyone else.
+  useBusinessModules();
+
+  // Vehicles, fuel types, branches and occurrence types edited in the panel
+  // reach the open pickers (decision 2.3). Both modules read catalogs, so it
+  // is mounted for every session.
+  useCatalogRealtime();
+
+  const surfaces = useAppSurfaces();
+
   // The status banners render per screen (below each header), not here: a
   // layout-level overlay floated on top of the header buttons and blocked
   // their taps.
+  //
+  // Screens of a module or permission the session does not have are not
+  // registered at all (decision 4.2): a deep link cannot open them, and a
+  // screen that stops being allowed while open — a module switched off in the
+  // panel — is closed back to the tabs.
   return (
     <View className="flex-1">
-      <Stack screenOptions={{ headerShown: false }} />
+      {surfaces.deliveries ? <DeliveriesRealtime /> : null}
+
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+
+        <Stack.Protected guard={surfaces.selectBusiness}>
+          <Stack.Screen name="select-business" />
+        </Stack.Protected>
+
+        <Stack.Protected guard={surfaces.fuel}>
+          <Stack.Screen name="fuel" />
+        </Stack.Protected>
+
+        <Stack.Protected guard={surfaces.checklist}>
+          <Stack.Screen name="checklist" />
+        </Stack.Protected>
+
+        <Stack.Protected guard={surfaces.deliveries}>
+          <Stack.Screen name="delivery-detail" />
+          <Stack.Screen name="delivery-proof" />
+          <Stack.Screen name="delivery-occurrence" />
+        </Stack.Protected>
+      </Stack>
     </View>
   );
 };

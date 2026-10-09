@@ -1,6 +1,7 @@
 import type { DeliveryStatus } from "./delivery-rules";
 
 import type { DriverRouteStop } from "./delivery-rules";
+import type { RoutePlanVersion } from "./plan-change-rules";
 
 interface DriverDeliveryItem {
   id: string;
@@ -26,6 +27,11 @@ interface DriverDelivery {
   uf: string;
   cep?: string | null;
   scheduled_date?: string | null;
+
+  /** The address's point (decision 14.7); navigation prefers it. */
+  latitude?: number | null;
+  longitude?: number | null;
+
   notes?: string | null;
   shipper?: { id: string; name: string } | null;
   items?: DriverDeliveryItem[];
@@ -39,6 +45,28 @@ interface DriverDelivery {
    * field existed have no key at all.
    */
   stops?: DriverRouteStop[] | null;
+
+  /**
+   * The latest tower authorization THIS driver asked for on this delivery
+   * (decision 6.3), or null. Optional: cached payloads from before it existed
+   * have no key at all.
+   */
+  authorization_request?: DriverAuthorizationRequest | null;
+}
+
+type AuthorizationRequestStatus = "PENDING" | "APPROVED" | "DENIED" | "SUPERSEDED";
+
+/** `authorization_request` of `/delivery/my-deliveries` (docs/contratos-app/occurrences.md §4). */
+interface DriverAuthorizationRequest {
+  occurrenceId: string;
+  occurrenceTypeId: string;
+  occurrenceTypeName: string;
+  status: AuthorizationRequestStatus;
+
+  /** The tower's reason; always present on a denial. */
+  note: string | null;
+  decidedAt: string | null;
+  requestedAt: string;
 }
 
 /** The driver's occurrence vocabulary — active types only. */
@@ -48,11 +76,78 @@ interface DriverOccurrenceType {
   description: string | null;
   requires_photo: boolean;
   blocks_delivery: boolean;
+
+  /**
+   * Decisions 6.2 and 6.3. Optional because the list is cached for seven
+   * days: a payload from before forms has none of them, and the app then
+   * reads "no form, version 1, no authorization".
+   */
+  requires_authorization?: boolean;
+  form_version?: number;
+
+  /** Raw from the API; read through `readFormFields`, never trusted as is. */
+  form_fields?: unknown;
+
+  /**
+   * Decision 14.3. Optional for the same reason: a cached payload from
+   * before the categories reads as a not-delivered type asking for neither.
+   */
+  category?: "DELIVERED" | "NOT_DELIVERED" | "PAUSE";
+  requires_receipt_photo?: boolean;
+  requires_signature?: boolean;
+
+  /** DELIVERED: the company's default ("Entrega normal"), first in the list. */
+  is_default?: boolean;
+}
+
+/** A pause type of the company (decision 14.4), as the pause picker needs it. */
+interface DriverPauseType {
+  id: string;
+  name: string;
+  pause_kind: "MEAL" | "REST" | "OTHER";
+  is_default?: boolean;
+}
+
+/** Whether a pause may start now, as the server saw it (decision 14.4). */
+interface DriverJourney {
+  pause_allowed: boolean;
+  route_id: string | null;
+  /**
+   * The company's day the server judged (YYYY-MM-DD) and its zone: the
+   * answer is trusted only while that day lasts. Optional on older payloads.
+   */
+  day?: string;
+  time_zone?: string;
 }
 
 interface MyDeliveriesResponse {
   data: DriverDelivery[];
   occurrence_types: DriverOccurrenceType[];
+
+  /**
+   * Decisions 14.3 and 14.4 (contract 3). Optional: a payload cached before
+   * the update has none, and the app then proves with the old route and
+   * pauses with the three fixed natures.
+   */
+  delivered_types?: DriverOccurrenceType[];
+  pause_types?: DriverPauseType[];
+  journey?: DriverJourney;
+
+  /**
+   * The released routes behind the list and their plan versions (route design
+   * §4.13). Optional: an API before it and a cached payload have none, and
+   * the plan-change notice then stays silent.
+   */
+  routes?: RoutePlanVersion[];
 }
 
-export type { DriverDelivery, DriverDeliveryItem, DriverOccurrenceType, MyDeliveriesResponse };
+export type {
+  AuthorizationRequestStatus,
+  DriverAuthorizationRequest,
+  DriverDelivery,
+  DriverDeliveryItem,
+  DriverJourney,
+  DriverOccurrenceType,
+  DriverPauseType,
+  MyDeliveriesResponse,
+};

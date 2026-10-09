@@ -30,7 +30,9 @@ export const SwitchBusinessModal: React.FC<SwitchBusinessModalProps> = ({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <StatusBar backgroundColor="rgba(0,0,0,0.5)" barStyle="light-content" />
+      {/* Light icons over the dark backdrop. No backgroundColor: with
+          edge-to-edge Android draws the app under the bar and ignores it. */}
+      <StatusBar barStyle="light-content" />
 
       {/* Backdrop */}
       <Pressable
@@ -40,16 +42,15 @@ export const SwitchBusinessModal: React.FC<SwitchBusinessModalProps> = ({
       >
         {/* Modal Content */}
         <Pressable
-          className="bg-white rounded-3xl 
+          className="bg-card rounded-3xl border border-border
           p-6 w-full max-w-sm shadow-2xl"
           onPress={(e) => e.stopPropagation()}
         >
           {/* Icon */}
           <View className="items-center mb-6">
             <View
-              className="w-14 h-14 bg-gradient-to-br 
-              from-blue-500 to-blue-600 rounded-full
-              items-center justify-center shadow-lg"
+              className="w-14 h-14 bg-primary-soft rounded-full
+              items-center justify-center"
             >
               <Text className="text-4xl">🏢</Text>
             </View>
@@ -58,14 +59,14 @@ export const SwitchBusinessModal: React.FC<SwitchBusinessModalProps> = ({
           {/* Title */}
           <Text
             className="text-2xl font-bold 
-            text-gray-900 text-center mb-3"
+            text-ink text-center mb-3"
           >
             Trocar Empresa
           </Text>
 
           {/* Description */}
           <Text
-            className="text-gray-600 
+            className="text-muted 
             text-center mb-2 leading-6"
           >
             Deseja sair da empresa atual e selecionar uma nova?
@@ -73,16 +74,16 @@ export const SwitchBusinessModal: React.FC<SwitchBusinessModalProps> = ({
 
           {/* Current Business */}
           {currentBusiness && (
-            <View className="bg-gray-50 rounded-2xl p-4 mb-6">
+            <View className="bg-subtle border border-border rounded-2xl p-4 mb-6">
               <Text
-                className="text-xs text-gray-500 
+                className="text-xs text-muted 
                 uppercase tracking-wide mb-1 text-center"
               >
                 Empresa Atual
               </Text>
               <Text
                 className="text-sm font-medium 
-                text-gray-900 text-center"
+                text-ink text-center"
                 numberOfLines={2}
               >
                 {currentBusiness}
@@ -96,11 +97,11 @@ export const SwitchBusinessModal: React.FC<SwitchBusinessModalProps> = ({
             <TouchableOpacity
               onPress={onClose}
               disabled={isLoading}
-              className="flex-1 bg-gray-100 
-              rounded-2xl py-4 px-6 "
+              className="flex-1 bg-subtle border border-border
+              rounded-2xl py-4 px-6"
             >
               <Text
-                className="text-gray-700 
+                className="text-ink-soft 
                 font-semibold text-center"
               >
                 Cancelar
@@ -111,17 +112,11 @@ export const SwitchBusinessModal: React.FC<SwitchBusinessModalProps> = ({
             <TouchableOpacity
               onPress={onConfirm}
               disabled={isLoading}
-              className={`flex-1 rounded-2xl py-4 px-6 ${
-                isLoading ? "bg-blue-300" : "bg-blue-500"
+              className={`flex-1 rounded-2xl py-4 px-6 bg-primary ${
+                isLoading ? "opacity-60" : ""
               }`}
-              style={{
-                backgroundColor: isLoading ? "#93C5FD" : "#3B82F6",
-              }}
             >
-              <Text
-                className="text-white 
-                font-semibold text-center"
-              >
+              <Text className="text-primary-foreground font-semibold text-center">
                 {isLoading ? "Trocando..." : "Confirmar"}
               </Text>
             </TouchableOpacity>
@@ -129,7 +124,7 @@ export const SwitchBusinessModal: React.FC<SwitchBusinessModalProps> = ({
 
           {/* Help Text */}
           <Text
-            className="text-xs text-gray-400 
+            className="text-xs text-muted 
             text-center mt-4 leading-4"
           >
             Você será redirecionado para a tela de seleção de empresas

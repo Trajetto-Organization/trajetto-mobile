@@ -1,12 +1,81 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_REUPLOADS,
   RETRY_DELAYS_MS,
   classifyFailure,
+  forgetUploads,
   nextAfterFailure,
   retryDelay,
   type FailureDescription,
 } from "@/features/submissions/outbox-rules";
+
+describe("a photo the storage no longer has", () => {
+  /**
+   * The API used to delete an item's uploaded photos when the database was
+   * merely busy, and the retry — with the same keys — came back 400
+   * UPLOADED_FILE_NOT_FOUND. As a plain 4xx that marked the item failed: the
+   * driver's finished checklist or fueling, lost to a pool timeout, with the
+   * photos still sitting on the phone.
+   */
+  const refused = {
+    source: "api" as const,
+    isTransient: false,
+    code: "UPLOADED_FILE_NOT_FOUND",
+  };
+
+  it("is not the API refusing the work", () => {
+    expect(classifyFailure(refused)).toBe("reupload");
+  });
+
+  it("keeps the item in line, paced like any retry", () => {
+    // Jitter pinned at ×1: see outbox-backoff.test.ts for the spread itself.
+    const next = nextAfterFailure({ attempts: 1 }, "reupload", 1_000, {
+      random: () => 0.5,
+    });
+
+    expect(next?.status).toBe("pending");
+    expect(next?.attempts).toBe(2);
+    expect(next?.nextAttemptAt).toBe(1_000 + retryDelay(2));
+  });
+
+  it("stops sending the photos again once it is clearly not the storage", () => {
+    // One lost set of objects is the old API cleaning up; the same answer
+    // after the photos went up afresh, again and again, is a server bug. Left
+    // pending, the item would push every photo over mobile data every quarter
+    // of an hour for good. After the limit it is failed, where the driver
+    // sees it, instead.
+    const stillTrying = nextAfterFailure(
+      { attempts: 3, reuploads: MAX_REUPLOADS - 1 },
+      "reupload",
+      1_000,
+      { random: () => 0.5 },
+    );
+
+    expect(stillTrying?.status).toBe("pending");
+
+    const givenUp = nextAfterFailure(
+      { attempts: 4, reuploads: MAX_REUPLOADS },
+      "reupload",
+      1_000,
+      { random: () => 0.5 },
+    );
+
+    expect(givenUp?.status).toBe("failed");
+  });
+
+  it("forgets what was uploaded, so every photo goes up again", () => {
+    const photos = [
+      { uri: "file://a.jpg", uploadedKey: "checklistPhotos/b/a.jpg" },
+      { uri: "file://b.jpg" },
+    ];
+
+    expect(forgetUploads(photos)).toEqual([
+      { uri: "file://a.jpg" },
+      { uri: "file://b.jpg" },
+    ]);
+  });
+});
 
 /**
  * What happens to a driver's work when a send fails.
@@ -92,6 +161,18 @@ describe("the API saying no", () => {
       classifyFailure(api({ isTransient: false, code: "MODULE_NOT_ENABLED" })),
     ).toBe("module-disabled");
   });
+
+  it("fails a departure refused because another route is running, with no retry loop", () => {
+    // 409 ROUTE_DRIVER_BUSY (FLEET-ASSIGN-3): the driver has to finish the
+    // running route first. Not a contract problem an update fixes, and not
+    // transient: resending before that only earns the same refusal.
+    const busy = api({ isTransient: false, code: "ROUTE_DRIVER_BUSY" });
+
+    expect(classifyFailure(busy)).toBe("permanent");
+    expect(nextAfterFailure({ attempts: 0 }, "permanent", 1_000)?.status).toBe(
+      "failed",
+    );
+  });
 });
 
 describe("what the queue does next", () => {
@@ -115,7 +196,9 @@ describe("what the queue does next", () => {
   });
 
   it("counts the attempt and schedules the next one", () => {
-    const next = nextAfterFailure(item, "transient", 1_000);
+    const next = nextAfterFailure(item, "transient", 1_000, {
+      random: () => 0.5,
+    });
 
     expect(next?.attempts).toBe(3);
     expect(next?.status).toBe("pending");

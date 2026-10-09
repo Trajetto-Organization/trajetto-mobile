@@ -19,6 +19,14 @@ interface FuelDraft<TFormData, TStepData> extends DraftEnvelope {
   formData: Partial<TFormData>;
   stepData: Partial<TStepData>;
   odometerImage: ImagePickerAsset | null;
+
+  /**
+   * The phone's pre-check of that photo and km (decision 14.2), so it
+   * survives the app dying. Bound to the photo it read: a new photo makes it
+   * stale (features/ai-precheck `precheckApplies`). Absent on older drafts.
+   */
+  precheck?: unknown;
+
   updatedAt: string;
 }
 

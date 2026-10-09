@@ -5,6 +5,7 @@ import { randomUUID } from "expo-crypto";
 
 import { apiClient, ApiError } from "@/utils/api";
 import { logger } from "@/utils/logger";
+import { reportEvent } from "@/utils/telemetry";
 
 import {
   uploadToStorage,
@@ -18,21 +19,43 @@ import { useConnectionStore } from "@/store/connection-store";
 import { queryClient } from "@/providers/query-provider";
 
 import { getSubmissionOwner } from "./submission-owner";
+import { bumpQueuedMileage } from "./queue-decision";
+import { shouldRequeueAfterUpgrade, upcastOutboxItem } from "./outbox-schema";
+
+import { OUTBOX_SCHEMA_VERSION, appVersionLabel } from "@/utils/client-version";
+import { moduleOfSubmission } from "@/features/access/module-rules";
+import {
+  forgetModuleObservations,
+  moduleObservation,
+  onModulesObserved,
+} from "@/features/access/module-observations";
 import {
   canActOn,
   claim,
   classifyFailure as decideFailure,
   classifyOwnership,
+  forgetUploads,
+  honouredRetryAfter,
+  isHurriableBy,
+  isSendExpired,
   nextAfterFailure,
   selectSendable,
   selectVisible,
+  shouldUnpark,
+  START_ROUTE_EXPIRED_MESSAGE,
 } from "./outbox-rules";
 
 import type {
   FailureDescription,
+  ModuleObservation,
   OutboxFailure,
   OutboxStatus,
 } from "./outbox-rules";
+
+import { hasRefusalRules, refusalVerdict } from "./kind-refusals";
+import { afterSubmissionSent, afterSubmissionSettled } from "./kind-effects";
+import { isPauseOutboxKind } from "@/features/pauses/pause-rules";
+import { occurrenceFilesPayload } from "@/features/deliveries/delivered-requirements";
 
 const OUTBOX_STORAGE_KEY = "@trajetto:outbox:v1";
 const OUTBOX_DIRECTORY = "trajetto-outbox";
@@ -43,20 +66,33 @@ type OutboxKind =
   | "delivery-start-route"
   | "delivery-arrival"
   | "delivery-proof"
-  | "delivery-occurrence";
+  | "delivery-occurrence"
+  // Decision 14.3: "Entregar" as a DELIVERED occurrence (contract 3). Its
+  // own kind, not delivery-occurrence: its effects, label and refusals are
+  // the proof's. Items of "delivery-proof" queued before stay valid (the
+  // legacy route remains), so nothing is upcast.
+  | "delivery-delivered"
+  // The driver's pause gestures (decision 6.1) and "Estou a caminho" (6.4).
+  // Under Entregas by their `delivery-` prefix (moduleOfSubmission).
+  | "delivery-pause-start"
+  | "delivery-pause-end"
+  | "delivery-on-the-way";
 
 /**
  * How uploaded keys enter the body: `photos` = [{key, fieldName}] (the
  * checklist), `photo` = single {key} (a refuelling), `photo-keys` = plain
  * key strings (a delivery occurrence), `proof` = photo/signature body
- * fields matched by each entry's fieldName (a delivery proof).
+ * fields matched by each entry's fieldName (a delivery proof),
+ * `occurrence-files` = receipt_photo/signature strings and a photos array,
+ * by fieldName (a DELIVERED occurrence, decision 14.3).
  */
-type OutboxPhotoField = "photos" | "photo" | "photo-keys" | "proof";
+type OutboxPhotoField = "photos" | "photo" | "photo-keys" | "proof" | "occurrence-files";
 
 /**
  * `pending` is retried on its own; `failed` needs a person to decide;
- * `parked` waits for the DELIVERIES module to come back — retrying against
- * a disabled module would burn the backoff for nothing.
+ * `parked` waits for its module (Gestão de Frota or Entregas, by kind) to
+ * come back — retrying against a disabled module would burn the backoff for
+ * nothing.
  */
 interface OutboxPhoto {
   uri: string;
@@ -112,14 +148,58 @@ interface OutboxItem {
   attempts: number;
   nextAttemptAt: number;
 
+  /**
+   * How many times the photos went up again because the API no longer found
+   * them. Capped by `MAX_REUPLOADS`; absent on items that never needed it.
+   */
+  reuploads?: number;
+
   status: OutboxStatus;
   lastError?: string;
+
+  /**
+   * When the API last refused it because its module was off. Only a newer
+   * word from the server that the module is on sends it again (see
+   * `shouldUnpark`). Absent on items parked by older builds.
+   */
+  parkedAt?: number;
+
+  /**
+   * The shape this item was written in (`outbox-schema.upcastOutboxItem`)
+   * and the build that wrote it. Absent on items from before these fields.
+   */
+  schemaVersion?: number;
+  appVersion?: string;
+
+  /**
+   * Why a failed item failed, and on which build. A `contract` failure is
+   * sent again by itself once the app is updated — see
+   * `shouldRequeueAfterUpgrade`.
+   */
+  failure?: OutboxFailure;
+  failedOnAppVersion?: string;
+
+  /**
+   * The API's code for that refusal, when it sent one. What lets a kind offer
+   * the fix its contract names instead of a resend that meets the same
+   * answer — an occurrence whose form changed is reopened for review
+   * (features/occurrences/occurrence-queue-rules).
+   */
+  failureCode?: string;
 }
 
 interface EnqueueSubmissionInput {
   id: string;
   kind: OutboxKind;
   businessId: string;
+
+  /**
+   * Who pressed send, captured before sending. Only needed when the session
+   * may have ended in between: a 401 logs out from inside the request, and
+   * the item must still belong to the driver whose work it is.
+   */
+  ownerUserId?: string;
+
   vehicleId?: string;
   vehicleLabel?: string;
   endpoint: string;
@@ -137,6 +217,9 @@ interface EnqueueSubmissionInput {
     // so the queue does not send it a second time.
     uploadedKey?: string;
   }[];
+
+  /** The `Retry-After` of the attempt that failed, when the API sent one. */
+  retryAfterMs?: number;
 }
 
 // Every read-modify-write goes through here. Two screens submitting while a
@@ -162,7 +245,9 @@ async function readItems(): Promise<OutboxItem[]> {
 
   try {
     const parsed = JSON.parse(raw) as OutboxItem[];
-    return Array.isArray(parsed) ? parsed : [];
+
+    // Whatever build wrote them, they are read in the current shape.
+    return Array.isArray(parsed) ? parsed.map(upcastOutboxItem) : [];
   } catch {
     // The only place the queue still throws work away, and it does so because
     // unparseable JSON leaves nothing to retry. It is at least said out loud:
@@ -188,14 +273,47 @@ async function writeItems(items: OutboxItem[]): Promise<void> {
   useOutboxStore.getState().setItems(selectVisible(items, getSubmissionOwner()));
 }
 
-/** Reads the queue from disk into the store. Called on boot and after login. */
+/**
+ * Reads the queue from disk into the store. Called on boot, after login and
+ * at the start of every pass.
+ *
+ * Also where an app update is noticed: an item that failed on the CONTRACT
+ * under another build goes back in line, once, since this build may speak
+ * what the API asked for. It stays visible as failed until then.
+ */
 async function loadOutbox(): Promise<OutboxItem[]> {
   return enqueueStorageMutation(async () => {
-    const items = await readItems();
+    const stored = await readItems();
+    const currentAppVersion = appVersionLabel();
 
-    useOutboxStore
-      .getState()
-      .setItems(selectVisible(items, getSubmissionOwner()));
+    const requeued = stored.filter((item) =>
+      shouldRequeueAfterUpgrade(item, currentAppVersion),
+    );
+
+    if (requeued.length === 0) {
+      useOutboxStore
+        .getState()
+        .setItems(selectVisible(stored, getSubmissionOwner()));
+
+      return stored;
+    }
+
+    const items = stored.map((item) =>
+      requeued.includes(item)
+        ? {
+            ...item,
+            status: "pending" as const,
+            attempts: 0,
+            nextAttemptAt: Date.now(),
+            lastError: undefined,
+            failure: undefined,
+            failedOnAppVersion: undefined,
+            failureCode: undefined,
+          }
+        : item,
+    );
+
+    await writeItems(items);
 
     return items;
   });
@@ -270,8 +388,9 @@ async function enqueueSubmission(
     businessId: input.businessId,
     // Stamped here rather than passed in by each caller, so that the identity
     // the queue will later check against is by construction the same one the
-    // session is running under.
-    ownerUserId: getSubmissionOwner() ?? undefined,
+    // session is running under. The one exception is a submission that saw
+    // its session end: it carries the owner it started with.
+    ownerUserId: input.ownerUserId ?? getSubmissionOwner() ?? undefined,
     vehicleId: input.vehicleId,
     vehicleLabel: input.vehicleLabel,
     endpoint: input.endpoint,
@@ -281,8 +400,13 @@ async function enqueueSubmission(
     photoField: input.photoField,
     createdAt: new Date().toISOString(),
     attempts: 0,
-    nextAttemptAt: Date.now(),
+
+    // Due at once, unless the API that just refused it asked for time.
+    nextAttemptAt: Date.now() + honouredRetryAfter(input.retryAfterMs),
     status: "pending",
+
+    schemaVersion: OUTBOX_SCHEMA_VERSION,
+    appVersion: appVersionLabel() ?? undefined,
   };
 
   await enqueueStorageMutation(async () => {
@@ -295,6 +419,22 @@ async function enqueueSubmission(
 
     await writeItems(next);
   });
+
+  // The reading this item will report is the vehicle's mileage as far as the
+  // next form on this phone is concerned — see `bumpQueuedMileage`.
+  const mileage = Number(input.body.current_mileage);
+
+  if (
+    (input.kind === "fuel" || input.kind === "checklist") &&
+    input.vehicleId &&
+    Number.isFinite(mileage)
+  ) {
+    queryClient.setQueryData(
+      ["vehicle", input.businessId, input.vehicleId],
+      (vehicle: { current_mileage?: number | null } | undefined) =>
+        bumpQueuedMileage(vehicle, mileage),
+    );
+  }
 
   return item;
 }
@@ -326,6 +466,8 @@ function buildPhotoPayload(
 
     if (photo) payload.photo = photo.key;
     if (signature) payload.signature = signature.key;
+  } else if (photoField === "occurrence-files") {
+    return occurrenceFilesPayload(payload, uploaded);
   } else if (uploaded[0]) {
     payload.photo = { key: uploaded[0].key };
   }
@@ -342,7 +484,7 @@ function buildPhotoPayload(
 async function sendItem(
   item: OutboxItem,
   onProgress?: (uploaded: number, total: number) => void,
-): Promise<void> {
+): Promise<unknown> {
   const uploaded = await uploadToStorage({
     entries: item.photos.map((photo) => ({
       file: photo,
@@ -364,10 +506,19 @@ async function sendItem(
 
   const body = buildPhotoPayload(item.photoField, item.body, uploaded);
 
-  await apiClient.request(item.endpoint, {
+  // The answer is returned for the kinds that keep something from it (the
+  // "a caminho" instant, see kind-effects).
+  return apiClient.request(item.endpoint, {
     method: "POST",
     body,
-    headers: { "Idempotency-Key": item.id },
+    headers: {
+      "Idempotency-Key": item.id,
+
+      // This attempt's instant, by the same clock that stamped the body's
+      // `occurred_at` at the tap. The API only uses the difference, so a
+      // phone set to the wrong time still reports the right hour (MOB-08).
+      "X-Client-Sent-At": new Date().toISOString(),
+    },
   });
 }
 
@@ -385,6 +536,7 @@ function describeFailure(error: unknown): FailureDescription {
       isAuthenticationError: error.isAuthenticationError,
       isTransient: error.isTransient,
       code: error.code,
+      retryAfterMs: error.retryAfterMs,
     };
   }
 
@@ -397,23 +549,75 @@ function classifyFailure(error: unknown): OutboxFailure {
   return decideFailure(describeFailure(error));
 }
 
-async function recordFailure(item: OutboxItem, error: unknown): Promise<void> {
-  const failure = classifyFailure(error);
+async function recordFailure(
+  item: OutboxItem,
+  error: unknown,
+  // A kind's own reading of the refusal (kind-refusals: "retry" = transient).
+  override?: OutboxFailure,
+): Promise<void> {
+  const description = describeFailure(error);
+  const failure = override ?? decideFailure(description);
   const message =
     error instanceof Error ? error.message : "Falha ao enviar o registro.";
 
-  const next = nextAfterFailure(item, failure, Date.now());
+  const failedAt = Date.now();
+  const next = nextAfterFailure(item, failure, failedAt, {
+    retryAfterMs: description.retryAfterMs,
+  });
 
   // Null means "leave it exactly as it is" — an expired session, which is not
   // this item's fault and says nothing about whether it would be accepted.
   if (!next) return;
 
+  // A proof refused for good, or one still failing after three tries, used to
+  // be visible only on the driver's pending screen. The first retries of a
+  // flaky network are not news.
+  if (failure !== "transient" || next.attempts >= 3) {
+    reportEvent("outbox_item_failed", {
+      kind: item.kind,
+      failure,
+      code: description.code ?? undefined,
+      attempts: next.attempts,
+
+      // Which leg failed, and how (OBS-12): a PUT the bucket refused (403,
+      // a credential rotated wrong) looks, to the driver, exactly like a
+      // phone with no signal. The host, never the signed URL.
+      source: description.source,
+      status:
+        error instanceof UploadError
+          ? error.status
+          : error instanceof ApiError
+            ? error.status
+            : undefined,
+      host: error instanceof UploadError ? error.host : undefined,
+      category: error instanceof ApiError ? error.category : undefined,
+      where: message,
+    });
+  }
+
   await updateItem(item.id, (current) => ({
     ...current,
+
+    // The stored objects are gone; the files on the phone are not.
+    photos:
+      failure === "reupload" ? forgetUploads(current.photos) : current.photos,
+    reuploads:
+      failure === "reupload" ? (current.reuploads ?? 0) + 1 : current.reuploads,
     attempts: next.attempts,
     nextAttemptAt: next.nextAttemptAt,
     status: next.status,
     lastError: message,
+
+    // The refusal every later "the module is on" is measured against.
+    parkedAt: next.status === "parked" ? failedAt : undefined,
+
+    // Which kind of "no", and on which build: a contract refusal goes out
+    // again once the app changes (`loadOutbox`).
+    failure: next.status === "failed" ? failure : undefined,
+    failedOnAppVersion:
+      next.status === "failed" ? (appVersionLabel() ?? undefined) : undefined,
+    failureCode:
+      next.status === "failed" ? (description.code ?? undefined) : undefined,
   }));
 }
 
@@ -451,24 +655,49 @@ async function processOutbox(): Promise<void> {
       const due = selectSendable(items, ownerUserId, Date.now());
 
       for (const item of due) {
+        // A departure queued half a day ago would start whatever route the
+        // API finds today (see isSendExpired). It is failed rather than sent
+        // or dropped: visible on the pending screen, with what to do.
+        if (isSendExpired(item, Date.now())) {
+          await updateItem(item.id, (current) => ({
+            ...current,
+            status: "failed",
+            failure: "permanent",
+            lastError: START_ROUTE_EXPIRED_MESSAGE,
+            failedOnAppVersion: appVersionLabel() ?? undefined,
+          }));
+
+          continue;
+        }
+
         store.setActive(item.id, { uploaded: 0, total: item.photos.length });
 
         try {
-          await sendItem(item, (uploaded, total) =>
+          const response = await sendItem(item, (uploaded, total) =>
             useOutboxStore.getState().setActive(item.id, { uploaded, total }),
           );
+
+          // What the answer changes on the phone for this kind (the pause
+          // record, the "a caminho" instant) — the same code as a send at the
+          // tap. Awaited BEFORE the item leaves: a screen that sees it gone
+          // must already see its effect, or a pause answer asked while it
+          // was queued wins in between. Best-effort: it has landed anyway.
+          await afterSubmissionSent(item, response).catch(() => undefined);
 
           await removeItem(item.id);
 
           // The record that just landed changed data another screen is
           // caching. Nobody is watching this from a component, so the
-          // invalidation has to happen here.
-          const staleQueries = item.kind.startsWith("delivery-")
-            ? [["my-deliveries", item.businessId]]
-            : [
-                ["vehicles", item.businessId],
-                ["vehicle", item.businessId, item.vehicleId],
-              ];
+          // invalidation has to happen here. A pause changes nothing in the
+          // deliveries list; its own state is refreshed by the effect above.
+          const staleQueries = isPauseOutboxKind(item.kind)
+            ? []
+            : item.kind.startsWith("delivery-")
+              ? [["my-deliveries", item.businessId]]
+              : [
+                  ["vehicles", item.businessId],
+                  ["vehicle", item.businessId, item.vehicleId],
+                ];
 
           void Promise.all(
             staleQueries.map((queryKey) =>
@@ -476,7 +705,30 @@ async function processOutbox(): Promise<void> {
             ),
           ).catch(() => undefined);
         } catch (error) {
-          await recordFailure(item, error);
+          // Some kinds' contracts read a refusal as "already done" or "the
+          // order of the queue will fix it" (kind-refusals). The queue is
+          // read as it is NOW: items this pass already sent are gone. One
+          // that cannot be read gives no verdict — the default keeps the
+          // item, where a guess could drop it.
+          const verdict = hasRefusalRules(item.kind)
+            ? await enqueueStorageMutation(readItems).then(
+                (queue) => refusalVerdict(item, describeFailure(error), queue),
+                () => null,
+              )
+            : null;
+
+          if (verdict?.outcome === "settled") {
+            // Before the removal, for the same reason as a sent item.
+            await afterSubmissionSettled(item, verdict).catch(() => undefined);
+            await removeItem(item.id);
+            continue;
+          }
+
+          await recordFailure(
+            item,
+            error,
+            verdict?.outcome === "retry" ? "transient" : undefined,
+          );
 
           // The session is gone; nothing else in the queue will fare better.
           if (classifyFailure(error) === "auth") break;
@@ -497,29 +749,99 @@ async function processOutbox(): Promise<void> {
 }
 
 /**
- * Puts parked delivery submissions back in line. Called when the session
- * learns the DELIVERIES module is enabled again — the queue itself has no
- * way to know except by trying.
+ * A person asking to send now (MOB-15) — the logout warning and the pending
+ * screen, both through `useSendPendingNow`: this driver's pending items are
+ * made due and a pass runs over them. Resolves with how many of their pending
+ * items are still waiting afterwards, so the caller can say it did not all go.
+ *
+ * `processOutbox` alone sent only what the backoff already allowed — nothing,
+ * typically, for items that had failed on a weak signal (`isHurriableBy`).
+ */
+async function sendPendingNow(): Promise<{ remaining: number }> {
+  const ownerUserId = getSubmissionOwner();
+  if (!ownerUserId) return { remaining: 0 };
+
+  await enqueueStorageMutation(async () => {
+    const items = await readItems();
+    const now = Date.now();
+
+    const due = items.filter(
+      (item) => isHurriableBy(item, ownerUserId) && item.nextAttemptAt > now,
+    );
+
+    if (due.length === 0) return;
+
+    await writeItems(
+      items.map((item) =>
+        due.includes(item) ? { ...item, nextAttemptAt: now } : item,
+      ),
+    );
+  });
+
+  // A pass already running chose its items before these were due: let it
+  // finish, then run one that sees them.
+  if (activePass) await activePass;
+  await processOutbox();
+
+  const left = await enqueueStorageMutation(readItems);
+
+  return {
+    remaining: left.filter((item) => isHurriableBy(item, ownerUserId)).length,
+  };
+}
+
+/** The newest word from the server about the module this item needs. */
+function observationFor(item: OutboxItem): ModuleObservation | null {
+  const module = moduleOfSubmission(item.kind);
+  if (!module) return null;
+
+  return moduleObservation(item.businessId, module);
+}
+
+/**
+ * Puts back in line the parked items whose module the server has said, since
+ * refusing them, is enabled for their company (`shouldUnpark`).
+ *
+ * Runs on every new word about a plan (`module-observations`), which is the
+ * only thing that sends a parked item again on its own (MOB-03): no screen's
+ * query succeeding does it any more — that is what looped. Safe to call from
+ * anywhere and as often as anyone likes: without new evidence nothing moves,
+ * so repeated calls cannot turn into repeated sends.
  */
 async function unparkOutboxItems(): Promise<void> {
   const ownerUserId = getSubmissionOwner();
   if (!ownerUserId) return;
 
-  await enqueueStorageMutation(async () => {
+  const unparked = await enqueueStorageMutation(async () => {
     const items = await readItems();
+    const now = Date.now();
+    let count = 0;
 
-    const next = items.map((item) =>
-      item.status === "parked" &&
-      classifyOwnership(item, ownerUserId) === "own"
-        ? { ...item, status: "pending" as const, nextAttemptAt: Date.now() }
-        : item,
-    );
+    const next = items.map((item) => {
+      if (classifyOwnership(item, ownerUserId) !== "own") return item;
+      if (!shouldUnpark(item, observationFor(item))) return item;
 
-    await writeItems(next);
+      count += 1;
+
+      return {
+        ...item,
+        status: "pending" as const,
+        nextAttemptAt: now,
+        parkedAt: undefined,
+      };
+    });
+
+    if (count > 0) await writeItems(next);
+
+    return count;
   });
 
-  await processOutbox();
+  if (unparked > 0) await processOutbox();
 }
+
+// Subscribed at load: the session publishes what it learns about a plan
+// without knowing the queue exists (see module-observations).
+onModulesObserved(unparkOutboxItems);
 
 /**
  * Puts an item back in line, at the driver's request.
@@ -543,6 +865,7 @@ async function retryOutboxItem(itemId: string): Promise<void> {
             attempts: 0,
             nextAttemptAt: Date.now(),
             lastError: undefined,
+            parkedAt: undefined,
           },
           ownerUserId,
         )
@@ -550,6 +873,52 @@ async function retryOutboxItem(itemId: string): Promise<void> {
   );
 
   await processOutbox();
+}
+
+/**
+ * Puts a failed item back in line with a body the driver corrected, at their
+ * request — an occurrence answered again after its form changed (contract
+ * §6). The same id, so the API still records it once; the photos, their
+ * uploads and the moment it was queued are kept.
+ *
+ * Only a failed item of this driver's: a pending one may be on its way right
+ * now, and rewriting it under the pass would send one body and keep another.
+ * Resolves with whether the item was revised.
+ */
+async function reviseOutboxItem(
+  itemId: string,
+  body: Record<string, unknown>,
+): Promise<boolean> {
+  const ownerUserId = getSubmissionOwner();
+  if (!ownerUserId) return false;
+
+  let revised = false;
+
+  await updateItem(itemId, (item) => {
+    if (classifyOwnership(item, ownerUserId) !== "own" || item.status !== "failed") {
+      return item;
+    }
+
+    revised = true;
+
+    return {
+      ...item,
+      body,
+      status: "pending" as const,
+      attempts: 0,
+      nextAttemptAt: Date.now(),
+      lastError: undefined,
+      failure: undefined,
+      failedOnAppVersion: undefined,
+      failureCode: undefined,
+    };
+  });
+
+  // A pass already running chose its items before this one was due: it goes
+  // with the next one, right after.
+  if (revised) void Promise.resolve(activePass).then(() => processOutbox());
+
+  return revised;
 }
 
 /** Throws a submission away, photos and all. Only ever user-initiated. */
@@ -578,6 +947,9 @@ async function discardOutboxItem(itemId: string): Promise<void> {
  */
 function detachOutbox(): void {
   useOutboxStore.getState().setItems([]);
+
+  // What the server told this session is not evidence for the next one.
+  forgetModuleObservations();
 }
 
 export {
@@ -590,6 +962,8 @@ export {
   loadOutbox,
   processOutbox,
   retryOutboxItem,
+  reviseOutboxItem,
+  sendPendingNow,
   unparkOutboxItems,
 };
 

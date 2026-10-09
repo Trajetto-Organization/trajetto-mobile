@@ -30,7 +30,7 @@ export const BusinessSearch: React.FC<BusinessSearchProps> = ({
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Buscar empresa por nome ou CNPJ..."
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor="#6b7280"
         className="bg-white/90 backdrop-blur-sm
         border-gray-200 rounded-2xl shadow-sm"
         style={{

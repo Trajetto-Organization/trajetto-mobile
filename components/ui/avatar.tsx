@@ -72,13 +72,10 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   return (
     <View
-      className={`${sizeClasses.container} rounded-full bg-gray-100 
-      items-center justify-center shadow-sm ${className}`}
-      style={{
-        backgroundColor: "#f1f5f9", // slate-100
-      }}
+      className={`${sizeClasses.container} rounded-full bg-subtle border border-border
+      items-center justify-center ${className}`}
     >
-      <Text className={`${sizeClasses.text} font-medium text-gray-600`}>
+      <Text className={`${sizeClasses.text} font-medium text-ink-soft`}>
         {getInitials(name)}
       </Text>
     </View>

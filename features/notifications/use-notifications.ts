@@ -10,6 +10,10 @@ import {
 
 import { apiClient } from "@/utils/api";
 import { parseNDJSON } from "@/utils/parseNDJSON";
+import { isSocketConnected } from "@/utils/socket";
+
+import { markPagesRead, unreadCountRefetchInterval } from "./notification-rules";
+import { rememberProofFeedbackRows } from "./proof-feedback";
 
 interface AppNotification {
   id: string;
@@ -18,6 +22,10 @@ interface AppNotification {
   type: string;
   read: boolean;
   link?: string | null;
+
+  /** What the row is about (a delivery, for a proof warning). */
+  entityId?: string | null;
+
   created_at: string;
 }
 
@@ -45,6 +53,10 @@ const fetchNotifications = async (
   const response = await apiClient.getNDJSONResponse(endpoint, signal);
   const { meta, data } = await parseNDJSON(response);
 
+  // A proof warning the socket missed (app closed, push swiped away) reaches
+  // its delivery when the list is read (decision 6.9).
+  rememberProofFeedbackRows(data || []);
+
   return {
     data: data || [],
     nextCursor: meta?.searchMeta?.nextCursor || null,
@@ -56,6 +68,11 @@ const fetchNotifications = async (
  * The bell badge. Kept as its own tiny query so every screen can show the
  * count without paying for the list; a short stale time keeps it honest
  * while the driver moves around the app.
+ *
+ * No polling while the socket is connected (GAP3-13): every change reaches
+ * the app as `pushNotification` or `notificationsRead`. The interval is read
+ * again after each fetch, and a lost connection re-arms it (see
+ * use-notifications-realtime.ts).
  */
 function useUnreadNotificationsCount() {
   const { data } = useQuery({
@@ -69,7 +86,7 @@ function useUnreadNotificationsCount() {
       return result.count ?? 0;
     },
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: () => unreadCountRefetchInterval(isSocketConnected()),
   });
 
   return data ?? 0;
@@ -199,11 +216,44 @@ function applyIncomingNotification(
   }
 }
 
+/**
+ * A read the API announced (`notificationsRead`), possibly done on another
+ * device: the list shows it read at once, and the badge asks the server
+ * rather than guessing — a notification may have arrived in between.
+ */
+function applyNotificationsRead(
+  queryClient: QueryClient,
+  payload: { notificationId?: string | null } | undefined,
+): void {
+  const notificationId = payload?.notificationId ?? null;
+
+  queryClient.setQueryData<{
+    pages: FetchNotificationsResult[];
+    pageParams: unknown[];
+  }>(LIST_KEY, (current) =>
+    current
+      ? { ...current, pages: markPagesRead(current.pages, notificationId) }
+      : current,
+  );
+
+  void queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY });
+}
+
+/**
+ * Asks for the badge again. Used when the socket drops, which also makes the
+ * query re-read its interval and resume the fallback poll.
+ */
+function refreshUnreadCount(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY });
+}
+
 export {
   useUnreadNotificationsCount,
   useNotificationsList,
   useMarkNotificationRead,
   applyIncomingNotification,
+  applyNotificationsRead,
+  refreshUnreadCount,
 };
 
 export type { AppNotification };

@@ -66,10 +66,10 @@ const UploadProgressBar: React.FC<UploadProgressBarProps> = ({ progress }) => {
       accessibilityValue={{ min: 0, max: total, now: uploaded, text: label }}
     >
       <View className="mb-1.5 flex-row items-center justify-between">
-        <Text className="text-xs font-medium text-gray-600">{label}</Text>
+        <Text className="text-xs font-medium text-muted">{label}</Text>
 
         <Text
-          className="text-xs font-semibold text-primary-600"
+          className="text-xs font-semibold text-primary"
           // Keeps the percentage from shifting as digits change width.
           style={{ fontVariant: ["tabular-nums"] }}
         >
@@ -79,13 +79,13 @@ const UploadProgressBar: React.FC<UploadProgressBarProps> = ({ progress }) => {
 
       <View
         onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-        className="h-1.5 overflow-hidden rounded-full bg-gray-200"
+        className="h-1.5 overflow-hidden rounded-full bg-border"
       >
         {/* Held back until measured — at width zero the translation below
             resolves to zero too, which would flash a full bar. */}
         {trackWidth > 0 && (
           <Animated.View
-            className="h-full rounded-full bg-primary-600"
+            className="h-full rounded-full bg-primary"
             style={{
               width: trackWidth,
               transform: [

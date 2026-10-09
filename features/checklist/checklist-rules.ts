@@ -168,11 +168,93 @@ function getMissingAnswerFields(values: ChecklistValues): string[] {
   });
 }
 
+/** A photo area's own key: "current_mileage" is also the km field. */
+const photoFieldKey = (field: string): string => `photo:${field}`;
+
+const PHOTO_REQUIRED_MESSAGE = "Adicione ao menos uma foto.";
+
 /**
- * Whether the submit button should be enabled.
+ * The answers and photo areas in the order the form shows them (decision
+ * 16.700): a failed submit brings the first invalid one into view. The web
+ * checklist keeps the same order and keys.
+ */
+const CHECKLIST_FORM_FIELDS: readonly string[] = [
+  "checklist_date",
+  "current_mileage",
+  photoFieldKey("current_mileage"),
+  "tires_condition",
+  photoFieldKey("tires_condition"),
+  "fuel_level_adequate",
+  photoFieldKey("fuel_level_adequate"),
+  "headlights_working",
+  photoFieldKey("headlights_working"),
+  "taillights_working",
+  photoFieldKey("taillights_working"),
+  "turn_signals_working",
+  photoFieldKey("turn_signals_working"),
+  "bumpers_condition",
+  photoFieldKey("bumpers_condition"),
+  "windshield_condition",
+  photoFieldKey("windshield_condition"),
+  "mirrors_condition",
+  photoFieldKey("mirrors_condition"),
+  "seatbelts_working",
+  photoFieldKey("seatbelts_working"),
+  "dashboard_working",
+  photoFieldKey("dashboard_working"),
+  "brakes_working",
+  photoFieldKey("brakes_working"),
+  "clutch_working",
+  photoFieldKey("clutch_working"),
+  "oil_level_adequate",
+  photoFieldKey("oil_level_adequate"),
+  "radiator_water_adequate",
+  photoFieldKey("radiator_water_adequate"),
+  "brake_fluid_adequate",
+  photoFieldKey("brake_fluid_adequate"),
+  "steering_wheel_condition",
+  photoFieldKey("steering_wheel_condition"),
+  "battery_condition",
+  photoFieldKey("battery_condition"),
+  "driver_license_valid",
+  "vehicle_documents_valid",
+  "insurance_valid",
+  "fire_extinguisher_valid",
+  "warning_triangle_present",
+  "jack_present",
+  "spare_tire_condition",
+  photoFieldKey("spare_tire_condition"),
+  "overall_condition",
+  "notes",
+];
+
+/**
+ * A missing photo, per photo key — the same requirement as
+ * `getMissingPhotoFields`, shown under the photo area like any field's
+ * message. A photo that depends on an answer ("Freios: Não") is only asked
+ * once that answer is given: an unanswered question has its own message.
+ */
+function checklistPhotoIssues(
+  values: ChecklistValues,
+  photos: PhotoCounts,
+): Record<string, string | null> {
+  const missing = new Set(getMissingPhotoFields(values, photos));
+  const issues: Record<string, string | null> = {};
+
+  for (const field of Object.keys(PHOTO_TITLES)) {
+    issues[photoFieldKey(field)] = missing.has(field) ? PHOTO_REQUIRED_MESSAGE : null;
+  }
+
+  return issues;
+}
+
+/**
+ * Whether the inspection is complete.
  *
  * Deliberately not the same as "the form validates": zod owns formats and
- * ranges, this owns whether the inspection was actually carried out.
+ * ranges, this owns whether the inspection was actually carried out. The
+ * submit button no longer waits for it (decision 16.701): the tap shows
+ * what is missing.
  */
 function isChecklistComplete({
   values,
@@ -194,6 +276,10 @@ function isChecklistComplete({
 
 export {
   ALWAYS_REQUIRED_PHOTO_FIELDS,
+  CHECKLIST_FORM_FIELDS,
+  PHOTO_REQUIRED_MESSAGE,
+  checklistPhotoIssues,
+  photoFieldKey,
   getMissingAnswerFields,
   getMissingPhotoFields,
   getPhotoTitle,

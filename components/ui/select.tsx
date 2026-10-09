@@ -18,6 +18,8 @@ interface SelectProps {
   disabled?: boolean;
   className?: string;
   required?: boolean;
+  /** Maestro handle (docs/testes.md, Maestro section): the field, and `<testID>-option` on each option. */
+  testID?: string;
 }
 
 export const Select: React.FC<SelectProps> = ({
@@ -30,6 +32,7 @@ export const Select: React.FC<SelectProps> = ({
   disabled = false,
   className = "",
   required = false,
+  testID,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -43,17 +46,20 @@ export const Select: React.FC<SelectProps> = ({
   const renderOption = ({ item }: { item: SelectOption }) => (
     <TouchableOpacity
       onPress={() => handleSelect(item.value)}
+      testID={testID ? `${testID}-option` : undefined}
+      accessibilityRole="button"
+      accessibilityState={{ selected: item.value === value }}
       className={cn(
-        "px-4 py-4 border-b border-gray-100",
-        item.value === value && "bg-primary-50",
+        "px-4 py-4 border-b border-border",
+        item.value === value && "bg-primary-soft",
       )}
     >
       <Text
         className={cn(
           "text-base",
           item.value === value
-            ? "text-primary-600 font-medium"
-            : "text-gray-900",
+            ? "text-primary font-medium"
+            : "text-ink",
         )}
       >
         {item.label}
@@ -65,35 +71,38 @@ export const Select: React.FC<SelectProps> = ({
     <View className={className}>
       {label && (
         <Text
-          className="text-gray-700
+          className="text-ink-soft
           font-medium mb-2"
         >
           {label}
-          {required && <Text className="text-red-500"> *</Text>}
+          {required && <Text className="text-destructive"> *</Text>}
         </Text>
       )}
 
       <TouchableOpacity
         onPress={() => !disabled && setIsOpen(true)}
         disabled={disabled}
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityState={{ disabled, expanded: isOpen }}
         className={cn(
-          "border rounded-lg px-3 py-3 bg-white flex-row justify-between items-center",
-          error ? "border-danger-500" : "border-gray-300",
-          disabled && "bg-gray-100 opacity-60",
+          "border rounded-lg px-3 py-3 bg-card flex-row justify-between items-center",
+          error ? "border-destructive" : "border-input",
+          disabled && "bg-subtle opacity-60",
         )}
       >
         <Text
           className={cn(
             "text-base",
-            selectedOption ? "text-gray-900" : "text-gray-500",
+            selectedOption ? "text-ink" : "text-muted",
           )}
         >
           {selectedOption?.label || placeholder}
         </Text>
-        <Text className="text-gray-400 text-lg">{isOpen ? "▲" : "▼"}</Text>
+        <Text className="text-muted text-lg">{isOpen ? "▲" : "▼"}</Text>
       </TouchableOpacity>
 
-      {error && <Text className="text-danger-600 text-sm mt-1">{error}</Text>}
+      {error && <Text className="text-destructive text-sm mt-1">{error}</Text>}
 
       <Modal
         visible={isOpen}
@@ -109,15 +118,15 @@ export const Select: React.FC<SelectProps> = ({
         >
           <TouchableOpacity
             activeOpacity={1}
-            className="bg-white rounded-lg 
+            className="bg-card rounded-lg 
             max-h-96 overflow-hidden"
           >
             {/* Header */}
             <View
               className="px-4 py-3 border-b 
-              border-gray-200 bg-gray-50"
+              border-border bg-subtle"
             >
-              <Text className="font-medium text-gray-900">
+              <Text className="font-medium text-ink">
                 {label || "Selecionar opção"}
               </Text>
             </View>
@@ -130,7 +139,7 @@ export const Select: React.FC<SelectProps> = ({
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View className="px-4 py-8">
-                  <Text className="text-center text-gray-500">
+                  <Text className="text-center text-muted">
                     Nenhuma opção disponível
                   </Text>
                 </View>
@@ -141,11 +150,11 @@ export const Select: React.FC<SelectProps> = ({
             <TouchableOpacity
               onPress={() => setIsOpen(false)}
               className="px-4 py-3 border-t 
-              border-gray-200 bg-gray-50"
+              border-border bg-subtle"
             >
               <Text
                 className="text-center 
-                text-gray-600 font-medium"
+                text-muted font-medium"
               >
                 Cancelar
               </Text>

@@ -1,0 +1,207 @@
+# Frota on: the driver's checklist on the happy path. With every item OK only
+# the three legal photos are owed (odometer, tyres, fuel level); a defect
+# would add its own photo (checklist-rules.ts). Continues after flow 04, so
+# the vehicle already reads 50.120 km.
+appId: com.trajetto.fleetmanager
+name: 04b Frota, checklist
+tags:
+  - driver
+  - fleet
+---
+- tapOn:
+    id: tab-vehicles
+- extendedWaitUntil:
+    visible:
+      id: vehicle-card
+    timeout: 60000
+- tapOn:
+    id: vehicle-card
+- tapOn:
+    id: vehicle-action-checklist
+# A driver goes straight to the form: branch and driver come from the vehicle.
+- extendedWaitUntil:
+    visible:
+      id: checklist-current_mileage
+    timeout: 60000
+- tapOn:
+    id: checklist-current_mileage
+- inputText: "50200"
+- hideKeyboard
+- runFlow:
+    file: subflows/checklist-photo.yaml
+    env:
+      FIELD: current_mileage
+# The on-device check cannot read a km off the virtual scene; it warns, it
+# does not block (decision 14.2). It runs async after a debounce, so wait for
+# it to settle before scrolling: a late notice would shift the layout under
+# the next taps. Optional because a device without the reader shows nothing.
+- extendedWaitUntil:
+    visible: "Enviar assim"
+    timeout: 15000
+    optional: true
+- runFlow:
+    when:
+      visible: "Enviar assim"
+    commands:
+      - tapOn: "Enviar assim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: tires_condition
+      OPTION: "Bom"
+- runFlow:
+    file: subflows/checklist-photo.yaml
+    env:
+      FIELD: tires_condition
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: fuel_level_adequate
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-photo.yaml
+    env:
+      FIELD: fuel_level_adequate
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: headlights_working
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: taillights_working
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: turn_signals_working
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: bumpers_condition
+      OPTION: "Bom"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: windshield_condition
+      OPTION: "Bom"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: mirrors_condition
+      OPTION: "Bom"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: seatbelts_working
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: dashboard_working
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: brakes_working
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: clutch_working
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: oil_level_adequate
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: radiator_water_adequate
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: brake_fluid_adequate
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: steering_wheel_condition
+      OPTION: "Bom"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: battery_condition
+      OPTION: "Bom"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: driver_license_valid
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: vehicle_documents_valid
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: insurance_valid
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: fire_extinguisher_valid
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: warning_triangle_present
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: jack_present
+      OPTION: "Sim"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: spare_tire_condition
+      OPTION: "Bom"
+- runFlow:
+    file: subflows/checklist-answer.yaml
+    env:
+      FIELD: overall_condition
+      OPTION: "Aprovado"
+# Safety net: a notice that showed up late is dismissed before sending.
+- runFlow:
+    when:
+      visible: "Enviar assim"
+    commands:
+      - tapOn: "Enviar assim"
+# Enabled while idle (decision 16.701); a tap with an answer or photo missing
+# shows it under the field and the flow then times out on vehicle-card.
+- extendedWaitUntil:
+    visible:
+      id: checklist-submit
+      enabled: true
+    timeout: 60000
+- tapOn:
+    id: checklist-submit
+# The success toast lasts seconds and the tap on this long form takes Maestro
+# several to settle: run 1 missed it while the API had already saved the
+# checklist. The durable proof is the screen it returns to — the vehicle now
+# reads the checklist km (server data; a queued checklist would not move it).
+- extendedWaitUntil:
+    visible:
+      id: vehicle-card
+    timeout: 120000
+- extendedWaitUntil:
+    visible: "50.200 km"
+    timeout: 60000
+- assertNotVisible: "Checklist salvo no aparelho"
+- takeScreenshot: 04b-checklist

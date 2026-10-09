@@ -19,6 +19,13 @@ interface ChecklistDraft<TFormData, TStepData> extends DraftEnvelope {
   formData: Partial<TFormData>;
   stepData: Partial<TStepData>;
   images: Record<string, ImagePickerAsset[]>;
+
+  /**
+   * The phone's pre-check of the odometer photo and km (decision 14.2),
+   * bound to the photo it read. Absent on older drafts.
+   */
+  precheck?: unknown;
+
   updatedAt: string;
 }
 

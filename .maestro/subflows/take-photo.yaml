@@ -1,0 +1,29 @@
+# The system camera (com.android.camera2) the app opens through
+# expo-image-picker. The AVD's back camera is the emulator's virtual scene
+# (scripts/e2e/emulator.sh), so the shutter takes a real picture: no test
+# hook in the app. The first launch may ask about location tags.
+appId: com.trajetto.fleetmanager
+---
+- extendedWaitUntil:
+    visible:
+      id: "com.android.camera2:id/.*"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Remember photo locations.*"
+    commands:
+      - tapOn: "NEXT|Next"
+- tapOn:
+    id: "com.android.camera2:id/shutter_button"
+- extendedWaitUntil:
+    visible:
+      id: "com.android.camera2:id/done_button"
+    timeout: 60000
+- tapOn:
+    id: "com.android.camera2:id/done_button"
+# Screens that ask for a square crop (allowsEditing) open the system cropper.
+- runFlow:
+    when:
+      visible: "CROP"
+    commands:
+      - tapOn: "CROP"

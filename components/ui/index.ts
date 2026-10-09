@@ -25,3 +25,6 @@ export { UploadProgressBar } from "./upload-progress-bar";
 export { TotalAmountDisplay } from "./total-amount-display";
 
 export { LocationPicker } from "./location-picker";
+
+export { SegmentedControl } from "./segmented-control";
+export { ThemeSelector } from "./theme-selector";

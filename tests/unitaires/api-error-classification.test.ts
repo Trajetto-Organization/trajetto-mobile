@@ -55,10 +55,13 @@ describe("storage outage keeps the driver's proof", () => {
     expect(next?.status).toBe("pending");
   });
 
-  it("still gives up when the object really is gone", () => {
+  it("sends the photos again when the object really is gone", () => {
     // The other half of the same distinction. A presigned PUT that never
-    // completed leaves nothing in the bucket, and asking again tomorrow
-    // returns the same nothing — retrying that forever is its own bug.
+    // completed leaves nothing in the bucket, and asking again with the same
+    // keys returns the same nothing. The photos are still on this phone,
+    // though, so the verdict is on the keys, not on the work: the item stays
+    // pending and its next attempt uploads everything again
+    // (outbox-failure-rules.test.ts covers the forgetting).
     const { failure, next } = outcomeOf(
       new ApiError(
         "Arquivo enviado não foi encontrado no armazenamento.",
@@ -69,8 +72,8 @@ describe("storage outage keeps the driver's proof", () => {
       ),
     );
 
-    expect(failure).toBe("permanent");
-    expect(next?.status).toBe("failed");
+    expect(failure).toBe("reupload");
+    expect(next?.status).toBe("pending");
   });
 });
 

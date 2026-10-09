@@ -1,0 +1,40 @@
+# Signs on the proof's signature pad and confirms. The pad is a web canvas
+# that can still be loading when the screen opens: a stroke drawn then is
+# lost, and "Confirmar" on an empty pad keeps the pad open (run r2 of the
+# offline flow). So when the pad is still open after the first try, the
+# stroke and the confirm happen once more. The check waits for the first try
+# to settle: a pad still closing must not count as a pad left open (r3).
+appId: com.trajetto.fleetmanager
+---
+- extendedWaitUntil:
+    visible: "Assinatura do recebedor"
+    timeout: 30000
+- swipe:
+    start: 20%, 40%
+    end: 80%, 55%
+    duration: 800
+- swipe:
+    start: 25%, 60%
+    end: 75%, 45%
+    duration: 800
+- tapOn: "Confirmar"
+- extendedWaitUntil:
+    visible: "Assinar novamente"
+    timeout: 10000
+    optional: true
+- runFlow:
+    when:
+      visible: "Peça para quem recebeu assinar.*"
+    commands:
+      - swipe:
+          start: 20%, 40%
+          end: 80%, 55%
+          duration: 800
+      - swipe:
+          start: 25%, 60%
+          end: 75%, 45%
+          duration: 800
+      - tapOn: "Confirmar"
+- extendedWaitUntil:
+    visible: "Assinar novamente"
+    timeout: 30000

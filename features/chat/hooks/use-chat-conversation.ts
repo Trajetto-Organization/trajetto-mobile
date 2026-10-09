@@ -8,10 +8,9 @@ import Toast from "react-native-toast-message";
 import type { Socket } from "socket.io-client";
 
 import { useAuthStore } from "@/store/auth-store";
-import { queryClient } from "@/providers/query-provider";
 
 import { apiClient, ApiError } from "@/utils/api";
-import { getSocket, initializeSocket } from "@/utils/socket";
+import { getSocket, initializeSocket, onRealtimeResync } from "@/utils/socket";
 
 import { uploadToStorage } from "@/features/media/upload-to-storage";
 
@@ -19,17 +18,58 @@ import {
   chatHintPulseMs,
   chatHintTtlMs,
   chatPresenceHint,
+  clearGapMarks,
   confirmOptimistic,
+  findOptimisticCopy,
   latestIso,
   markSendFailed,
   markSendPending,
   mergeIncomingMessage,
+  mergeNewestPage,
   newestDeliverableAt,
   presencePulseIsDue,
+  readCursorFor,
+  takeNewestPage,
+  type ChatHistory,
 } from "../chat-rules";
 
+import {
+  chatContextBody,
+  chatContextFields,
+  citesRefusedContext,
+  isStaleContextRejection,
+  staleContextNotice,
+  rememberRefusedContext,
+  stripChatContext,
+  type ChatContext,
+  type ChatContextReference,
+} from "../chat-context";
+
+import { CHAT_COALESCE_MS, createCursorCoalescer } from "../coalesce";
+
+import {
+  createConversationSync,
+  type ConversationSyncTrigger,
+} from "../conversation-sync";
+
+import { setConversationFocused } from "../conversation-presence";
+import { refreshLinkedChatMessages } from "../linked-messages";
 import { markChatDelivered } from "../mark-delivered";
 import { seedChatAudioCache } from "../audio-cache";
+import {
+  applyChatRead,
+  applyTicketEvent,
+  mergeTicketReadCursors,
+  mergeTickets,
+  type ChatReadCursors,
+  type DriverTicketEvent,
+  type TicketLike,
+} from "../ticket-rules";
+
+import {
+  holdChatUnreadRefresh,
+  requestChatUnreadRefresh,
+} from "../unread-refresh";
 
 import type {
   ChatDeliveredEvent,
@@ -41,7 +81,7 @@ import type {
 interface SendTextInput {
   kind: "TEXT";
   body: string;
-  deliveryId?: string;
+  context?: ChatContext | null;
 }
 
 interface SendImageInput {
@@ -51,7 +91,7 @@ interface SendImageInput {
   fileName?: string | null;
   fileSize?: number;
   mimeType?: string | null;
-  deliveryId?: string;
+  context?: ChatContext | null;
 }
 
 interface SendAudioInput {
@@ -62,10 +102,47 @@ interface SendAudioInput {
 
   // A voice note is about a delivery as often as a typed one is — more often,
   // since speaking is what a driver does with their hands full.
-  deliveryId?: string;
+  context?: ChatContext | null;
+}
+
+interface ChatConversationOptions {
+  /**
+   * The API refused a message only for the delivery or route it cited
+   * (`refused`). The screen drops its chip when it still cites that: every
+   * next message would be refused the same way.
+   */
+  onContextRejected?: (refused: ChatContextReference) => void;
 }
 
 type SendInput = SendTextInput | SendImageInput | SendAudioInput;
+
+/** The newest page, the same size the screen opens with. */
+const PAGE_LIMIT = 40;
+
+const EMPTY_HISTORY: ChatHistory = { messages: [], nextCursor: null };
+
+/**
+ * Files a voice note recorded on this phone under the id the server just gave
+ * it, before the optimistic row it replaces disappears (MOB-21).
+ *
+ * The socket echo of the driver's own send often lands BEFORE the HTTP answer,
+ * and the bubble remounts under the server id the moment the swap happens. If
+ * the cache has not heard of that id by then, the driver's own note comes back
+ * with a download arrow. Seeding is idempotent, so the HTTP path doing it
+ * again later costs a stat.
+ */
+function seedOwnVoiceNote(
+  list: ClientChatMessage[],
+  incoming: ChatMessage,
+): void {
+  const optimistic = findOptimisticCopy(list, incoming);
+
+  if (!optimistic || optimistic.kind !== "AUDIO") return;
+
+  const localUri = optimistic.localUri ?? optimistic.attachment_url;
+
+  if (localUri) seedChatAudioCache(incoming.id, localUri);
+}
 
 /**
  * The driver's single conversation with the operation, live end to end:
@@ -73,24 +150,51 @@ type SendInput = SendTextInput | SendImageInput | SendAudioInput;
  * makes a duplicate impossible), read cursors both ways and the staff's
  * "digitando..." / "gravando um áudio...". Sending needs a connection — the outbox stays the
  * delivery loop's tool; a chat is a conversation, not an appointment.
+ *
+ * The screen stays mounted as a tab and the socket is paused in the
+ * background, while the API has no replay. So the conversation goes back to
+ * the server for what it missed whenever something may have been missed — a
+ * reconnection, the socket's first connection after a load made without it,
+ * a return to the foreground, the tab being focused again, a pull on the
+ * list — and FOLDS the newest page into what is on screen instead of
+ * replacing it (MOB-05). `createConversationSync` decides which of those are
+ * worth a request.
  */
-function useChatConversation() {
+function useChatConversation(options: ChatConversationOptions = {}) {
   const user = useAuthStore((state) => state.user);
+
+  // Read at the moment of the refusal: the screen passes a fresh closure on
+  // every render, and the send callbacks must not be rebuilt for it. Synced
+  // in an effect, not during render (the React Compiler forbids that write).
+  const onContextRejectedRef = useRef(options.onContextRejected);
+
+  useEffect(() => {
+    onContextRejectedRef.current = options.onContextRejected;
+  }, [options.onContextRejected]);
 
   const myUserId = user?.id ?? "";
   const businessId = user?.businessId ?? "";
 
-  const [messages, setMessages] = useState<ClientChatMessage[]>([]);
+  // Messages and the paging cursor move together: a resync that finds a gap
+  // replaces both in one update, so they live in one piece of state.
+  const [history, setHistory] = useState<ChatHistory>(EMPTY_HISTORY);
+
+  const messages = history.messages;
+  const nextCursor = history.nextCursor;
+
   const [threadId, setThreadId] = useState<string | null>(null);
 
-  const [nextCursor, setNextCursor] = useState<{
-    created_at: string;
-    id: string;
-  } | null>(null);
+  /** Decision 14.5: the subjects the messages on screen belong to. */
+  const [tickets, setTickets] = useState<Map<string, TicketLike>>(() => new Map());
 
-  const [counterpartReadAt, setCounterpartReadAt] = useState<string | null>(
-    null,
-  );
+  // The tower's read cursors: the thread's, and one per ticket (decision
+  // 14.5 — reading a ticket moves only that ticket's). A message's blue
+  // check is the later of the two (`readCursorOf`).
+  const [readCursors, setReadCursors] = useState<ChatReadCursors>(() => ({
+    thread: null,
+    tickets: {},
+  }));
+  const counterpartReadAt = readCursors.thread;
 
   // How far the SAC has confirmed RECEIVING what the driver sent — the grey
   // double check. A different cursor from the read one above, and the two
@@ -101,6 +205,7 @@ function useChatConversation() {
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLoadingOlder, setIsLoadingOlder] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const [loadError, setLoadError] = useState<string>("");
   const [moduleDisabled, setModuleDisabled] = useState<boolean>(false);
@@ -118,6 +223,22 @@ function useChatConversation() {
   const threadIdRef = useRef<string | null>(null);
   const focusedRef = useRef<boolean>(false);
 
+  // What is on screen, readable from socket handlers and effects without
+  // rebuilding them on every message.
+  const messagesRef = useRef<ClientChatMessage[]>(messages);
+
+  // The conversation has been shown at least once. Until then there is no
+  // list on screen to resync — a trigger retries the first load instead.
+  const loadedRef = useRef<boolean>(false);
+
+  // The list is scrolled to its newest message (reported by the screen). A
+  // driver reading older history has not seen what lands below the fold.
+  const viewingLatestRef = useRef<boolean>(true);
+
+  // Identity for the "conversation on screen" registry (`useChatRealtime`
+  // reads it to skip a GET this hook already makes).
+  const [presenceOwner] = useState<object>(() => ({}));
+
   // The newest instant already confirmed as delivered. Reloads that bring
   // nothing new must not re-confirm the same cursor on every render.
   const deliveredUpToRef = useRef<string | null>(null);
@@ -130,6 +251,90 @@ function useChatConversation() {
 
   /** When the driver's own "digitando" last went out, or `null` for never. */
   const lastTypingEmitRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  /** Every existing call site edits the message list; the cursor rides along. */
+  const setMessages = useCallback(
+    (update: (current: ClientChatMessage[]) => ClientChatMessage[]) => {
+      setHistory((current) => {
+        const next = update(current.messages);
+
+        return next === current.messages
+          ? current
+          : { messages: next, nextCursor: current.nextCursor };
+      });
+    },
+    [],
+  );
+
+  /**
+   * The read cursor, one POST per burst (MOB-09) carrying the newest instant
+   * actually on screen (MOB-05). A broadcast of twenty messages used to be
+   * twenty `mark-read` calls, each refetching the badge; the coalescer keeps
+   * the latest instant of the window and posts it once. It holds the badge
+   * while the POST is on its way, so the arrival's own refetch request and
+   * this one become a single `list-threads` after the cursor moved.
+   */
+  const [readCursor] = useState(() =>
+    createCursorCoalescer({
+      windowMs: CHAT_COALESCE_MS,
+      hold: holdChatUnreadRefresh,
+      flush: async (readAt) => {
+        const thread = threadIdRef.current;
+
+        if (!thread) return;
+
+        await apiClient.post("/chat/mark-read", { threadId: thread, readAt });
+
+        // The hub badge derives from the cursor just advanced.
+        requestChatUnreadRefresh();
+      },
+    }),
+  );
+
+  useEffect(() => () => readCursor.cancel(), [readCursor]);
+
+  /**
+   * Reports as read what the driver is really looking at: the conversation
+   * is the focused screen, the app is in the foreground, the list is on
+   * screen (not the spinner, not an error) and scrolled to its newest
+   * message. Anything else stays unread — a message merged in by a resync
+   * while the driver is on the map, or one that landed below the fold while
+   * they read older history, has not been seen, and the SAC must not be told
+   * it was. The cursor only advances, so the older messages the driver is
+   * reading were already reported when they were the newest on screen.
+   */
+  const markDisplayedAsRead = useCallback(
+    (displayed: ClientChatMessage[]) => {
+      if (!loadedRef.current) return;
+      if (!focusedRef.current) return;
+      if (AppState.currentState !== "active") return;
+      if (!viewingLatestRef.current) return;
+
+      const readAt = readCursorFor(displayed, myUserId);
+
+      if (readAt) readCursor.push(readAt);
+    },
+    [myUserId, readCursor],
+  );
+
+  /**
+   * The screen reports whether the list is at its newest message. Coming
+   * back down reads whatever landed below the fold meanwhile.
+   */
+  const setViewingLatest = useCallback(
+    (viewing: boolean) => {
+      if (viewingLatestRef.current === viewing) return;
+
+      viewingLatestRef.current = viewing;
+
+      if (viewing) markDisplayedAsRead(messagesRef.current);
+    },
+    [markDisplayedAsRead],
+  );
 
   /**
    * Advances the staff delivery cursor, never rewinds it.
@@ -154,21 +359,6 @@ function useChatConversation() {
 
     threadIdRef.current = incoming;
     setThreadId(incoming);
-  }, []);
-
-  const markRead = useCallback(async () => {
-    if (!threadIdRef.current) return;
-
-    try {
-      await apiClient.post("/chat/mark-read", {
-        threadId: threadIdRef.current,
-      });
-
-      // The hub badge derives from the cursor just advanced.
-      queryClient.invalidateQueries({ queryKey: ["chat-unread"] });
-    } catch {
-      // Read receipts are decoration — never worth an error on screen.
-    }
   }, []);
 
   /**
@@ -203,48 +393,249 @@ function useChatConversation() {
     [myUserId],
   );
 
-  // =============================================================== load
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setLoadError("");
-    setModuleDisabled(false);
-
-    try {
-      const response = await apiClient.get<ChatMessagesResponse>(
-        "/chat/list-messages?limit=40",
-      );
-
-      // The API answers newest-first; the screen renders oldest-first.
-      setMessages([...response.data].reverse());
-      setNextCursor(response.nextCursor);
-
-      setCounterpartReadAt(response.counterpartLastReadAt);
+  /** Everything a page from the server says besides the messages themselves. */
+  const absorbPageMeta = useCallback(
+    (response: ChatMessagesResponse) => {
+      // Advance-only: a page can answer with a snapshot older than a
+      // `chatRead` event already applied.
+      setReadCursors((current) => ({
+        thread: latestIso(current.thread, response.counterpartLastReadAt),
+        tickets: mergeTicketReadCursors(current.tickets, response.counterpartTicketReadAt),
+      }));
       advanceDeliveredCursor(response.counterpartDeliveredAt);
 
       adoptThreadId(response.threadId);
 
+      // The subjects of this page, for the separators (an older API sends none).
+      setTickets((current) => mergeTickets(current, response.tickets));
+
       if (response.threadId) {
-        void markRead();
         confirmDelivery(response.threadId, response.data);
       }
-    } catch (error) {
-      if (error instanceof ApiError && error.code === "MODULE_NOT_ENABLED") {
-        setModuleDisabled(true);
-      } else {
-        setLoadError(
-          error instanceof ApiError
-            ? error.message
-            : "Não foi possível carregar a conversa. Verifique sua conexão.",
-        );
+    },
+    [adoptThreadId, advanceDeliveredCursor, confirmDelivery],
+  );
+
+  // ======================================================== sync control
+  // Whatever runs a sync changes identity with its dependencies; the
+  // controller below is created once, so it reads the current one from here.
+  const runSyncRef = useRef<
+    (trigger: ConversationSyncTrigger) => Promise<boolean>
+  >(async () => false);
+
+  const [sync] = useState(() =>
+    createConversationSync({
+      run: (trigger) => runSyncRef.current(trigger),
+      isOnScreen: () =>
+        focusedRef.current && AppState.currentState === "active",
+      isLive: () => getSocket()?.connected ?? false,
+    }),
+  );
+
+  // =============================================================== load
+  /**
+   * The first load (and a retry of one that failed). `quiet` is for a
+   * background retry: it keeps the screen as it is instead of flashing the
+   * spinner on every reconnection.
+   *
+   * The page becomes the history, but the socket is already live while the
+   * GET is in flight: whatever it delivered meanwhile is newer than the page
+   * and is kept (`takeNewestPage`). Always called through `sync`, so a
+   * reconnection that lands during this GET runs once it ends instead of
+   * being dropped.
+   */
+  const fetchInitial = useCallback(
+    async (quiet: boolean): Promise<boolean> => {
+      if (!quiet) {
+        setIsLoading(true);
+        setLoadError("");
+        setModuleDisabled(false);
       }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [adoptThreadId, advanceDeliveredCursor, confirmDelivery, markRead]);
+
+      try {
+        const response = await apiClient.get<ChatMessagesResponse>(
+          `/chat/list-messages?limit=${PAGE_LIMIT}`,
+        );
+
+        // Seeded before the swap, like any other arrival of an own send.
+        response.data.forEach((message) =>
+          seedOwnVoiceNote(messagesRef.current, message),
+        );
+
+        const closesGap = sync.closesGap();
+
+        setHistory((current) => {
+          const next = takeNewestPage(current.messages, response);
+
+          return closesGap
+            ? {
+                messages: clearGapMarks(next.messages),
+                nextCursor: next.nextCursor,
+              }
+            : next;
+        });
+
+        loadedRef.current = true;
+
+        setLoadError("");
+        setModuleDisabled(false);
+
+        absorbPageMeta(response);
+
+        // What the socket merged during the GET is on screen too — and no
+        // longer above a hole when the socket was up all along.
+        markDisplayedAsRead([
+          ...response.data,
+          ...(closesGap
+            ? clearGapMarks(messagesRef.current)
+            : messagesRef.current),
+        ]);
+
+        return true;
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "MODULE_NOT_ENABLED") {
+          loadedRef.current = false;
+          setModuleDisabled(true);
+        } else if (!quiet) {
+          setLoadError(
+            error instanceof ApiError
+              ? error.message
+              : "Não foi possível carregar a conversa. Verifique sua conexão.",
+          );
+        }
+
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [absorbPageMeta, markDisplayedAsRead, sync],
+  );
+
+  /**
+   * Catches up with what the server has that this screen does not.
+   *
+   * The newest page is fetched and FOLDED into the list — the history the
+   * driver paged in stays where it is (see `mergeNewestPage`). A failure is
+   * silent unless the driver asked for it by pulling the list: a resync is
+   * housekeeping, and a readable conversation must never turn into an error
+   * screen because a background fetch hit a dead spot.
+   */
+  const runSync = useCallback(
+    async (trigger: ConversationSyncTrigger): Promise<boolean> => {
+      if (!loadedRef.current) {
+        return fetchInitial(trigger !== "manual" && trigger !== "initial");
+      }
+
+      try {
+        const response = await apiClient.get<ChatMessagesResponse>(
+          `/chat/list-messages?limit=${PAGE_LIMIT}`,
+        );
+
+        response.data.forEach((message) =>
+          seedOwnVoiceNote(messagesRef.current, message),
+        );
+
+        // Began with the socket up and nothing dropped since: this page and
+        // the live arrivals together are the whole thread.
+        const closesGap = sync.closesGap();
+
+        setHistory((current) => {
+          const merged = mergeNewestPage(
+            current.messages,
+            current.nextCursor,
+            response,
+          );
+
+          const next = closesGap
+            ? {
+                messages: clearGapMarks(merged.messages),
+                nextCursor: merged.nextCursor,
+              }
+            : merged;
+
+          return next.messages === current.messages &&
+            next.nextCursor === current.nextCursor
+            ? current
+            : next;
+        });
+
+        absorbPageMeta(response);
+
+        // The marks came off, so what the socket delivered while this page
+        // was on its way is reported too.
+        markDisplayedAsRead(
+          closesGap
+            ? [...response.data, ...clearGapMarks(messagesRef.current)]
+            : response.data,
+        );
+
+        return true;
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "MODULE_NOT_ENABLED") {
+          loadedRef.current = false;
+          setModuleDisabled(true);
+
+          return false;
+        }
+
+        if (trigger === "manual") {
+          Toast.show({
+            type: "error",
+            text1: "Não foi possível atualizar a conversa",
+            text2: "Verifique sua conexão e tente de novo.",
+            position: "top",
+          });
+        }
+
+        return false;
+      }
+    },
+    [absorbPageMeta, fetchInitial, markDisplayedAsRead, sync],
+  );
+
+  // Declared before the load below: effects run in order, and the first
+  // load goes through `sync`, which calls whatever this ref holds.
+  useEffect(() => {
+    runSyncRef.current = runSync;
+  }, [runSync]);
+
+  const load = useCallback(() => sync.request("initial"), [sync]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Pull-to-refresh. Never skipped: the driver asked. */
+  const refresh = useCallback(async () => {
+    setIsRefreshing(true);
+
+    try {
+      await sync.request("manual");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [sync]);
+
+  // A reconnection is the one signal that something WAS missed: the API has
+  // no replay, so whatever the SAC sent while the socket was down is only on
+  // the server. Off screen it is owed to the next focus or foreground rather
+  // than fetched for nobody (see `createConversationSync`).
+  useEffect(() => onRealtimeResync(() => void sync.request("resync")), [sync]);
+
+  // Back from the background with the conversation on screen: what was merged
+  // meanwhile is now in front of the driver, and whatever the paused socket
+  // missed is fetched.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active" || !focusedRef.current) return;
+
+      markDisplayedAsRead(messagesRef.current);
+      void sync.request("foreground");
+    });
+
+    return () => subscription.remove();
+  }, [markDisplayedAsRead, sync]);
 
   /**
    * Re-signs ONE attachment and patches it into the conversation.
@@ -292,30 +683,46 @@ function useChatConversation() {
         return false;
       }
     },
-    [],
+    [setMessages],
   );
 
   const loadOlder = useCallback(async () => {
     if (!nextCursor || !threadIdRef.current || isLoadingOlder) return;
+
+    const cursor = nextCursor;
 
     setIsLoadingOlder(true);
 
     try {
       const query = new URLSearchParams({
         threadId: threadIdRef.current,
-        limit: "40",
-        beforeAt: nextCursor.created_at,
-        beforeId: nextCursor.id,
+        limit: String(PAGE_LIMIT),
+        beforeAt: cursor.created_at,
+        beforeId: cursor.id,
       });
 
       const response = await apiClient.get<ChatMessagesResponse>(
         `/chat/list-messages?${query.toString()}`,
       );
 
-      setMessages((current) => [...[...response.data].reverse(), ...current]);
-      setNextCursor(response.nextCursor);
+      setHistory((current) =>
+        // A resync that found a gap replaced the history (and its cursor)
+        // while this page was on its way: it belongs to a list that is gone.
+        current.nextCursor !== cursor
+          ? current
+          : {
+              messages: [...[...response.data].reverse(), ...current.messages],
+              nextCursor: response.nextCursor,
+            },
+      );
 
       advanceDeliveredCursor(response.counterpartDeliveredAt);
+      setTickets((current) => mergeTickets(current, response.tickets));
+      setReadCursors((current) => {
+        const tickets = mergeTicketReadCursors(current.tickets, response.counterpartTicketReadAt);
+
+        return tickets === current.tickets ? current : { ...current, tickets };
+      });
     } catch {
       Toast.show({
         type: "error",
@@ -338,30 +745,33 @@ function useChatConversation() {
       // The driver's user room only ever carries their own thread.
       adoptThreadId(incoming.threadId);
 
-      setMessages((current) => mergeIncomingMessage(current, incoming));
+      seedOwnVoiceNote(messagesRef.current, incoming);
 
-      const fromOperation = incoming.senderId !== myUserId;
+      // After a drop, the live socket may deliver the newest message of a
+      // thread whose middle it missed; the next catch-up must not take it as
+      // proof that the history on screen reaches that far.
+      const arrival: ClientChatMessage = sync.trustsLiveArrivals()
+        ? incoming
+        : { ...incoming, afterGap: true };
 
-      if (
-        fromOperation &&
-        focusedRef.current &&
-        AppState.currentState === "active"
-      ) {
-        void markRead();
-      }
+      setMessages((current) => mergeIncomingMessage(current, arrival));
+
+      // Through the coalescer: a burst is one `mark-read`, not one per
+      // message. The driver's own echo reports nothing, and neither does an
+      // arrival above a possible hole (`readCursorFor`).
+      if (incoming.senderId !== myUserId) markDisplayedAsRead([arrival]);
     };
 
-    const handleChatRead = (event?: { userId?: string; last_read_at?: string }) => {
+    const handleChatRead = (event?: {
+      userId?: string;
+      last_read_at?: string;
+      ticketId?: string | null;
+    }) => {
       if (disposed || !event?.last_read_at) return;
 
-      // Only the OTHER side's cursor turns this screen's checks double.
-      if (event.userId === myUserId) return;
-
-      setCounterpartReadAt((current) =>
-        !current || new Date(event.last_read_at!) > new Date(current)
-          ? event.last_read_at!
-          : current,
-      );
+      // Only the OTHER side's cursor turns this screen's checks double, and a
+      // ticket's read only that ticket's messages.
+      setReadCursors((current) => applyChatRead(current, event, myUserId));
     };
 
     const handleChatDelivered = (event?: ChatDeliveredEvent) => {
@@ -430,15 +840,19 @@ function useChatConversation() {
     };
 
     /**
-     * A dropped connection takes both hints down with it.
+     * A dropped connection takes both hints down with it, and makes the list
+     * stale: until the next sync, what the socket would have carried is only
+     * on the server.
      *
-     * Courtesy, not correction: a socket that dies stops delivering pulses, so
-     * both hints would go out on their own within their window anyway. This
-     * only spares the driver the few seconds of a bubble that already has
-     * nobody behind it.
+     * The hints part is courtesy, not correction: a socket that dies stops
+     * delivering pulses, so both hints would go out on their own within their
+     * window anyway. This only spares the driver the few seconds of a bubble
+     * that already has nobody behind it.
      */
-    const clearHints = () => {
+    const handleDisconnect = () => {
       if (disposed) return;
+
+      sync.markStale();
 
       if (staffTypingTimer.current) clearTimeout(staffTypingTimer.current);
 
@@ -453,6 +867,25 @@ function useChatConversation() {
       setStaffRecording(false);
     };
 
+    /**
+     * The socket's first connection is not announced as a resync, yet a list
+     * loaded before it misses whatever the SAC sent until the room was
+     * joined — the cold start from a chat push. The controller decides
+     * whether this connection needs a catch-up of its own.
+     */
+    const handleConnect = () => {
+      if (disposed) return;
+
+      void sync.noteConnected();
+    };
+
+    // A subject opened, closed or reopened by the central (decision 14.5).
+    const handleSupportTicket = (event?: DriverTicketEvent) => {
+      if (disposed) return;
+
+      setTickets((current) => applyTicketEvent(current, event));
+    };
+
     void initializeSocket()
       .then((socket) => {
         if (disposed) return;
@@ -464,7 +897,13 @@ function useChatConversation() {
         socket.on("chatDelivered", handleChatDelivered);
         socket.on("chatTyping", handleChatTyping);
         socket.on("chatRecording", handleChatRecording);
-        socket.on("disconnect", clearHints);
+        socket.on("disconnect", handleDisconnect);
+        socket.on("connect", handleConnect);
+        socket.on("supportTicket", handleSupportTicket);
+
+        // Binding is asynchronous: a connection made since the first load
+        // began fired no event this handler could hear.
+        if (socket.connected) handleConnect();
       })
       .catch(() => {
         // Without realtime the screen still works over HTTP.
@@ -478,27 +917,46 @@ function useChatConversation() {
       boundSocket?.off("chatDelivered", handleChatDelivered);
       boundSocket?.off("chatTyping", handleChatTyping);
       boundSocket?.off("chatRecording", handleChatRecording);
-      boundSocket?.off("disconnect", clearHints);
+      boundSocket?.off("disconnect", handleDisconnect);
+      boundSocket?.off("connect", handleConnect);
+      boundSocket?.off("supportTicket", handleSupportTicket);
 
       if (staffTypingTimer.current) clearTimeout(staffTypingTimer.current);
       if (staffRecordingTimer.current) {
         clearTimeout(staffRecordingTimer.current);
       }
     };
-  }, [adoptThreadId, advanceDeliveredCursor, markRead, myUserId]);
+  }, [
+    adoptThreadId,
+    advanceDeliveredCursor,
+    markDisplayedAsRead,
+    myUserId,
+    setMessages,
+    sync,
+  ]);
 
-  // Focus bookkeeping: arriving on the screen reads the backlog; messages
-  // landing while the screen is behind another one do not.
+  // Focus bookkeeping: arriving on the screen reads what is on it and looks
+  // for anything missed; messages landing while the screen is behind another
+  // one are not read.
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      setConversationFocused(presenceOwner, true);
 
-      if (threadIdRef.current) void markRead();
+      markDisplayedAsRead(messagesRef.current);
+      void sync.request("focus");
 
       return () => {
         focusedRef.current = false;
+        setConversationFocused(presenceOwner, false);
       };
-    }, [markRead]),
+    }, [markDisplayedAsRead, presenceOwner, sync]),
+  );
+
+  // A focus cleanup is not guaranteed to run before an unmount.
+  useEffect(
+    () => () => setConversationFocused(presenceOwner, false),
+    [presenceOwner],
   );
 
   // ====================================================== presence hints
@@ -534,8 +992,25 @@ function useChatConversation() {
   }, []);
 
   // ============================================================= sending
+  /**
+   * Uploads the attachment, if any, then posts the message.
+   *
+   * `refused` holds the references the API already refused during this batch:
+   * the photos after the first one of a batch about a stale delivery go
+   * without it, instead of each being refused on its own.
+   */
   const performSend = useCallback(
-    async (outgoing: ClientChatMessage) => {
+    async (queued: ClientChatMessage, refused: Set<string> = new Set()) => {
+      const submissionId = queued.client_submission_id ?? "";
+
+      let outgoing = citesRefusedContext(queued, refused)
+        ? { ...queued, ...chatContextFields(null) }
+        : queued;
+
+      if (outgoing !== queued) {
+        setMessages((current) => stripChatContext(current, submissionId));
+      }
+
       try {
         let attachmentKey: string | undefined;
 
@@ -563,41 +1038,77 @@ function useChatConversation() {
           attachmentKey = uploaded.key;
         }
 
-        const response = await apiClient.post<{ data: ChatMessage[] }>(
-          "/chat/send-message",
-          {
+        const post = (message: ClientChatMessage) =>
+          apiClient.post<{ data: ChatMessage[] }>("/chat/send-message", {
             driverIds: [user?.driverId],
-            kind: outgoing.kind,
-            ...(outgoing.body && { body: outgoing.body }),
+            kind: message.kind,
+            ...(message.body && { body: message.body }),
             ...(attachmentKey && { attachmentKey }),
-            ...(outgoing.duration_ms && { durationMs: outgoing.duration_ms }),
-            ...(outgoing.deliveryId && { deliveryId: outgoing.deliveryId }),
-            clientSubmissionId: outgoing.client_submission_id,
-          },
-        );
+            ...(message.duration_ms && { durationMs: message.duration_ms }),
+            // The delivery and/or route it is about (decision 6.7).
+            ...chatContextBody(message),
+            clientSubmissionId: message.client_submission_id,
+          });
+
+        let response: { data: ChatMessage[] };
+
+        try {
+          response = await post(outgoing);
+        } catch (error) {
+          if (!isStaleContextRejection(error, outgoing)) throw error;
+
+          // Refused only for what it cites: the delivery left this driver, or
+          // the route was reassigned. Nothing was written (the reference is
+          // checked first), so the same words go again under the same
+          // submission id, without it. Retried as they were, they would be
+          // refused forever.
+          rememberRefusedContext(refused, outgoing);
+
+          // Named, so the screen drops only a chip that still cites it.
+          const refusedReference = chatContextBody(outgoing);
+
+          outgoing = { ...outgoing, ...chatContextFields(null) };
+          setMessages((current) => stripChatContext(current, submissionId));
+
+          onContextRejectedRef.current?.(refusedReference);
+
+          // A closed ticket and a delivery that left the driver read
+          // differently (decision 14.5); the words go again either way.
+          const notice = staleContextNotice(error);
+
+          Toast.show({
+            type: "info",
+            text1: notice.title,
+            text2: notice.text,
+            position: "top",
+          });
+
+          response = await post(outgoing);
+        }
 
         const confirmed = response.data[0];
 
         // The recording is already on this phone; file it under the id the
         // server just issued, or the driver's own note would come back asking
-        // to be downloaded the moment the optimistic row is replaced.
+        // to be downloaded the moment the optimistic row is replaced. (The
+        // socket echo may have done it first — see `seedOwnVoiceNote`.)
         if (outgoing.kind === "AUDIO" && confirmed?.id) {
-          seedChatAudioCache(confirmed.id, outgoing.attachment_url ?? "");
+          seedChatAudioCache(
+            confirmed.id,
+            outgoing.localUri ?? outgoing.attachment_url ?? "",
+          );
         }
 
         adoptThreadId(confirmed.threadId);
 
+        // The previews of its delivery and route now have this one.
+        refreshLinkedChatMessages(confirmed);
+
         setMessages((current) =>
-          confirmOptimistic(
-            current,
-            outgoing.client_submission_id ?? "",
-            confirmed,
-          ),
+          confirmOptimistic(current, submissionId, confirmed),
         );
       } catch (error) {
-        setMessages((current) =>
-          markSendFailed(current, outgoing.client_submission_id ?? ""),
-        );
+        setMessages((current) => markSendFailed(current, submissionId));
 
         Toast.show({
           type: "error",
@@ -610,7 +1121,7 @@ function useChatConversation() {
         });
       }
     },
-    [adoptThreadId, businessId, user?.driverId],
+    [adoptThreadId, businessId, setMessages, user?.driverId],
   );
 
   const buildOptimistic = useCallback(
@@ -623,13 +1134,13 @@ function useChatConversation() {
         body: "body" in input && input.body ? input.body : null,
         attachment_url: input.kind !== "TEXT" ? input.uri : null,
         duration_ms: input.kind === "AUDIO" ? input.durationMs : null,
-        deliveryId: "deliveryId" in input ? (input.deliveryId ?? null) : null,
+        // Shown on the bubble at once; the confirmed message replaces it.
+        ...chatContextFields(input.context),
         broadcast_id: null,
         client_submission_id: clientSubmissionId,
         threadId: threadIdRef.current ?? "",
         senderId: myUserId,
         sender: { id: myUserId, name: user?.name ?? "Você" },
-        delivery: null,
         // A millisecond apart per position: a batch built inside one tick
         // would otherwise share a timestamp, and the tie-break is the id —
         // which would scatter the photos into an order nobody chose.
@@ -668,12 +1179,15 @@ function useChatConversation() {
       setMessages((current) => [...current, ...outgoing]);
 
       void (async () => {
+        // One batch, one verdict on its reference (see performSend).
+        const refused = new Set<string>();
+
         for (const message of outgoing) {
-          await performSend(message);
+          await performSend(message, refused);
         }
       })();
     },
-    [buildOptimistic, performSend],
+    [buildOptimistic, performSend, setMessages],
   );
 
   const send = useCallback(
@@ -693,7 +1207,7 @@ function useChatConversation() {
       // actually landed — the API answers with the existing message.
       void performSend({ ...failed, pending: true, failed: false });
     },
-    [performSend],
+    [performSend, setMessages],
   );
 
   // The one line the screen has, and the two hints that may both want it.
@@ -705,16 +1219,21 @@ function useChatConversation() {
   return {
     myUserId,
     messages,
+    tickets,
     threadId,
     hasOlder: Boolean(nextCursor),
     counterpartReadAt,
+    readCursors,
     counterpartDeliveredAt,
     staffHint,
     isLoading,
     isLoadingOlder,
+    isRefreshing,
     loadError,
     moduleDisabled,
     reload: load,
+    refresh,
+    setViewingLatest,
     renewAttachmentUrl,
     loadOlder,
     send,
@@ -726,4 +1245,4 @@ function useChatConversation() {
 }
 
 export { useChatConversation };
-export type { SendInput };
+export type { ChatConversationOptions, SendInput };

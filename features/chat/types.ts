@@ -5,6 +5,13 @@ interface ChatPerson {
   name: string;
 }
 
+/** The route a message was said during, as the API tags it (decision 6.7). */
+interface ChatRouteTag {
+  id: string;
+  code: number;
+  name: string | null;
+}
+
 /** A message as the API presents it: attachment already a signed URL. */
 interface ChatMessage {
   id: string;
@@ -13,6 +20,14 @@ interface ChatMessage {
   attachment_url: string | null;
   duration_ms: number | null;
   deliveryId: string | null;
+
+  /**
+   * Optional: an API older than decision 6.7 sends neither key, and the
+   * bubble must still render its messages.
+   */
+  routeId?: string | null;
+  route?: ChatRouteTag | null;
+
   broadcast_id: string | null;
   client_submission_id: string | null;
   threadId: string;
@@ -20,6 +35,28 @@ interface ChatMessage {
   sender: ChatPerson;
   delivery: { id: string; recipient_name: string; status: string } | null;
   created_at: string;
+
+  /**
+   * The support ticket (decision 14.5) the message belongs to. Optional: the
+   * 7-day cache holds messages from before the tickets, and a mass notice
+   * has none.
+   */
+  ticketId?: string | null;
+}
+
+/**
+ * A ticket as the driver sees it (never who handles it at the company). The
+ * page of messages and the `supportTicket` event both carry this view.
+ */
+interface DriverTicket {
+  id: string;
+  number: number;
+  kind?: string;
+  status: "OPEN" | "CLOSED";
+  subject: string;
+  version: number;
+  close_outcome?: "RESOLVED" | "APPROVED" | "DENIED" | "MIGRATED" | null;
+  close_note?: string | null;
 }
 
 /**
@@ -34,6 +71,16 @@ interface ClientChatMessage extends ChatMessage {
   localUri?: string;
   localFileSize?: number;
   localMimeType?: string;
+
+  /**
+   * Arrived by socket while the list may have a hole below it (the socket
+   * dropped, or the catch-up that began with it up has not landed yet).
+   * Real, but no evidence that the history on screen reaches up to it — see
+   * `mergeNewestPage` — and never reported as read (`readCursorFor`). A page
+   * that covers it replaces it with the server's copy; a catch-up that began
+   * with the socket up and landed clears the mark (`clearGapMarks`).
+   */
+  afterGap?: boolean;
 }
 
 interface ChatMessagesResponse {
@@ -51,6 +98,15 @@ interface ChatMessagesResponse {
    * grey double one.
    */
   counterpartDeliveredAt: string | null;
+
+  /** Decision 14.5: the tickets of this page's messages (driver's view). */
+  tickets?: DriverTicket[];
+
+  /**
+   * Decision 14.5: how far the tower read each ticket of this page (a ticket
+   * read moves only that ticket's cursor). Absent from an older API.
+   */
+  counterpartTicketReadAt?: Record<string, string>;
 }
 
 /**
@@ -72,8 +128,10 @@ interface ChatThreadsResponse {
 }
 
 export type {
+  DriverTicket,
   ChatMessageKind,
   ChatPerson,
+  ChatRouteTag,
   ChatMessage,
   ClientChatMessage,
   ChatMessagesResponse,

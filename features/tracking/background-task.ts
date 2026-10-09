@@ -1,4 +1,5 @@
 import * as TaskManager from "expo-task-manager";
+import * as Location from "expo-location";
 import type { LocationObject } from "expo-location";
 
 import { logger } from "@/utils/logger";
@@ -26,7 +27,7 @@ import type { TrackablePing } from "./position-rules";
  * declaration in the Play Console with a demo video; shipping the permission
  * without the declaration gets an app removed. So the architecture is here and
  * whether to run it is a switch the operation turns on — see
- * `docs/PENDENCIAS-DO-USUARIO.md`.
+ * docs/deploy.md, background location section.
  */
 const LOCATION_TASK = "trajetto-driver-location";
 
@@ -53,14 +54,32 @@ function asPing(fix: LocationObject): TrackablePing {
 }
 
 /**
- * Defined at module scope, on purpose and by requirement.
+ * Stops the OS location updates this task receives, if they are running.
  *
- * Expo looks up the task by name when the OS wakes the app, and the lookup
- * happens before any screen mounts — a task registered inside a component
- * would not exist in a headless launch, which is the only launch that matters
- * here.
+ * The React effect that started them is the usual place they stop, and it
+ * does not exist when the app was killed: the task has to be able to end
+ * itself (MOB-TRK-3).
  */
-TaskManager.defineTask<LocationTaskData>(LOCATION_TASK, async ({ data, error }) => {
+async function stopLocationTask(): Promise<void> {
+  try {
+    if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+    }
+  } catch (error) {
+    logger.warn("[Tracking] Falha ao parar a tarefa de fundo", error);
+  }
+}
+
+/**
+ * What the task does with one batch the OS woke it for.
+ *
+ * Exported for the test: the OS wiring is not something Node can exercise,
+ * but what the task DECIDES is.
+ */
+async function handleLocationTask({
+  data,
+  error,
+}: TaskManager.TaskManagerTaskBody<LocationTaskData>): Promise<void> {
   if (error) {
     // Nothing to show anybody: the app may not even be on screen. The next
     // batch tries again, and the buffer is still on disk.
@@ -72,7 +91,22 @@ TaskManager.defineTask<LocationTaskData>(LOCATION_TASK, async ({ data, error }) 
 
   if (locations.length === 0) return;
 
-  await ingest(locations.map(asPing));
-});
+  const { halt } = await ingest(locations.map(asPing));
 
-export { LOCATION_TASK, asPing };
+  // The API said the route is over (or refused the phone), or nobody is
+  // signed in: GPS and the "Rota em andamento" notification end here, not
+  // whenever the driver next opens the app.
+  if (halt) await stopLocationTask();
+}
+
+/**
+ * Defined at module scope, on purpose and by requirement.
+ *
+ * Expo looks up the task by name when the OS wakes the app, and the lookup
+ * happens before any screen mounts — a task registered inside a component
+ * would not exist in a headless launch, which is the only launch that matters
+ * here.
+ */
+TaskManager.defineTask<LocationTaskData>(LOCATION_TASK, handleLocationTask);
+
+export { LOCATION_TASK, asPing, handleLocationTask, stopLocationTask };

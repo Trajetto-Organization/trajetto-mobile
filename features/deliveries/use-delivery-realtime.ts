@@ -15,6 +15,9 @@ import {
   isDeliveryOverrideEvent,
 } from "./delivery-override-rules";
 
+import { isOccurrenceDecisionEvent } from "@/features/occurrences/authorization-rules";
+import { handleOccurrenceDecisionEvent } from "@/features/occurrences/occurrence-decision";
+
 import type { MyDeliveriesResponse } from "./types";
 
 const DELIVERY_EVENT = "deliveryEvent";
@@ -49,7 +52,21 @@ function useDeliveryRealtime(): void {
     let boundSocket: Socket | null = null;
 
     const handleDeliveryEvent = (incoming: unknown) => {
-      if (disposed || !isDeliveryOverrideEvent(incoming)) return;
+      if (disposed) return;
+
+      // The tower's answer to one of this driver's occurrences (decision
+      // 6.3): the stop changes and the driver is told what to do next.
+      if (isOccurrenceDecisionEvent(incoming)) {
+        handleOccurrenceDecisionEvent(incoming, businessId, (deliveryId) =>
+          deliveryId
+            ? router.navigate({ pathname: "/delivery-detail", params: { id: deliveryId } })
+            : router.navigate("/deliveries"),
+        );
+
+        return;
+      }
+
+      if (!isDeliveryOverrideEvent(incoming)) return;
 
       const key = ["my-deliveries", businessId];
 

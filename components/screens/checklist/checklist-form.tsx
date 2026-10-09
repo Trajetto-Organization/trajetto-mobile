@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { View, Text } from "react-native";
 
-import { Controller, useWatch } from "react-hook-form";
+import { useWatch } from "react-hook-form";
 
 import * as ImagePicker from "expo-image-picker";
 import { Input, DatePicker, Select } from "../../ui";
 
 import { ChecklistPhotoSection } from "./checklist-photo-section";
-import { formatMileage, parseFormattedValue } from "@/utils/formatters";
+import { AnchoredController, FieldAnchor } from "../../forms/field-anchor";
+import type { FieldFocus } from "@/features/forms/use-field-focus";
+import { getRequiredPhotoFields, photoFieldKey } from "@/features/checklist/checklist-rules";
+import { formatKmReading, formatMileage, parseFormattedValue } from "@/utils/formatters";
 
 interface StepData {
   branchId?: string;
@@ -32,6 +35,15 @@ interface ChecklistFormProps {
   isLoadingVehicle: boolean;
   trigger: any;
   isDriver?: boolean; // Flag to hide summary for drivers
+
+  /** Where a failed submit scrolls to and focuses (decision 16.700). */
+  fieldFocus?: FieldFocus;
+
+  /** Missing-photo messages by photo key, only the ones to show now. */
+  photoErrors?: Record<string, string>;
+
+  /** The phone's pre-check warning about the km photo (decision 14.2). */
+  mileagePrecheckNotice?: React.ReactNode;
 }
 
 const PHOTO_REQUIREMENT_FIELDS = [
@@ -166,6 +178,9 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
   isLoadingVehicle,
   trigger,
   isDriver = false,
+  mileagePrecheckNotice,
+  fieldFocus,
+  photoErrors = {},
 }) => {
   const [isFormReady, setIsFormReady] = useState<boolean>(false);
 
@@ -203,30 +218,37 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
   );
   const photoRequirements = getPhotoRequirements(formData);
 
+  // The asterisk follows the same rule as the submit: an unanswered item owes
+  // an answer, not a photo; only a recorded defect owes one.
+  const requiredPhotos = new Set(getRequiredPhotoFields(formData));
+
   const renderPhotoSection = (fieldName: string, label: string) => {
     const requirement =
       photoRequirements[fieldName as keyof typeof photoRequirements];
 
     const images = checklistImages[fieldName] || [];
-    const isRequired = requirement?.required;
+    const key = photoFieldKey(fieldName);
 
     return (
-      <ChecklistPhotoSection
-        fieldName={fieldName}
-        label={label}
-        images={images}
-        isRequired={Boolean(isRequired)}
-        reason={requirement?.reason}
-        onImagePicker={onImagePicker}
-        onRemoveImage={onRemoveImage}
-      />
+      <FieldAnchor name={key} focus={fieldFocus}>
+        <ChecklistPhotoSection
+          fieldName={fieldName}
+          label={label}
+          images={images}
+          isRequired={requiredPhotos.has(fieldName)}
+          reason={requirement?.reason}
+          error={photoErrors[key]}
+          onImagePicker={onImagePicker}
+          onRemoveImage={onRemoveImage}
+        />
+      </FieldAnchor>
     );
   };
 
   if (!isFormReady) {
     return (
       <View className="flex-1 justify-center items-center py-20">
-        <Text className="text-gray-500 text-base">
+        <Text className="text-muted text-base">
           Carregando formulário...
         </Text>
       </View>
@@ -237,16 +259,16 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
     <View className="flex-1 px-6 pt-6">
       {/* Selected Items Summary - Hidden for drivers */}
       {!isDriver && (
-        <View className="bg-white rounded-lg p-4 mb-6 border border-gray-200">
-          <Text className="font-bold text-gray-900 mb-3">
+        <View className="bg-card rounded-lg p-4 mb-6 border border-border">
+          <Text className="font-bold text-ink mb-3">
             📋 Resumo da Seleção
           </Text>
 
           <View className="space-y-3">
             <View className="flex-row">
-              <Text className="text-sm text-gray-600">Filial:</Text>
+              <Text className="text-sm text-muted">Filial:</Text>
               <Text
-                className="text-sm text-gray-900 flex-1 font-medium"
+                className="text-sm text-ink flex-1 font-medium"
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -256,16 +278,16 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
             </View>
 
             <View className="flex-row">
-              <Text className="text-sm text-gray-600">Motorista:</Text>
+              <Text className="text-sm text-muted">Motorista:</Text>
               <Text
-                className="text-sm text-gray-900 flex-1 font-medium"
+                className="text-sm text-ink flex-1 font-medium"
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
                 {" "}
                 {stepData.driverName || "N/A"}
                 {stepData.driverCnh && (
-                  <Text className="text-xs text-gray-500">
+                  <Text className="text-xs text-muted">
                     {" "}
                     (CNH: {stepData.driverCnh})
                   </Text>
@@ -277,19 +299,19 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
       )}
 
       {/* Important Information */}
-      <View className="bg-blue-50 rounded-lg p-4 mb-6 border border-blue-200">
-        <Text className="font-bold text-blue-900 mb-3">
+      <View className="bg-primary-soft rounded-lg p-4 mb-6 border border-primary/40">
+        <Text className="font-bold text-primary mb-3">
           ℹ️ Informações importantes:
         </Text>
         <View className="space-y-2">
-          <Text className="text-sm text-blue-800">
+          <Text className="text-sm text-primary">
             • Informe a quilometragem atual do veículo no momento da inspeção
           </Text>
-          <Text className="text-sm text-blue-800">
+          <Text className="text-sm text-primary">
             • Fotos são obrigatórias para itens com problemas ou condições
             críticas
           </Text>
-          <Text className="text-sm text-blue-800">
+          <Text className="text-sm text-primary">
             • Algumas fotos são sempre obrigatórias por questões legais
           </Text>
         </View>
@@ -297,19 +319,19 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
 
       {/* Vehicle Data */}
       {vehicleData && !isLoadingVehicle && (
-        <View className="bg-green-50 rounded-lg p-4 mb-6 border border-green-200">
-          <Text className="font-bold text-green-900 mb-3">
+        <View className="bg-success-soft rounded-lg p-4 mb-6 border border-success/40">
+          <Text className="font-bold text-success mb-3">
             🚗 Dados do Veículo Selecionado:
           </Text>
           <View className="space-y-1">
-            <Text className="text-sm text-green-800">
+            <Text className="text-sm text-success">
               Quilometragem atual:{" "}
-              {vehicleData.current_mileage?.toLocaleString() || "N/A"} km
+              {formatKmReading(vehicleData.current_mileage) ?? "N/A"} km
             </Text>
-            <Text className="text-sm text-green-800">
+            <Text className="text-sm text-success">
               Placa: {vehicleData.license_plate || "N/A"}
             </Text>
-            <Text className="text-sm text-green-800">
+            <Text className="text-sm text-success">
               Modelo: {vehicleData.description || "N/A"}
             </Text>
           </View>
@@ -318,20 +340,20 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
 
       {/* Loading Vehicle Data */}
       {isLoadingVehicle && (
-        <View className="bg-gray-50 rounded-lg p-4 mb-6 border border-gray-200">
-          <Text className="text-sm text-gray-600 text-center">
+        <View className="bg-subtle rounded-lg p-4 mb-6 border border-border">
+          <Text className="text-sm text-muted text-center">
             Carregando dados do veículo...
           </Text>
         </View>
       )}
 
       {/* 📸 Upload Limit Info */}
-      <View className="bg-amber-50 rounded-lg p-4 mb-6 border border-amber-200">
-        <Text className="font-bold text-amber-900 mb-1">
+      <View className="bg-warning-soft rounded-lg p-4 mb-6 border border-warning/40">
+        <Text className="font-bold text-warning mb-1">
           📸 Limite de upload total:
         </Text>
-        <Text className="text-lg font-bold text-amber-800">5MB</Text>
-        <Text className="text-sm text-amber-700 mt-1">
+        <Text className="text-lg font-bold text-warning">5MB</Text>
+        <Text className="text-sm text-warning mt-1">
           Soma de todas as fotos do checklist
         </Text>
       </View>
@@ -339,7 +361,8 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
       {/* Form Fields */}
       <View className="gap-4">
         {/* Date */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="checklist_date"
           render={({ field: { onChange, value } }) => (
@@ -347,7 +370,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
               label="Data do Checklist"
               required
               value={value ? new Date(value) : new Date()}
-              onDateChange={(date) => onChange(date.toISOString())}
+              onDateChange={(date) => {
+                onChange(date.toISOString());
+
+                // The km rule depends on the date (decision 16.703): a shown
+                // km message is re-checked against the new one.
+                if (errors.current_mileage) trigger("current_mileage");
+              }}
               error={errors.checklist_date?.message}
               maximumDate={new Date()}
             />
@@ -355,11 +384,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Current Mileage */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="current_mileage"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
+              testID="checklist-current_mileage"
+              inputRef={fieldFocus?.inputRef("current_mileage")}
               label="Quilometragem Atual (km)"
               required
               placeholder="Ex: 50.000"
@@ -371,10 +403,7 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
                 const numValue = parseFormattedValue(formatted);
                 onChange(numValue || undefined);
               }}
-              onBlur={() => {
-                onBlur();
-                trigger("current_mileage");
-              }}
+              onBlur={onBlur}
               error={errors.current_mileage?.message}
               keyboardType="numeric"
             />
@@ -383,13 +412,16 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
 
         {/* Current Mileage Photos - Always Required */}
         {renderPhotoSection("current_mileage", "Foto da Quilometragem")}
+        {mileagePrecheckNotice}
 
         {/* Tires Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="tires_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-tires_condition"
               label="Condição dos Pneus"
               required
               placeholder="Selecione a condição"
@@ -405,11 +437,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("tires_condition", "Foto dos Pneus")}
 
         {/* Fuel Level */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="fuel_level_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-fuel_level_adequate"
               label="Nível de Combustível Adequado"
               required
               placeholder="Selecione"
@@ -428,11 +462,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         )}
 
         {/* Headlights */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="headlights_working"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-headlights_working"
               label="Faróis Funcionando"
               required
               placeholder="Selecione"
@@ -448,11 +484,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("headlights_working", "Foto dos Faróis")}
 
         {/* Taillights */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="taillights_working"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-taillights_working"
               label="Lanternas Traseiras Funcionando"
               required
               placeholder="Selecione"
@@ -471,11 +509,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         )}
 
         {/* Turn Signals */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="turn_signals_working"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-turn_signals_working"
               label="Setas Funcionando"
               required
               placeholder="Selecione"
@@ -491,11 +531,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("turn_signals_working", "Foto das Setas")}
 
         {/* Bumpers Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="bumpers_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-bumpers_condition"
               label="Condição dos Para-choques"
               required
               placeholder="Selecione a condição"
@@ -511,11 +553,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("bumpers_condition", "Foto dos Para-choques")}
 
         {/* Windshield Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="windshield_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-windshield_condition"
               label="Condição do Para-brisa"
               required
               placeholder="Selecione a condição"
@@ -531,11 +575,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("windshield_condition", "Foto do Para-brisa")}
 
         {/* Mirrors Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="mirrors_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-mirrors_condition"
               label="Condição dos Retrovisores"
               required
               placeholder="Selecione a condição"
@@ -551,11 +597,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("mirrors_condition", "Foto dos Retrovisores")}
 
         {/* Seatbelts Working */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="seatbelts_working"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-seatbelts_working"
               label="Cintos de Segurança Funcionando"
               required
               placeholder="Selecione"
@@ -574,11 +622,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         )}
 
         {/* Dashboard Working */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="dashboard_working"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-dashboard_working"
               label="Painel Funcionando"
               required
               placeholder="Selecione"
@@ -594,11 +644,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("dashboard_working", "Foto do Painel")}
 
         {/* Brakes */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="brakes_working"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-brakes_working"
               label="Freios Funcionando"
               required
               placeholder="Selecione"
@@ -614,11 +666,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("brakes_working", "Foto dos Freios")}
 
         {/* Clutch Working */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="clutch_working"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-clutch_working"
               label="Embreagem Funcionando"
               required
               placeholder="Selecione"
@@ -634,11 +688,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("clutch_working", "Foto da Embreagem")}
 
         {/* Oil Level Adequate */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="oil_level_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-oil_level_adequate"
               label="Nível de Óleo Adequado"
               required
               placeholder="Selecione"
@@ -654,11 +710,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("oil_level_adequate", "Foto do Nível de Óleo")}
 
         {/* Radiator Water Adequate */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="radiator_water_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-radiator_water_adequate"
               label="Água do Radiador Adequada"
               required
               placeholder="Selecione"
@@ -677,11 +735,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         )}
 
         {/* Brake Fluid Adequate */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="brake_fluid_adequate"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-brake_fluid_adequate"
               label="Fluido de Freio Adequado"
               required
               placeholder="Selecione"
@@ -697,11 +757,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("brake_fluid_adequate", "Foto do Fluido de Freio")}
 
         {/* Steering Wheel Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="steering_wheel_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-steering_wheel_condition"
               label="Condição do Volante"
               required
               placeholder="Selecione a condição"
@@ -717,11 +779,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("steering_wheel_condition", "Foto do Volante")}
 
         {/* Battery Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="battery_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-battery_condition"
               label="Condição da Bateria"
               required
               placeholder="Selecione a condição"
@@ -737,11 +801,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("battery_condition", "Foto da Bateria")}
 
         {/* Driver License Valid */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="driver_license_valid"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-driver_license_valid"
               label="CNH Válida"
               required
               placeholder="Selecione"
@@ -754,11 +820,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Vehicle Documents Valid */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="vehicle_documents_valid"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-vehicle_documents_valid"
               label="Documentos do Veículo Válidos"
               required
               placeholder="Selecione"
@@ -771,11 +839,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Insurance Valid */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="insurance_valid"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-insurance_valid"
               label="Seguro Válido"
               required
               placeholder="Selecione"
@@ -788,11 +858,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Fire Extinguisher Valid */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="fire_extinguisher_valid"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-fire_extinguisher_valid"
               label="Extintor Válido"
               required
               placeholder="Selecione"
@@ -805,11 +877,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Warning Triangle Present */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="warning_triangle_present"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-warning_triangle_present"
               label="Triângulo Presente"
               required
               placeholder="Selecione"
@@ -822,11 +896,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Jack Present */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="jack_present"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-jack_present"
               label="Macaco Presente"
               required
               placeholder="Selecione"
@@ -839,11 +915,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Spare Tire Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="spare_tire_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-spare_tire_condition"
               label="Condição do Estepe"
               required
               placeholder="Selecione a condição"
@@ -859,11 +937,13 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         {renderPhotoSection("spare_tire_condition", "Foto do Estepe")}
 
         {/* Overall Condition */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="overall_condition"
           render={({ field: { onChange, value } }) => (
             <Select
+              testID="checklist-overall_condition"
               label="Condição Geral do Veículo"
               required
               placeholder="Selecione a condição geral"
@@ -876,11 +956,14 @@ export const ChecklistForm: React.FC<ChecklistFormProps> = ({
         />
 
         {/* Notes */}
-        <Controller
+        <AnchoredController
+          focus={fieldFocus}
           control={control}
           name="notes"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
+              testID="checklist-notes"
+              inputRef={fieldFocus?.inputRef("notes")}
               label="Observações (Opcional)"
               placeholder="Digite observações sobre o checklist..."
               value={value || ""}

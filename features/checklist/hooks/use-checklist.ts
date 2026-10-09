@@ -6,7 +6,6 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useForm, useWatch, type SubmitHandler } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 
 import Toast from "react-native-toast-message";
 import * as Haptics from "expo-haptics";
@@ -29,12 +28,25 @@ import { useWizardSteps } from "@/features/submissions/use-wizard-steps";
 import { useDiscardConfirmation } from "@/features/submissions/use-discard-confirmation";
 
 import { submitOrQueue } from "@/features/submissions/submit-or-queue";
+import { queuedNotice } from "@/features/submissions/queue-decision";
 import {
+  CHECKLIST_FORM_FIELDS,
+  checklistPhotoIssues,
   getPhotoTitle as getChecklistPhotoTitle,
-  isChecklistComplete,
+  photoFieldKey,
   REQUIRED_CHECKLIST_FIELDS,
 } from "@/features/checklist/checklist-rules";
 import { buildChecklistDefaults } from "@/features/checklist/checklist-defaults";
+
+import {
+  LIVE_VALIDATION_FORM_OPTIONS,
+  canSubmitForm,
+  firstInvalidField,
+  messagesOf,
+} from "@/features/forms/live-validation";
+import { resolverWithVehicleMileage } from "@/features/forms/mileage-resolver";
+import { useLiveFields } from "@/features/forms/use-live-fields";
+import { useFieldFocus } from "@/features/forms/use-field-focus";
 import {
   clearSubmissionId,
   createSubmissionStorageKey,
@@ -42,6 +54,7 @@ import {
 } from "@/features/submissions/submission-id";
 
 import { useDraftAutosave } from "@/features/submissions/use-draft-autosave";
+import { createDraftChangeGate } from "@/features/submissions/draft-change-gate";
 import {
   clearChecklistDraft,
   deleteChecklistDraftImage,
@@ -50,6 +63,8 @@ import {
   saveChecklistDraft,
   type ChecklistDraft,
 } from "@/features/checklist/checklist-draft";
+import { useOdometerPrecheck } from "@/features/ai-precheck/use-photo-precheck";
+import type { StoredPrecheck } from "@/features/ai-precheck/device-precheck";
 
 interface StepData {
   branchId: string;
@@ -138,6 +153,9 @@ export const useChecklist = () => {
   const checklistImagesRef = useRef<ChecklistImages>({});
   const stepDataRef = useRef<Partial<StepData>>({});
 
+  // The phone's pre-check of the km photo (decision 14.2), kept for the draft.
+  const precheckRef = useRef<StoredPrecheck | null>(null);
+
   const { data: vehicleData, isLoading: isLoadingVehicle } = useVehicleData({
     vehicleId: vehicleId || "",
     businessId: submissionBusinessId,
@@ -155,25 +173,30 @@ export const useChecklist = () => {
     [],
   );
 
-  const createDynamicChecklistSchema = useCallback(() => {
-    const baseSchema = createChecklistSchema;
+  // The defaults of the form as it opened: their date is the moment the km
+  // rule knows the reading is the newest (decision 16.703).
+  const initialDefaultsRef = useRef<ReturnType<typeof buildChecklistDefaults> | null>(null);
+  if (!initialDefaultsRef.current) {
+    initialDefaultsRef.current = buildChecklistDefaults({
+      vehicleId: vehicleId || "",
+      businessId: submissionBusinessId,
+    });
+  }
+  const initialDefaults = initialDefaultsRef.current;
 
-    if (vehicleData?.current_mileage) {
-      return baseSchema.extend({
-        current_mileage: baseSchema.shape.current_mileage.refine(
-          (val) => val > vehicleData.current_mileage,
-          {
-            message:
-              "A quilometragem informada deve ser maior que a quilometragem atual do veículo!",
-          },
-        ),
-      });
-    }
+  const vehicleMileage = vehicleData?.current_mileage;
 
-    return baseSchema;
-  }, [vehicleData?.current_mileage]);
-
-  const dynamicSchema = createDynamicChecklistSchema();
+  // The schema plus what only the loaded vehicle knows, checked live.
+  const resolver = useMemo(
+    () =>
+      resolverWithVehicleMileage<CreateChecklistFormData>(createChecklistSchema, {
+        mileageField: "current_mileage",
+        dateField: "checklist_date",
+        defaultDate: initialDefaults.checklist_date,
+        vehicleMileage,
+      }),
+    [initialDefaults.checklist_date, vehicleMileage],
+  );
 
   const {
     control,
@@ -181,19 +204,36 @@ export const useChecklist = () => {
     formState: { errors },
     setValue,
     getValues,
+    getFieldState,
     reset,
     subscribe,
     trigger,
   } = useForm<CreateChecklistFormData>({
-    resolver: zodResolver(dynamicSchema) as any,
-    mode: "onChange",
-    defaultValues: buildChecklistDefaults({
-      vehicleId: vehicleId || "",
-      businessId: submissionBusinessId,
-    }),
+    resolver,
+    ...LIVE_VALIDATION_FORM_OPTIONS,
+    defaultValues: initialDefaults,
   });
 
+  const fieldFocus = useFieldFocus();
+
+  // The vehicle's km may arrive after the driver typed theirs: a km already
+  // visited is re-checked instead of waiting for the next keystroke.
+  useEffect(() => {
+    const mileage = getFieldState("current_mileage");
+    if (mileage.isTouched || mileage.invalid) void trigger("current_mileage");
+  }, [vehicleMileage, getFieldState, trigger]);
+
+  // The km photo the pre-check reads: the latest one of the field.
+  const mileagePhotoUri = checklistImages.current_mileage?.at(-1)?.uri ?? null;
+
+  const mileagePrecheck = useOdometerPrecheck(
+    mileagePhotoUri,
+    useWatch({ control, name: "current_mileage" }),
+  );
+
   const markDraftPresent = useCallback(() => setHasDraft(true), []);
+
+  const [draftChangeGate] = useState(createDraftChangeGate);
 
   const draft = useDraftAutosave<ChecklistDraft<CreateChecklistFormData, StepData>>({
     storageKey: submissionStorageKey,
@@ -207,6 +247,7 @@ export const useChecklist = () => {
       formData: getValues(),
       stepData: stepDataRef.current,
       images: checklistImagesRef.current,
+      precheck: precheckRef.current ?? undefined,
       updatedAt: new Date().toISOString(),
     }),
   });
@@ -244,6 +285,14 @@ export const useChecklist = () => {
       // Stamp the origin: the web omits the field and takes the DB default
       // (WEB_DASHBOARD), so this is what tells the record apart in reports.
       body.created_from = "MOBILE_APP";
+
+      // The pre-check of THIS km photo and km, if it ran: a hint for the
+      // office, never a condition of the send (decision 14.2).
+      const devicePrecheck = mileagePrecheck.payloadFor(
+        mileagePhotoUri,
+        data.current_mileage,
+      );
+      if (devicePrecheck) body.device_precheck = devicePrecheck;
 
       const entries = Object.entries(checklistImages).flatMap(
         ([fieldName, images]) =>
@@ -326,9 +375,11 @@ export const useChecklist = () => {
             : {
                 type: "info",
                 text1: "Checklist salvo no aparelho",
-                text2: "Será enviado automaticamente quando houver conexão.",
+                // After a forced logout it waits for this driver, not for a
+                // connection (MOB-07).
+                text2: queuedNotice(outcome),
                 position: "top",
-                visibilityTime: 4000,
+                visibilityTime: outcome === "queued" ? 4000 : 6000,
               },
         );
 
@@ -364,6 +415,8 @@ export const useChecklist = () => {
     [
       checklistImages,
       draft,
+      mileagePhotoUri,
+      mileagePrecheck,
       submissionBusinessId,
       submissionStorageKey,
       router,
@@ -380,6 +433,12 @@ export const useChecklist = () => {
   useEffect(() => {
     checklistImagesRef.current = checklistImages;
   }, [checklistImages]);
+
+  // A finished pre-check is saved with the draft, like the photo it read.
+  useEffect(() => {
+    precheckRef.current = mileagePrecheck.stored;
+    if (mileagePrecheck.stored) draft.schedule();
+  }, [draft, mileagePrecheck.stored]);
 
   // Restores a checklist left half-filled, and lands the driver back on the
   // step they had reached rather than at the beginning.
@@ -407,6 +466,7 @@ export const useChecklist = () => {
 
       setStepData(storedDraft.stepData);
       setChecklistImages(storedDraft.images);
+      mileagePrecheck.restore(storedDraft.precheck);
       setHasDraft(true);
 
       if (isDriver || storedDraft.stepData.driverId) {
@@ -439,10 +499,14 @@ export const useChecklist = () => {
   useEffect(
     () =>
       subscribe({
-        formState: { values: true },
-        callback: () => draft.schedule(),
+        formState: { values: true, isDirty: true },
+        // Only the driver's edits make a draft: the screen's own fills
+        // (vehicle defaults, GPS) leave the form clean (draft-change-gate).
+        callback: (state) => {
+          if (draftChangeGate.accepts(state)) draft.schedule();
+        },
       }),
-    [draft, subscribe],
+    [draft, draftChangeGate, subscribe],
   );
 
   // Photos and the branch/driver choice live outside the form, so changing them
@@ -458,6 +522,30 @@ export const useChecklist = () => {
     draft.schedule();
   }, [checklistImages, draft, hasDraft, isDriver, stepData]);
 
+  const requiredValues = useWatch({
+    control,
+    name: REQUIRED_CHECKLIST_FIELDS,
+    exact: true,
+  });
+
+  // Photos are files, not form values: their messages live here, shown on a
+  // submit or once the driver removed the last one, gone as soon as one is
+  // attached; a photo a "Não" asks for appears with the answer.
+  const photoIssues = useMemo(
+    () =>
+      checklistPhotoIssues(
+        Object.fromEntries(
+          REQUIRED_CHECKLIST_FIELDS.map((fieldName, index) => [
+            fieldName,
+            requiredValues[index],
+          ]),
+        ) as Partial<CreateChecklistFormData>,
+        checklistImages,
+      ),
+    [checklistImages, requiredValues],
+  );
+  const photoFields = useLiveFields({ issues: photoIssues, order: CHECKLIST_FORM_FIELDS });
+
   const discardChecklistDraft = useCallback(async () => {
     draft.release();
     submissionAbortControllerRef.current?.abort();
@@ -472,6 +560,9 @@ export const useChecklist = () => {
     ]);
 
     reset();
+    draftChangeGate.reset();
+    // A fresh checklist: the photo areas go back to neutral like the answers.
+    photoFields.reset();
     setChecklistImages({});
     checklistImagesRef.current = {};
     setHasDraft(false);
@@ -499,6 +590,7 @@ export const useChecklist = () => {
     void getOrCreateSubmissionId(submissionStorageKey).catch(() => undefined);
   }, [
     draft,
+    photoFields.reset,
     setCurrentStep,
     isDriver,
     reset,
@@ -514,27 +606,49 @@ export const useChecklist = () => {
     onDiscard: discardChecklistDraft,
   });
 
-  const requiredValues = useWatch({
-    control,
-    name: REQUIRED_CHECKLIST_FIELDS,
-    exact: true,
-  });
+  /**
+   * The tap on "Criar checklist" (decision 16.700): every answer and photo is
+   * checked, nothing leaves while anything is missing, and the first invalid
+   * field is brought into view — focused when it is a text field.
+   */
+  const submitForm = useCallback(() => {
+    const missingPhoto = photoFields.attempt();
 
-  const areAllRequiredFieldsFilled = useMemo(
-    () =>
-      isChecklistComplete({
-        values: Object.fromEntries(
-          REQUIRED_CHECKLIST_FIELDS.map((fieldName, index) => [
-            fieldName,
-            requiredValues[index],
-          ]),
-        ) as Partial<CreateChecklistFormData>,
-        photos: checklistImages,
-        isDriver,
-        stepData,
-      }),
-    [isDriver, stepData, checklistImages, requiredValues],
-  );
+    const refuse = (field: string | null, message?: string) => {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(
+        () => undefined,
+      );
+
+      if (field && CHECKLIST_FORM_FIELDS.includes(field)) {
+        fieldFocus.focusField(field, message);
+        return;
+      }
+
+      // A field with no place on this screen (a selection made in an earlier
+      // step) still says what is wrong.
+      Toast.show({
+        type: "error",
+        text1: "Revise o checklist",
+        text2: message ?? "Há dados inválidos no checklist.",
+        position: "top",
+      });
+    };
+
+    return handleSubmit(
+      (data) => {
+        if (missingPhoto) return refuse(missingPhoto, photoIssues[missingPhoto] ?? undefined);
+        return onSubmit(data);
+      },
+      (invalid) => {
+        const issues: Record<string, string> = {
+          ...messagesOf(invalid),
+          ...(missingPhoto ? { [missingPhoto]: photoIssues[missingPhoto] ?? "" } : {}),
+        };
+        const first = firstInvalidField(CHECKLIST_FORM_FIELDS, issues);
+        refuse(first, first ? issues[first] : undefined);
+      },
+    )();
+  }, [fieldFocus, handleSubmit, onSubmit, photoFields, photoIssues]);
 
   /**
    * Files the captured photo under the question it answers.
@@ -656,7 +770,13 @@ export const useChecklist = () => {
 
   const getPhotoTitle = getChecklistPhotoTitle;
 
+  const touchPhoto = photoFields.touch;
+
   const removeImage = useCallback((fieldName: string, imageIndex: number) => {
+    // Taking a photo away is visiting the area: if it was the last one of a
+    // required area, its message shows now.
+    touchPhoto(photoFieldKey(fieldName));
+
     setChecklistImages((previousImages) => {
       const fieldImages = previousImages[fieldName] || [];
       const removedImage = fieldImages[imageIndex];
@@ -667,7 +787,7 @@ export const useChecklist = () => {
         [fieldName]: fieldImages.filter((_, index) => index !== imageIndex),
       };
     });
-  }, []);
+  }, [touchPhoto]);
 
   useEffect(() => {
     if (stepData.branchId) {
@@ -751,20 +871,23 @@ export const useChecklist = () => {
     setShowImagePickerModal,
     currentPhotoField,
     checklistImages,
+    mileagePrecheckWarning: mileagePrecheck.warning,
+    dismissMileagePrecheck: mileagePrecheck.dismiss,
     vehicleData,
     isLoadingVehicle,
     control,
-    handleSubmit,
     errors,
+    photoErrors: photoFields.visible,
+    fieldFocus,
     setValue,
     trigger,
     permissions,
     stepInfo: getStepInfo(),
-    onSubmit,
+    submitForm,
+    canSubmit: canSubmitForm({ isBusy: isSubmitting }),
     goToNextStep,
     goToPrevStep,
     canProceedToNext,
-    areAllRequiredFieldsFilled,
     takePhoto,
     pickFromGallery,
     showImagePicker,

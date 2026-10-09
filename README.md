@@ -1,1452 +1,329 @@
-# 📱 Trajetto Fleet Manager Mobile
+# Trajetto — App do motorista
 
-<div align="center">
+Aplicativo de campo do Trajetto, **só Android**, feito com Expo e React
+Native. É o que o motorista usa no dia a dia: rota do dia, chegada, comprovante
+de entrega com foto e assinatura, ocorrências, pausas, "a caminho", chat com a
+central e, quando a empresa tem o módulo Frotas, abastecimentos e checklists do
+veículo. Funciona sem sinal: o que o motorista registra fica no aparelho e é
+enviado quando a rede volta.
 
-![React Native](https://img.shields.io/badge/React_Native-0.81.4-blue.svg)
-![Expo](https://img.shields.io/badge/Expo-~54.0.8-000020.svg)
-![TypeScript](https://img.shields.io/badge/TypeScript-~5.9.2-blue.svg)
-![NativeWind](https://img.shields.io/badge/NativeWind-4.2.1-38bdf8.svg)
-![Zustand](https://img.shields.io/badge/Zustand-5.0.8-ff6b35.svg)
+> Software proprietário. Leia [Licença](#licença) antes de copiar qualquer coisa
+> deste repositório.
 
-**Aplicação mobile para gestão de frotas Trajetto**
+## Sumário
 
-Sistema móvel completo para motoristas e gestores realizarem abastecimentos e checklists veiculares em campo.
+- [Documentação](#documentação)
+- [O Trajetto em 1 minuto](#o-trajetto-em-1-minuto)
+- [O que o app faz](#o-que-o-app-faz)
+- [Stack](#stack)
+- [Como o código está organizado](#como-o-código-está-organizado)
+- [Offline: cache e fila de envios](#offline-cache-e-fila-de-envios)
+- [Rastreamento de posição](#rastreamento-de-posição)
+- [Versão mínima e atualizações OTA](#versão-mínima-e-atualizações-ota)
+- [Rodando localmente](#rodando-localmente)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
+- [Scripts](#scripts)
+- [Testes](#testes)
+- [Build, publicação e fluxo de branches](#build-publicação-e-fluxo-de-branches)
+- [Solução de problemas](#solução-de-problemas)
+- [Licença](#licença)
 
-[🚀 Instalação](#-instalação) • [📱 Como Executar](#-como-executar) • [🏗️ Arquitetura](#️-arquitetura) • [🛠️ Tecnologias](#️-tecnologias)
+## Documentação
 
-</div>
+| Documento | O que tem |
+| --- | --- |
+| [`docs/arquitetura.md`](docs/arquitetura.md) | como o app é montado: offline (cache e fila), formulários, sessão e módulos, tempo real, rastreamento, contrato com a API, pré-checagem, tema, manifesto e decisões |
+| [`docs/testes.md`](docs/testes.md) | suítes (Vitest, cobertura, mutação, Maestro no emulador), o que cada uma prova e as regras para escrever testes |
+| [`docs/deploy.md`](docs/deploy.md) | perfis do EAS, staging e produção, pipeline, OTA assinada, Play Store, Firebase, rollback e checklist do primeiro release |
+| [`docs/variaveis-de-ambiente.md`](docs/variaveis-de-ambiente.md) | cada variável, secret e credencial: para quê, formato, valor por ambiente e onde configurar |
+| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | guia para agentes de código (e para quem chega agora): comandos, convenções e o que não fazer |
 
----
+## O Trajetto em 1 minuto
 
-## 📋 Índice
+O Trajetto é uma plataforma B2B (SaaS multiempresa) para transportadoras, com
+dois módulos vendidos separadamente por empresa: **Frotas** (veículos,
+abastecimentos, checklists, manutenção, multas, contas a pagar) e **Entregas**
+(documentos, rotas, torre de controle, ocorrências, comprovantes, atendimento
+com o motorista, integrações).
 
-- [Sobre o Projeto](#-sobre-o-projeto)
-- [Funcionalidades](#-funcionalidades)
-- [Arquitetura](#️-arquitetura)
-- [Tecnologias](#️-tecnologias)
-- [Pré-requisitos](#-pré-requisitos)
-- [Instalação](#-instalação)
-- [Como Executar](#-como-executar)
-- [Builds e Deploy](#-builds-e-deploy)
-- [Configuração](#-configuração)
-- [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Autenticação](#-autenticação)
-- [Recursos Mobile](#-recursos-mobile)
-- [Interface](#-interface)
-- [Integração com APIs](#-integração-com-apis)
-- [Gerenciamento de Estado](#-gerenciamento-de-estado)
-- [Validação e Formulários](#-validação-e-formulários)
-- [Plataformas Suportadas](#-plataformas-suportadas)
-- [Contribuição](#-contribuição)
+| Repositório no GitHub (pasta local) | O que é | Onde roda |
+|---|---|---|
+| `trajetto-api` | API (Fastify, Prisma, PostgreSQL, Redis), tempo real, filas, crons e o serviço local de IA/OCR | Dokploy, app Compose (Docker Stack) |
+| `trajetto-fleet-manager-ui` (`trajetto-ui`) | painel web e site público (Next.js) | Dokploy, Application |
+| `trajetto-fleet-manager-mobile` (`trajetto-mobile`, este) | app do motorista, só Android | EAS (APK interno e Play Store) |
 
-## 🎯 Sobre o Projeto
+## O que o app faz
 
-O **Trajetto Fleet Manager Mobile** é a aplicação móvel complementar ao sistema web de gestão de frotas. Desenvolvida em React Native com Expo, oferece aos motoristas e operadores de campo uma interface intuitiva para:
+O app mostra só o que o módulo contratado e o perfil do usuário permitem: um
+motorista de empresa sem Frotas não vê veículo, abastecimento nem checklist.
 
-- **Registrar abastecimentos** com captura de foto do odômetro
-- **Realizar checklists veiculares** completos com sistema inteligente de fotos
-- **Gerenciar veículos** da frota com acesso offline
-- **Autenticação segura** com suporte a 2FA
+### Entregas (módulo Entregas)
 
-A aplicação foi projetada para funcionar de forma eficiente em campo, com recursos nativos mobile otimizados para operações diárias de frotas.
+- **Dia do motorista:** as rotas liberadas ou em andamento e suas paradas, na
+  ordem definida pela central.
+- **Iniciar rota, chegada e "a caminho":** cada toque vira um evento da
+  entrega, com horário e GPS; "a caminho" aparece na torre e pode avisar o
+  cliente, se a empresa tiver mensagem ativa para isso.
+- **Comprovante de entrega:** é o registro de uma ocorrência da categoria
+  entrega. O tipo escolhido define o que é exigido: foto do canhoto (só pela
+  câmera), assinatura na tela, fotos extras, formulário e quem recebeu.
+- **Ocorrências** (não entrega): o tipo pode exigir foto, formulário com campos
+  obrigatórios (validados no aparelho, inclusive offline) e autorização da
+  torre. Enquanto a torre não responde, a entrega fica aguardando; a resposta
+  chega em tempo real e por push.
+- **Pausas** (refeição, descanso e outros tipos da empresa): só dentro de uma
+  jornada, isto é, com rota liberada ou em andamento no dia.
+- **Pré-checagem no aparelho:** quando a empresa contratou a IA, o app lê o
+  canhoto e o odômetro no próprio celular (ML Kit, sem rede) e avisa se o
+  número da NF, a data ou a km não batem. É só sugestão: o motorista pode
+  enviar mesmo assim e o servidor faz a leitura oficial.
 
-## 🚀 Funcionalidades
+### Chat (atendimento)
 
-### 🔐 Sistema de Autenticação Completo
+Conversa com a central organizada por ticket: cada assunto (uma ocorrência,
+uma entrega, uma rota ou um assunto geral) tem histórico e status. O app envia
+texto, imagem e áudio gravado, e mostra quando a central leu.
 
-- **Login seguro** com email e senha
-- **Autenticação de dois fatores (2FA)** via email
-- **Recuperação de senha** com fluxo simplificado
-- **Gestão de sessão** com refresh automático de tokens
-- **Suporte multi-empresas** para usuários MASTER
+### Frotas (módulo Frotas)
 
-### 🚛 Gestão de Veículos
+- **Abastecimento:** foto do odômetro, km, litros, valor e a posição no momento
+  do envio.
+- **Checklist veicular:** itens com fotos obrigatórias e a km do veículo.
+- Valem para o veículo em que o motorista é responsável fixo e para o veículo
+  da rota liberada ou em andamento.
 
-- **Listagem inteligente** com scroll infinito
-- **Busca em tempo real** com debounce otimizado
-- **Estatísticas visuais** (total de veículos e ativos)
-- **Status colorido** dos veículos para identificação rápida
-- **Ações rápidas** (abastecimento e checklist)
+### Conta
 
-### ⛽ Sistema de Abastecimento
+Login com verificação em duas etapas, escolha de empresa (quando o usuário tem
+mais de uma), notificações, envios pendentes e links para Privacidade e Termos.
 
-- **Fluxo guiado em etapas:**
-  1. Seleção da filial responsável
-  2. Escolha do motorista
-  3. Seleção do tipo de combustível
-  4. Captura obrigatória de foto do odômetro
-  5. Preenchimento dos dados de abastecimento
-- **Validação inteligente** de quilometragem
-- **Cálculo automático** de valores
-- **Upload seguro** com foto comprimida
+## Stack
 
-### 📋 Checklist Veicular Inteligente
+- Expo SDK 54 com **dev client** (não roda no Expo Go: há módulos nativos
+  próprios), React Native 0.81, `expo-router`.
+- NativeWind (Tailwind) para estilo.
+- `@tanstack/react-query` com persistência em AsyncStorage (cache offline).
+- `zustand` para sessão, conexão, fila de envios e atualização obrigatória.
+- `react-hook-form` + `zod` nos formulários (esquemas espelhados da API).
+- `socket.io-client` para tempo real; `expo-notifications` para push.
+- `expo-location` e `expo-task-manager` para posição; `expo-image-picker` para a
+  câmera; `expo-audio` para os áudios do chat;
+  `react-native-signature-canvas` para a assinatura.
+- Módulo nativo próprio `modules/text-reader` (Kotlin, ML Kit Text Recognition
+  embutido) para a pré-checagem.
+- `expo-updates` com atualizações OTA assinadas.
 
-- **Sistema categorizado** de verificações:
-  - **Proteção Legal** (sempre obrigatórias)
-  - **Segurança Crítica** (foto obrigatória se não OK)
-  - **Verificações Técnicas**
-  - **Itens Internos**
-- **Captura múltipla de fotos** por categoria
-- **Validação inteligente** de fotos obrigatórias
-- **Interface otimizada** para uso em campo
-
-### ⚡ Recursos de Produtividade
-
-- **Seleção rápida** de entidades com busca
-- **Cache inteligente** para uso offline limitado
-- **Feedback tátil** em todas as interações
-- **Toasts informativos** para confirmações
-- **Estados de loading** bem definidos
-
-## 🏗️ Arquitetura
-
-A aplicação segue uma **arquitetura limpa e escalável** baseada em:
+## Como o código está organizado
 
 ```
-📁 app/                    # Sistema de rotas (Expo Router)
-    (auth)/               # Rotas de autenticação
-    (protected)/          # Rotas protegidas
-📁 components/            # Componentes reutilizáveis
-    ui/                   # Componentes base de interface
-    screens/              # Componentes específicos de telas
-    shared/               # Componentes compartilhados
-📁 hooks/                 # Hooks customizados
-📁 store/                 # Gerenciamento de estado (Zustand)
-📁 providers/             # Providers de contexto
-📁 utils/                 # Utilitários e helpers
-📁 types/                 # Tipagem TypeScript
-📁 schemas/               # Validação de dados (Zod)
-📁 assets/                # Recursos estáticos
+app/
+  (auth)/            login, verificação em duas etapas, esqueci a senha
+  (protected)/
+    (tabs)/          vehicles (Início), deliveries, chat
+    delivery-detail, delivery-proof, delivery-occurrence,
+    fuel, checklist, notifications, pending-submissions, select-business
+features/<assunto>/  regras puras (*-rules.ts) e hooks compostos por assunto:
+                     deliveries, occurrences, pauses, chat, fuel, checklist,
+                     submissions (fila), offline, tracking, ai-precheck,
+                     access, app-update, notifications, auth …
+components/          telas e peças de interface compartilhadas
+modules/text-reader/ módulo nativo da pré-checagem
+plugins/             config plugins do Expo
+providers/           auth, react-query (persistência), socket, toast
+store/               auth, conexão, outbox, 2FA, atualização obrigatória
+schemas/             esquemas zod
+utils/               cliente HTTP, URL da API, versão do contrato, telemetria
+tests/unitaires/     testes Vitest das regras puras
+.maestro/            fluxos E2E (Maestro)
+scripts/e2e/         scripts que sobem emulador, API e Metro para o E2E
 ```
 
-### 🔧 Padrões Arquiteturais
+As regras de negócio ficam em funções puras testadas (`features/**/**-rules.ts`)
+e as telas usam hooks compostos. Não há um contexto global de formulário: cada
+tela compõe os hooks de que precisa.
 
-- **Expo Router** para roteamento baseado em arquivos
-- **Zustand** para estado global simplificado
-- **TanStack Query** para cache e sincronização de dados
-- **React Hook Form + Zod** para formulários validados
-- **Clean Architecture** com separação de responsabilidades
+## Offline: cache e fila de envios
 
-## 🛠️ Tecnologias
+- **Cache de leitura:** o react-query persiste o dia do motorista e os
+  catálogos por até 7 dias (`providers/query-provider.tsx`). Sem rede, o app
+  abre com o último dia baixado.
+- **Fila de envios (outbox):** chegada, comprovante, ocorrência, pausa,
+  abastecimento e checklist vão para uma fila durável
+  (`features/submissions/`). Cada item tem um `client_submission_id`, então
+  reenviar nunca duplica no servidor. Fotos sobem direto para o armazenamento
+  por URL pré-assinada, com upload retomável.
+- **Rascunhos:** os formulários longos salvam o que foi digitado; se o app
+  fechar ou o sinal cair, nada se perde.
+- **Recusas:** um item que o servidor recusa por regra (formulário mudou, tipo
+  desativado, app desatualizado) espera a revisão do motorista em "Envios
+  pendentes", sem perder foto, assinatura, horário e local.
+- O laço do motorista (rota, chegada, comprovante, ocorrência, pausa) é o que
+  funciona offline de verdade. Telas de consulta mostram o que estiver em
+  cache.
 
-### 📱 Core Framework
+## Rastreamento de posição
 
-- **React Native 0.81.4** - Framework de desenvolvimento mobile
-- **Expo SDK 54** - Plataforma e ferramentas de desenvolvimento
-- **TypeScript 5.9.2** - Tipagem estática para JavaScript
+- Com o app aberto, o app envia a posição do motorista durante a rota; a torre
+  de controle mostra o veículo.
+- Rastreamento com a tela desligada (segundo plano) está pronto e testado, mas
+  **desligado**: depende da declaração de localização em segundo plano aprovada
+  no Play Console. A chave é `EXPO_PUBLIC_BACKGROUND_TRACKING`: com `true`, o
+  build declara `ACCESS_BACKGROUND_LOCATION` e o serviço em primeiro plano
+  (`app.config.js`). Até lá, a torre só vê o motorista com o app aberto e diz
+  isso na tela (variável `BACKGROUND_TRACKING` da web).
+- Permissões do build padrão: câmera, localização precisa e aproximada e
+  microfone (áudio do chat).
 
-### 🧭 Navegação e Roteamento
+## Versão mínima e atualizações OTA
 
-- **Expo Router 6** - Sistema de roteamento baseado em arquivos
-- **React Navigation 7** - Navegação nativa para React Native
+- Cada build envia o contrato que fala com a API (`CLIENT_CONTRACT` em
+  `utils/client-version.ts`). Abaixo de `MIN_MOBILE_CONTRACT` (variável da
+  API), a API responde `426 CLIENT_UPGRADE_REQUIRED` e o app mostra uma tela de
+  atualização: tenta uma atualização OTA para o mesmo runtime e, sem ela, abre
+  a loja (`features/app-update/upgrade-rules.ts`).
+- O runtime é calculado por *fingerprint*: uma OTA só chega a builds com o
+  mesmo código nativo.
+- As atualizações OTA são assinadas assim que o certificado é commitado, e o
+  app recusa bundle sem assinatura válida
+  ([`docs/deploy.md`](docs/deploy.md#ota-assinada-code-signing)).
+- Um build de release recusa `EXPO_PUBLIC_API_URL` sem HTTPS ou de rede local
+  (`utils/api-url-rules.ts`).
 
-### 🎨 Interface e Estilização
+## Rodando localmente
 
-- **NativeWind 4.2.1** - Tailwind CSS para React Native
-- **React Native Paper 5.14.5** - Componentes Material Design
-- **Expo Linear Gradient** - Gradientes nativos
-- **@expo/vector-icons** - Biblioteca de ícones
+### Pré-requisitos
 
-### 📊 Gerenciamento de Estado
+- Node.js 22 e npm (o repositório usa `package-lock.json`);
+- conta no expo.dev com acesso ao projeto e `eas-cli` na versão de
+  `eas.json` (`npm install -g eas-cli@21.7.0`);
+- um aparelho Android ou um emulador do Android Studio;
+- a API rodando (README do `trajetto-api`); para os testes de paridade, o
+  `trajetto-api` clonado ao lado deste repositório.
 
-- **Zustand 5.0.8** - Estado global reativo
-- **TanStack Query 5.89.0** - Cache e sincronização de dados
-- **AsyncStorage** - Persistência local de dados
-- **Expo Secure Store** - Armazenamento seguro de tokens
-
-### 📝 Formulários e Validação
-
-- **React Hook Form 7.62.0** - Gerenciamento de formulários
-- **Zod 3.25.76** - Validação de schemas
-- **@hookform/resolvers** - Integração RHF + Zod
-
-### 📷 Recursos Nativos
-
-- **Expo Camera** - Acesso à câmera do dispositivo
-- **Expo Image Picker** - Seleção de imagens da galeria
-- **Expo Haptics** - Feedback tátil
-- **React Native Gesture Handler** - Gestos nativos
-- **React Native Reanimated** - Animações performáticas
-
-### 🎭 UI/UX Avançado
-
-- **@gorhom/bottom-sheet** - Bottom sheets nativos
-- **React Native Toast Message** - Notificações toast
-- **React Native Shimmer Placeholder** - Loading states
-- **Expo Blur** - Efeitos de blur
-
-### ⚙️ Desenvolvimento
-
-- **ESLint** - Linting e qualidade de código
-- **Metro** - Bundler React Native
-- **Expo CLI** - Ferramentas de desenvolvimento
-
-## 📋 Pré-requisitos
-
-Certifique-se de ter instalado:
-
-- **Node.js** (versão 18 ou superior)
-- **npm** ou **yarn**
-- **Expo CLI** (`npm install -g @expo/cli`)
-- **Expo Go** no dispositivo móvel (para testes)
-
-Para desenvolvimento avançado:
-
-- **Android Studio** (para builds Android)
-- **Xcode** (para builds iOS - somente macOS)
-
-## 🚀 Instalação
-
-### 1. Clonando o Repositório
+### Passo a passo
 
 ```bash
-# Clone o repositório principal
-git clone https://github.com/seu-usuario/trajetto.git
-
-# Navegue para a pasta do projeto mobile
-cd trajetto/trajetto-fleet-manager-mobile
-
-# Instale as dependências
+# 1. Dependências
 npm install
-```
 
-### 2. Configuração de Ambiente
-
-1. **Copie o arquivo de exemplo de variáveis de ambiente:**
-
-```bash
+# 2. Variáveis locais (só o Metro lê este arquivo; o EAS não)
 cp .env.example .env
-```
+#    num aparelho físico, troque localhost pelo IP da sua máquina na rede;
+#    no emulador, http://10.0.2.2:3333 chega à API do computador
 
-2. **Configure as variáveis de ambiente no `.env`:**
+# 3. Instale o dev client uma vez (o Expo Go não serve)
+npm run build:development     # gera o APK de desenvolvimento no EAS
+#    ou localmente: npx expo prebuild --platform android && cd android && ./gradlew assembleDebug
 
-```env
-# URL da API Backend
-EXPO_PUBLIC_API_URL=http://localhost:3333
-
-# Ambiente da aplicação
-EXPO_PUBLIC_APP_ENV=development
-
-# Nome da aplicação
-EXPO_PUBLIC_APP_NAME=Trajetto Mobile Dev
-
-# Versão da aplicação
-EXPO_PUBLIC_APP_VERSION=1.0.0-dev
-```
-
-3. **Para produção, configure o `.env.production`:**
-
-```env
-EXPO_PUBLIC_API_URL=https://api.trajetto.com.br
-EXPO_PUBLIC_APP_ENV=production
-EXPO_PUBLIC_APP_NAME=Trajetto Mobile
-EXPO_PUBLIC_APP_VERSION=1.0.0
-```
-
-## 📱 Como Executar
-
-### 🔧 Desenvolvimento Local
-
-```bash
-# Iniciar o servidor de desenvolvimento
+# 4. Suba o Metro e abra o app de desenvolvimento no aparelho
 npm start
-
-# Ou para plataformas específicas
-npm run android  # Abrir no emulador Android
-npm run ios      # Abrir no simulador iOS (somente macOS)
-npm run web      # Abrir versão web (experimental)
 ```
 
-### 📲 Testando no Dispositivo
+Faça login com um usuário motorista criado no painel web (cadastro de
+motorista vinculado a um usuário).
 
-1. **Instale o Expo Go** no seu dispositivo
-2. **Execute `npm start`** no terminal
-3. **Escaneie o QR Code** com o Expo Go
-4. **Aguarde o carregamento** da aplicação
+## Variáveis de ambiente
 
-### ⚙️ Comandos Úteis
+| Variável | Para quê |
+|---|---|
+| `EXPO_PUBLIC_API_URL` | URL da API (HTTPS em builds de release) |
+| `EXPO_PUBLIC_WEB_APPLICATION_URL` | URL do painel web, base dos links de Privacidade e Termos |
+| `EXPO_PUBLIC_BACKGROUND_TRACKING` | `false` até a aprovação no Play Console (veja acima) |
+| `APP_ENV` | só nos ambientes do EAS: o nome do ambiente, para a checagem de URL ao publicar OTA |
+| `GOOGLE_SERVICES_JSON` | só no EAS: variável do tipo arquivo com o `google-services.json` do Firebase (push) |
 
-```bash
-# Limpar cache do Metro
-npm run clear
+**O EAS não lê o `.env`.** `eas build` e `eas update` usam as variáveis do
+ambiente EAS indicado no `eas.json` (`development`, `preview`, `staging`,
+`production`), definidas no expo.dev ou com `eas env:create`. Tudo é embutido
+em tempo de build: não há configuração em tempo de execução. A referência
+completa (valores por ambiente, secrets do GitHub, credenciais do EAS) está em
+[`docs/variaveis-de-ambiente.md`](docs/variaveis-de-ambiente.md).
 
-# Executar linting
-npm run lint
+## Scripts
 
-# Validar tipos, lint e configuração Expo
-npm run validate
-```
+| Script | O que faz |
+|---|---|
+| `npm start` | Metro (`expo start`) |
+| `npm run android` | Metro e abre no Android |
+| `npm run clear` | Metro limpando o cache |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | `expo lint` |
+| `npm test` | testes unitários (Vitest, `tests/unitaires`) |
+| `npm run test:watch` | unitários em modo watch |
+| `npm run test:coverage` | cobertura dos unitários |
+| `npm run test:mutation` | teste de mutação (Stryker) |
+| `npm run doctor` | `expo-doctor` |
+| `npm run validate` | typecheck, testes, lint e doctor |
+| `npm run build:development` / `build:preview` / `build:staging` / `build:production` | builds Android no EAS |
+| `npm run submit:android` | envia o build de produção à Play Store (trilha `internal`) |
+| `npm run update:preview` / `update:staging` / `update:production` | publica OTA no canal (passe a mensagem no fim) |
+| `npm run codesigning:generate` | gera o par de chaves e o certificado das OTAs |
+| `npm run eas:login` / `npm run expo:login` | login nas contas |
 
-## 🚀 Builds e Deploy
+## Testes
 
-### 🔨 Build de Desenvolvimento
+| Suíte | Onde | Como rodar | Precisa de |
+|---|---|---|---|
+| Unitários (regras puras, hooks, contratos, configs) | `tests/unitaires` | `npm test` | só Node |
+| Cobertura com piso | `vitest.config.ts` | `npm run test:coverage` | só Node |
+| Mutação | `stryker.config.mjs` | `npm run test:mutation` | só Node (lento) |
+| E2E no emulador (Maestro) | `.maestro/`, `scripts/e2e/` | [`docs/testes.md`](docs/testes.md#e2e-no-emulador-maestro) | emulador Android, Maestro, API e banco descartáveis |
 
-```bash
-# Build de desenvolvimento
-npx expo build:android
-npx expo build:ios
-```
+O E2E dirige o app de verdade no emulador, contra uma API na porta 3335 e um
+banco próprio: login → entregas → iniciar rota → chegada → comprovante com foto
+e assinatura → ocorrência com formulário → modo avião (fila) → volta da rede →
+abastecimento e checklist → logout → novo login → motorista sem Frotas → troca
+de usuário com pendências → chat → duas etapas. Passo a passo, massa de dados
+e armadilhas em [`docs/testes.md`](docs/testes.md).
 
-### 📦 Build de Produção
-
-```bash
-# Configurar ambiente de produção
-cp .env.production .env
-
-# Build de produção
-eas build --platform android --profile production
-eas build --platform ios --profile production
-```
-
-### 🚀 Publicação
-
-```bash
-# Publicar update OTA
-eas update --branch production
-
-# Submeter para lojas
-eas submit --platform android
-eas submit --platform ios
-```
-
-## ⚙️ Configuração
-
-### 📱 Configuração do Expo (app.json)
-
-```json
-{
-  "expo": {
-    "name": "Trajetto Mobile",
-    "slug": "trajetto-fleet-manager-mobile",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "bundleIdentifier": "com.trajetto.fleetmanager",
-      "supportsTablet": true
-    },
-    "android": {
-      "package": "com.trajetto.fleetmanager",
-      "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE"
-      ]
-    }
-  }
-}
-```
-
-### 🎨 Configuração do Tailwind (tailwind.config.js)
-
-```javascript
-module.exports = {
-  content: ["./app/**/*.{js,ts,tsx}", "./components/**/*.{js,ts,tsx}"],
-  presets: [require("nativewind/preset")],
-  theme: {
-    extend: {
-      colors: {
-        primary: {
-          50: "#eff6ff",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-        },
-      },
-    },
-  },
-};
-```
-
-## 📁 Estrutura do Projeto
-
-### 🗂️ Organização Detalhada
+## Build, publicação e fluxo de branches
 
 ```
-trajetto-fleet-manager-mobile/
-├── 📱 app/                           # Sistema de rotas (Expo Router)
-│   ├── (auth)/                       # Grupo: Autenticação
-│   │   ├── login.tsx                 # Tela de login
-│   │   ├── forgot-password.tsx       # Recuperação de senha
-│   │   └── two-factor.tsx            # Verificação 2FA
-│   ├── (protected)/                  # Grupo: Rotas protegidas
-│   │   ├── vehicles.tsx              # Lista de veículos
-│   │   ├── fuel.tsx                  # Criar abastecimento
-│   │   ├── checklist.tsx             # Criar checklist
-│   │   └── select-business.tsx       # Seleção de empresa
-│   ├── _layout.tsx                   # Layout raiz
-│   └── index.tsx                     # Redirecionamento inicial
-├── 🧩 components/                    # Componentes reutilizáveis
-│   ├── ui/                           # Componentes base
-│   │   ├── Button.tsx                # Botão customizado
-│   │   ├── Input.tsx                 # Input com validação
-│   │   ├── Select.tsx                # Seletor dropdown
-│   │   ├── Avatar.tsx                # Avatar de usuário
-│   │   ├── LoadingSpinner.tsx        # Loading spinner
-│   │   ├── ConfirmModal.tsx          # Modal de confirmação
-│   │   └── [outros componentes UI]
-│   ├── screens/                      # Componentes de tela
-│   │   ├── vehicles/                 # Componentes da tela de veículos
-│   │   ├── fuel/                     # Componentes do abastecimento
-│   │   └── checklist/                # Componentes do checklist
-│   └── shared/                       # Componentes compartilhados
-│       ├── ProtectedRoute.tsx        # Proteção de rotas
-│       ├── EntitySelector.tsx        # Seletor de entidades
-│       └── CameraComponent.tsx       # Componente de câmera
-├── 🪝 hooks/                         # Hooks customizados
-│   ├── useAuth.ts                    # Hook de autenticação
-│   ├── useVehicles.ts                # Hook de veículos
-│   ├── useInfiniteScroll.ts          # Hook de scroll infinito
-│   └── useCamera.ts                  # Hook de câmera
-├── 🗄️ store/                         # Gerenciamento de estado
-│   ├── authStore.ts                  # Estado de autenticação
-│   ├── vehicleStore.ts               # Estado de veículos
-│   └── appStore.ts                   # Estado global da app
-├── 🔧 providers/                     # Providers de contexto
-│   ├── QueryProvider.tsx             # Provider do TanStack Query
-│   ├── ThemeProvider.tsx             # Provider de tema
-│   └── ToastProvider.tsx             # Provider de toasts
-├── ⚙️ utils/                         # Utilitários
-│   ├── api.ts                        # Cliente HTTP
-│   ├── storage.ts                    # Helpers de storage
-│   ├── validations.ts                # Validações customizadas
-│   ├── formatters.ts                 # Formatadores de dados
-│   └── constants.ts                  # Constantes da aplicação
-├── 📝 types/                         # Definições de tipos
-│   ├── auth.ts                       # Tipos de autenticação
-│   ├── vehicle.ts                    # Tipos de veículos
-│   ├── fuel.ts                       # Tipos de abastecimento
-│   └── api.ts                        # Tipos de API
-├── 🔍 schemas/                       # Schemas de validação
-│   ├── authSchemas.ts                # Schemas de auth
-│   ├── fuelSchemas.ts                # Schemas de abastecimento
-│   └── checklistSchemas.ts           # Schemas de checklist
-└── 🎨 assets/                        # Recursos estáticos
-    ├── images/                       # Imagens da aplicação
-    ├── icons/                        # Ícones customizados
-    └── fonts/                        # Fontes customizadas
+branch de trabalho ──PR──► staging ──PR (merge commit)──► main
 ```
 
-### 🔄 Fluxo de Navegação
-
-```mermaid
-graph TD
-    A[index.tsx] --> B{Autenticado?}
-    B -->|Não| C[/login]
-    B -->|Sim| D[/vehicles]
-    C --> E[/forgot-password]
-    C --> F[/two-factor]
-    D --> G[/fuel]
-    D --> H[/checklist]
-    D --> I[/select-business]
-```
-
-## 🔐 Autenticação
-
-### 🔑 Sistema de Autenticação Completo
-
-A aplicação implementa um sistema robusto de autenticação com:
-
-#### 🚪 Fluxo de Login
-
-```typescript
-// Validação com Zod
-const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
-});
-
-// Hook de autenticação
-const { login, isLoading } = useAuth();
-
-// Processo de login
-const handleLogin = async (data: LoginForm) => {
-  const result = await login(data.email, data.password);
-  if (result.requires2FA) {
-    router.push("/two-factor");
-  } else {
-    router.push("/vehicles");
-  }
-};
-```
-
-#### 🔐 Autenticação de Dois Fatores (2FA)
-
-- **Envio automático** de código por email
-- **Input especializado** para código de 6 dígitos
-- **Validação em tempo real** do código
-- **Reenvio de código** com cooldown
-
-#### 🎫 Gestão de Tokens
-
-```typescript
-// Store de autenticação com Zustand
-interface AuthStore {
-  user: User | null;
-  accessToken: string | null;
-  refreshToken: string | null;
-  isAuthenticated: boolean;
-
-  // Ações
-  login: (email: string, password: string) => Promise<LoginResult>;
-  logout: () => Promise<void>;
-  refreshTokens: () => Promise<boolean>;
-  setUser: (user: User) => void;
-}
-
-// Persistência segura
-const authStore = create<AuthStore>()(
-  persist(
-    (set, get) => ({
-      // Implementação do store
-    }),
-    {
-      name: "trajetto-auth",
-      storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-      }),
-    },
-  ),
-);
-```
-
-#### 🛡️ Proteção de Rotas
-
-```typescript
-// Componente de proteção
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, user } = useAuthStore();
-
-  if (!isAuthenticated) {
-    return <Redirect href="/login" />;
-  }
-
-  return <>{children}</>;
-};
-
-// Uso nas rotas protegidas
-export default function VehiclesLayout() {
-  return (
-    <ProtectedRoute>
-      <Stack />
-    </ProtectedRoute>
-  );
-}
-```
-
-### ⚡ Interceptação de Requisições
-
-```typescript
-// Cliente HTTP com interceptação automática
-class ApiClient {
-  async request(url: string, options: RequestInit = {}) {
-    const token = await SecureStore.getItemAsync("accessToken");
-
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-    });
-
-    if (response.status === 401) {
-      const refreshed = await this.refreshToken();
-      if (refreshed) {
-        return this.request(url, options); // Retry
-      } else {
-        authStore.getState().logout();
-        throw new Error("Sessão expirada");
-      }
-    }
-
-    return response;
-  }
-}
-```
-
-## 📱 Recursos Mobile
-
-### 📷 Sistema de Câmera
-
-```typescript
-// Hook personalizado para câmera
-const useCamera = () => {
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-
-  const requestPermission = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === "granted");
-  };
-
-  const takePicture = async (cameraRef: React.RefObject<Camera>) => {
-    if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.7,
-        base64: false,
-        exif: false,
-      });
-      return photo;
-    }
-  };
-
-  return { hasPermission, requestPermission, takePicture };
-};
-```
-
-### 🖼️ Seleção de Imagens
-
-```typescript
-// Componente de seleção de imagem
-const ImagePickerBottomSheet = ({ isVisible, onClose, onImageSelected }) => {
-  const pickImage = async (useCamera: boolean) => {
-    const result = useCamera
-      ? await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [16, 9],
-          quality: 0.7,
-        })
-      : await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [16, 9],
-          quality: 0.7,
-        });
-
-    if (!result.canceled && result.assets[0]) {
-      onImageSelected(result.assets[0]);
-    }
-  };
-
-  return (
-    <BottomSheet isVisible={isVisible} onClose={onClose}>
-      <Button onPress={() => pickImage(true)}>📷 Tirar Foto</Button>
-      <Button onPress={() => pickImage(false)}>🖼️ Escolher da Galeria</Button>
-    </BottomSheet>
-  );
-};
-```
-
-### 📳 Feedback Tátil
-
-```typescript
-// Uso do Expo Haptics
-import * as Haptics from "expo-haptics";
-
-// Feedback para diferentes ações
-const handleSuccess = () => {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  showToast("Sucesso!", "success");
-};
-
-const handleError = () => {
-  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-  showToast("Erro!", "error");
-};
-
-const handleButtonPress = () => {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-};
-```
-
-### 🔐 Armazenamento Seguro
-
-```typescript
-// Tokens sensíveis no Expo Secure Store
-const TokenManager = {
-  async setTokens(accessToken: string, refreshToken: string) {
-    await SecureStore.setItemAsync("accessToken", accessToken);
-    await SecureStore.setItemAsync("refreshToken", refreshToken);
-  },
-
-  async getAccessToken(): Promise<string | null> {
-    return await SecureStore.getItemAsync("accessToken");
-  },
-
-  async clearTokens() {
-    await SecureStore.deleteItemAsync("accessToken");
-    await SecureStore.deleteItemAsync("refreshToken");
-  },
-};
-
-// Dados não sensíveis no AsyncStorage
-const DataManager = {
-  async setUserPreferences(preferences: UserPreferences) {
-    await AsyncStorage.setItem("userPreferences", JSON.stringify(preferences));
-  },
-
-  async getUserPreferences(): Promise<UserPreferences | null> {
-    const data = await AsyncStorage.getItem("userPreferences");
-    return data ? JSON.parse(data) : null;
-  },
-};
-```
-
-## 🎨 Interface
-
-### 🎨 Sistema de Design
-
-A aplicação utiliza um design system baseado em **Material Design** com **NativeWind** para estilização:
-
-#### 🌈 Cores e Tema
-
-```javascript
-// tailwind.config.js
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        primary: {
-          50: "#eff6ff",
-          100: "#dbeafe",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          900: "#1e3a8a",
-        },
-        success: {
-          50: "#f0fdf4",
-          500: "#22c55e",
-          600: "#16a34a",
-        },
-        warning: {
-          50: "#fffbeb",
-          500: "#f59e0b",
-          600: "#d97706",
-        },
-        error: {
-          50: "#fef2f2",
-          500: "#ef4444",
-          600: "#dc2626",
-        },
-      },
-    },
-  },
-};
-```
-
-#### 🔘 Componentes de Interface
-
-**Botão Customizado:**
-
-```typescript
-interface ButtonProps {
-  variant?: "primary" | "secondary" | "outline" | "ghost";
-  size?: "sm" | "md" | "lg";
-  disabled?: boolean;
-  loading?: boolean;
-  onPress: () => void;
-  children: React.ReactNode;
-}
-
-const Button: React.FC<ButtonProps> = ({
-  variant = "primary",
-  size = "md",
-  loading = false,
-  ...props
-}) => {
-  const baseClasses = "rounded-lg items-center justify-center";
-  const variants = {
-    primary: "bg-primary-600 active:bg-primary-700",
-    secondary: "bg-gray-100 active:bg-gray-200",
-    outline: "border border-primary-600 active:bg-primary-50",
-    ghost: "active:bg-gray-100",
-  };
-
-  return (
-    <Pressable
-      className={`${baseClasses} ${variants[variant]} ${sizeClasses[size]}`}
-      disabled={loading || props.disabled}
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        props.onPress();
-      }}
-    >
-      {loading ? <LoadingSpinner /> : props.children}
-    </Pressable>
-  );
-};
-```
-
-**Input com Validação:**
-
-```typescript
-interface InputProps {
-  label: string;
-  error?: string;
-  required?: boolean;
-  type?: "text" | "email" | "password" | "number";
-  placeholder?: string;
-  value: string;
-  onChangeText: (text: string) => void;
-}
-
-const Input: React.FC<InputProps> = ({
-  label,
-  error,
-  required = false,
-  ...props
-}) => {
-  return (
-    <View className="space-y-2">
-      <Text className="text-gray-700 font-medium">
-        {label} {required && <Text className="text-red-500">*</Text>}
-      </Text>
-      <TextInput
-        className={`
-          border rounded-lg px-4 py-3 bg-white
-          ${error ? "border-red-500" : "border-gray-300"}
-          focus:border-primary-500
-        `}
-        {...props}
-      />
-      {error && <Text className="text-red-500 text-sm">{error}</Text>}
-    </View>
-  );
-};
-```
-
-### 📱 Responsive Design
-
-```typescript
-// Hook para dimensões da tela
-const useScreenDimensions = () => {
-  const [dimensions, setDimensions] = useState(Dimensions.get("window"));
-
-  useEffect(() => {
-    const subscription = Dimensions.addEventListener("change", ({ window }) => {
-      setDimensions(window);
-    });
-
-    return () => subscription?.remove();
-  }, []);
-
-  return {
-    ...dimensions,
-    isSmallScreen: dimensions.width < 380,
-    isTablet: dimensions.width > 768,
-  };
-};
-
-// Uso em componentes
-const VehicleCard = () => {
-  const { isSmallScreen } = useScreenDimensions();
-
-  return (
-    <View
-      className={`
-      p-4 bg-white rounded-lg shadow-sm border border-gray-200
-      ${isSmallScreen ? "mx-2" : "mx-4"}
-    `}
-    >
-      {/* Conteúdo do card */}
-    </View>
-  );
-};
-```
-
-## 🌐 Integração com APIs
-
-### 🔌 Cliente HTTP Customizado
-
-```typescript
-// utils/api.ts
-class ApiClient {
-  private baseURL: string;
-
-  constructor(baseURL: string) {
-    this.baseURL = baseURL;
-  }
-
-  // Método genérico para requisições
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {},
-  ): Promise<T> {
-    const token = await SecureStore.getItemAsync("accessToken");
-
-    const config: RequestInit = {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...options.headers,
-      },
-    };
-
-    const response = await fetch(`${this.baseURL}${endpoint}`, config);
-
-    if (response.status === 401) {
-      await this.handleTokenRefresh();
-      return this.request<T>(endpoint, options);
-    }
-
-    if (!response.ok) {
-      throw new ApiError(response.status, await response.text());
-    }
-
-    return response.json();
-  }
-
-  // Métodos convenientes
-  async get<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: "GET" });
-  }
-
-  async post<T>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-}
-
-// Instância global
-export const api = new ApiClient(
-  process.env.EXPO_PUBLIC_API_URL || "http://localhost:3333",
-);
-```
-
-### 🔄 Integração com TanStack Query
-
-```typescript
-// hooks/useVehicles.ts
-export const useVehicles = (businessId: string) => {
-  return useInfiniteQuery({
-    queryKey: ["vehicles", businessId],
-    queryFn: async ({ pageParam = 1 }) => {
-      const response = await api.get<VehiclesResponse>(
-        `/vehicles?page=${pageParam}&limit=20&businessId=${businessId}`,
-      );
-      return response;
-    },
-    getNextPageParam: (lastPage) => lastPage.nextPage,
-    enabled: !!businessId,
-    staleTime: 5 * 60 * 1000, // 5 minutos
-  });
-};
-
-// hooks/useFuelCreation.ts
-//
-// A foto vai direto do aparelho para o storage: a API só assina o upload e
-// depois recebe a chave. Os bytes nunca passam por ela.
-export const useFuelCreation = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (fuelData: CreateFuelData) => {
-      const [photo] = await uploadToStorage({
-        entries: [{ file: fuelData.odometerPhoto }],
-        uploadType: "odometerPhotos",
-        businessId: fuelData.businessId,
-      });
-
-      return api.post<FuelResponse>(
-        `/fuel/create-fuel/${fuelData.businessId}`,
-        { ...fuelData.form, photo: { key: photo.key } },
-      );
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      queryClient.invalidateQueries({ queryKey: ["fuel-history"] });
-    },
-  });
-};
-```
-
-### 🔄 Estados de Loading e Error
-
-```typescript
-// Componente de lista com estados
-const VehiclesList = () => {
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useVehicles(businessId);
-
-  if (isLoading) {
-    return <VehiclesSkeletonLoader />;
-  }
-
-  if (isError) {
-    return <ErrorState message={error.message} onRetry={() => refetch()} />;
-  }
-
-  const vehicles = data?.pages.flatMap((page) => page.data) ?? [];
-
-  return (
-    <FlatList
-      data={vehicles}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <VehicleCard vehicle={item} />}
-      onEndReached={() => {
-        if (hasNextPage && !isFetchingNextPage) {
-          fetchNextPage();
-        }
-      }}
-      ListFooterComponent={() =>
-        isFetchingNextPage ? <LoadingSpinner /> : null
-      }
-    />
-  );
-};
-```
-
-## 📊 Gerenciamento de Estado
-
-### 🐻 Zustand Store
-
-```typescript
-// store/authStore.ts
-interface AuthState {
-  // Estado
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-
-  // Ações
-  login: (email: string, password: string) => Promise<LoginResult>;
-  verify2FA: (code: string) => Promise<boolean>;
-  logout: () => Promise<void>;
-  refreshTokens: () => Promise<boolean>;
-  setUser: (user: User) => void;
-}
-
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-
-      login: async (email: string, password: string) => {
-        set({ isLoading: true });
-
-        try {
-          const response = await api.post<LoginResponse>("/user/session", {
-            email,
-            password,
-          });
-
-          if (response.requires2FA) {
-            return { requires2FA: true };
-          }
-
-          await TokenManager.setTokens(
-            response.accessToken,
-            response.refreshToken,
-          );
-
-          set({
-            user: response.user,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-
-          return { success: true };
-        } catch (error) {
-          set({ isLoading: false });
-          throw error;
-        }
-      },
-
-      logout: async () => {
-        await TokenManager.clearTokens();
-        await AsyncStorage.clear();
-
-        set({
-          user: null,
-          isAuthenticated: false,
-        });
-      },
-
-      // Outras ações...
-    }),
-    {
-      name: "trajetto-auth",
-      storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-      }),
-    },
-  ),
-);
-```
-
-### 📱 Estado da Aplicação
-
-```typescript
-// store/appStore.ts
-interface AppState {
-  // Estado global da app
-  selectedBusiness: Business | null;
-  isOnline: boolean;
-
-  // Ações
-  setSelectedBusiness: (business: Business) => void;
-  setOnlineStatus: (isOnline: boolean) => void;
-}
-
-export const useAppStore = create<AppState>((set) => ({
-  selectedBusiness: null,
-  isOnline: true,
-
-  setSelectedBusiness: (business) => set({ selectedBusiness: business }),
-  setOnlineStatus: (isOnline) => set({ isOnline }),
-}));
-
-// Hook para verificar status online
-export const useNetworkStatus = () => {
-  const { isOnline, setOnlineStatus } = useAppStore();
-
-  useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      setOnlineStatus(state.isConnected ?? false);
-    });
-
-    return unsubscribe;
-  }, [setOnlineStatus]);
-
-  return isOnline;
-};
-```
-
-## 📝 Validação e Formulários
-
-### 🔍 Schemas de Validação com Zod
-
-```typescript
-// schemas/fuelSchemas.ts
-export const fuelCreationSchema = z.object({
-  // Dados obrigatórios
-  vehicleId: z.string().min(1, "Veículo é obrigatório"),
-  driverId: z.string().min(1, "Motorista é obrigatório"),
-  fuelTypeId: z.string().min(1, "Tipo de combustível é obrigatório"),
-  branchId: z.string().min(1, "Filial é obrigatória"),
-
-  // Dados do abastecimento
-  currentMileage: z
-    .number()
-    .min(0, "Quilometragem deve ser positiva")
-    .refine((val) => val > 0, "Quilometragem é obrigatória"),
-
-  litersAmount: z
-    .number()
-    .min(0.1, "Quantidade mínima é 0.1L")
-    .max(1000, "Quantidade máxima é 1000L"),
-
-  pricePerLiter: z
-    .number()
-    .min(0.01, "Preço mínimo é R$ 0.01")
-    .max(50, "Preço máximo é R$ 50.00"),
-
-  totalAmount: z.number().min(0.01, "Valor total mínimo é R$ 0.01"),
-
-  refuelingDate: z.date().max(new Date(), "Data não pode ser futura"),
-
-  // Dados opcionais
-  notes: z.string().max(500, "Máximo 500 caracteres").optional(),
-
-  // Validação de foto
-  odometerPhoto: z.object({
-    uri: z.string().min(1, "Foto do odômetro é obrigatória"),
-    type: z.string(),
-    name: z.string(),
-  }),
-});
-
-export type FuelCreationForm = z.infer<typeof fuelCreationSchema>;
-```
-
-### 📋 Formulários com React Hook Form
-
-```typescript
-// components/screens/fuel/FuelCreationForm.tsx
-const FuelCreationForm = () => {
-  const {
-    control,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors, isValid },
-  } = useForm<FuelCreationForm>({
-    resolver: zodResolver(fuelCreationSchema),
-    mode: "onChange",
-  });
-
-  // Watch para cálculo automático
-  const litersAmount = watch("litersAmount");
-  const pricePerLiter = watch("pricePerLiter");
-
-  // Cálculo automático do total
-  useEffect(() => {
-    if (litersAmount && pricePerLiter) {
-      const total = litersAmount * pricePerLiter;
-      setValue("totalAmount", Number(total.toFixed(2)));
-    }
-  }, [litersAmount, pricePerLiter, setValue]);
-
-  const onSubmit = async (data: FuelCreationForm) => {
-    try {
-      await createFuel.mutateAsync(data);
-
-      Toast.show({
-        type: "success",
-        text1: "Abastecimento registrado!",
-        text2: "Os dados foram salvos com sucesso.",
-      });
-
-      router.back();
-    } catch (error) {
-      Toast.show({
-        type: "error",
-        text1: "Erro ao registrar",
-        text2: error.message,
-      });
-    }
-  };
-
-  return (
-    <ScrollView className="flex-1 bg-gray-50">
-      <View className="p-4 space-y-4">
-        {/* Seleção de veículo */}
-        <Controller
-          control={control}
-          name="vehicleId"
-          render={({ field: { onChange, value } }) => (
-            <VehicleSelector
-              selectedId={value}
-              onSelect={onChange}
-              error={errors.vehicleId?.message}
-            />
-          )}
-        />
-
-        {/* Dados de abastecimento */}
-        <Controller
-          control={control}
-          name="currentMileage"
-          render={({ field: { onChange, value } }) => (
-            <Input
-              label="Quilometragem Atual"
-              type="number"
-              value={value?.toString() || ""}
-              onChangeText={(text) => onChange(Number(text))}
-              error={errors.currentMileage?.message}
-              required
-            />
-          )}
-        />
-
-        {/* Foto do odômetro */}
-        <Controller
-          control={control}
-          name="odometerPhoto"
-          render={({ field: { onChange, value } }) => (
-            <CameraInput
-              label="Foto do Odômetro"
-              required
-              value={value}
-              onChange={onChange}
-              error={errors.odometerPhoto?.message}
-            />
-          )}
-        />
-
-        {/* Botão de submit */}
-        <Button
-          variant="primary"
-          disabled={!isValid || createFuel.isLoading}
-          loading={createFuel.isLoading}
-          onPress={handleSubmit(onSubmit)}
-        >
-          Registrar Abastecimento
-        </Button>
-      </View>
-    </ScrollView>
-  );
-};
-```
-
-### ✅ Validações Customizadas
-
-```typescript
-// utils/validations.ts
-export const customValidations = {
-  // Validação de quilometragem progressiva
-  mileageProgression: (currentMileage: number, lastMileage?: number) => {
-    if (lastMileage && currentMileage <= lastMileage) {
-      return "Quilometragem deve ser maior que a anterior";
-    }
-    return true;
-  },
-
-  // Validação de foto
-  photoValidation: (photo: ImagePickerAsset) => {
-    const maxSize = 10 * 1024 * 1024; // 10MB
-
-    if (photo.fileSize && photo.fileSize > maxSize) {
-      return "Foto deve ter no máximo 10MB";
-    }
-
-    if (!photo.uri) {
-      return "Foto é obrigatória";
-    }
-
-    return true;
-  },
-
-  // Validação de data
-  dateValidation: (date: Date) => {
-    const now = new Date();
-    const oneYearAgo = new Date(
-      now.getFullYear() - 1,
-      now.getMonth(),
-      now.getDate(),
-    );
-
-    if (date > now) {
-      return "Data não pode ser futura";
-    }
-
-    if (date < oneYearAgo) {
-      return "Data não pode ser anterior a um ano";
-    }
-
-    return true;
-  },
-};
-```
-
-## 📱 Plataformas Suportadas
-
-### 🤖 Android
-
-- **Versão mínima:** Android 6.0 (API 23)
-- **Versão recomendada:** Android 8.0+ (API 26+)
-- **Arquiteturas:** arm64-v8a, armeabi-v7a
-- **Permissões:**
-  - `CAMERA` - Captura de fotos
-  - `READ_EXTERNAL_STORAGE` - Leitura de galeria
-  - `WRITE_EXTERNAL_STORAGE` - Escrita de cache
-  - `INTERNET` - Comunicação com APIs
-
-### 🍎 iOS
-
-- **Versão mínima:** iOS 13.0
-- **Versão recomendada:** iOS 15.0+
-- **Dispositivos:** iPhone 6s+ / iPad Air 2+
-- **Permissões:**
-  - `NSCameraUsageDescription` - Acesso à câmera
-  - `NSPhotoLibraryUsageDescription` - Acesso à galeria
-
-### 🌐 Web (Experimental)
-
-- **Navegadores suportados:**
-  - Chrome 90+
-  - Safari 14+
-  - Firefox 88+
-  - Edge 90+
-
-### ⚙️ Configurações de Build
-
-**Android:**
-
-```json
-{
-  "android": {
-    "package": "com.trajetto.fleetmanager",
-    "versionCode": 1,
-    "compileSdkVersion": 34,
-    "targetSdkVersion": 34,
-    "buildToolsVersion": "34.0.0"
-  }
-}
-```
-
-**iOS:**
-
-```json
-{
-  "ios": {
-    "bundleIdentifier": "com.trajetto.fleetmanager",
-    "buildNumber": "1",
-    "deploymentTarget": "13.0"
-  }
-}
-```
-
-## 🤝 Contribuição
-
-### 📝 Guidelines de Contribuição
-
-1. **Fork** o repositório
-2. **Crie uma branch** para sua feature (`git checkout -b feature/nova-funcionalidade`)
-3. **Siga os padrões** de código estabelecidos
-4. **Teste** suas alterações em dispositivos reais
-5. **Commit** suas mudanças (`git commit -m 'feat: adiciona nova funcionalidade'`)
-6. **Push** para a branch (`git push origin feature/nova-funcionalidade`)
-7. **Abra um Pull Request**
-
-### 🔍 Padrões de Código
-
-- **TypeScript** para tipagem estática
-- **ESLint** para linting
-- **Prettier** para formatação (se configurado)
-- **Conventional Commits** para mensagens de commit
-
-### 🧪 Testes
-
-```bash
-# Executar testes (quando implementados)
-npm test
-
-# Executar testes em watch mode
-npm run test:watch
-
-# Verificar cobertura
-npm run test:coverage
-```
-
-### 📚 Documentação
-
-- Documente **novas funcionalidades** no README
-- Adicione **JSDoc** em funções complexas
-- Mantenha **schemas atualizados** quando modificar APIs
-
----
-
-## 📄 Licença
-
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
----
-
-<div align="center">
-
-**📱 Trajetto Fleet Manager Mobile**
-
-Desenvolvido com ❤️ para otimizar a gestão de frotas
-
----
-
-_Versão 1.0.0 • React Native • Expo • TypeScript_
-
-[Website](https://trajetto.com) • [Documentação](https://docs.trajetto.com) • [Suporte](mailto:support@trajetto.com)
-
-</div>
+| Onde | O que acontece (`.github/workflows/`) |
+|---|---|
+| push numa branch de trabalho, PR para `staging` ou `main` | `ci.yml`: audit, lint, typecheck, unitários com piso de cobertura, `expo-doctor` e gitleaks |
+| push em `staging` | `deploy.yml`: CI completo → OTA no canal `staging` e, se o lado nativo mudou, APK de staging no EAS |
+| push em `main` | `deploy.yml`: CI completo → prova de que o commit ficou verde em `staging` → aprovação do ambiente `production` → OTA **assinada** no canal `production` e, se o lado nativo mudou, AAB de produção (enviado à trilha `internal` com `PLAY_SUBMIT_ENABLED=true`) |
+| manual | `deploy.yml` (build de qualquer perfil) e `ota-rollback.yml` (republica um grupo de OTA anterior) |
+
+| Perfil (`eas.json`) | Ambiente e canal | Artefato | Para quê |
+|---|---|---|---|
+| `development` | `development` | APK com dev client | desenvolvimento e E2E |
+| `preview` | `preview` | APK | testes internos |
+| `staging` | `staging` | APK | homologação contra a stack de staging |
+| `production` | `production` | AAB, `versionCode` automático | Play Store |
+
+- O app não vai para o Dokploy nem para o GHCR: é distribuído pelo EAS. Como
+  as `EXPO_PUBLIC_*` são embutidas no build, o que se promove de staging para
+  produção é o **commit**, não o artefato.
+- Sem o secret `EXPO_TOKEN`, os jobs de publicação terminam com um aviso e
+  não publicam nada.
+- Guia completo (OTA assinada, Play Store, Firebase, gate de versão, rollback
+  e checklist do primeiro release): [`docs/deploy.md`](docs/deploy.md). A
+  seção "Os três repositórios juntos" (igual nos três repositórios) traz a
+  ordem do primeiro deploy (API → web → app), a ordem de cada release e os
+  valores que precisam casar com a API e a web.
+
+## Solução de problemas
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| "There was a problem loading the project" no dev client | bundle frio ou Metro inacessível | espere o primeiro bundle; confira `adb reverse tcp:8081 tcp:8081` |
+| App não chega à API no aparelho físico | `localhost` aponta para o próprio celular | use o IP da máquina na rede ou um túnel HTTPS |
+| Build de release diz "API inacessível" | `EXPO_PUBLIC_API_URL` sem HTTPS ou de rede local | configure uma URL HTTPS pública no ambiente EAS |
+| OTA publicada não chega ao app | runtime diferente (código nativo mudou) ou `google-services.json` local diferente do EAS | gere um build novo; mantenha os dois arquivos iguais |
+| Tela de atualização obrigatória | build abaixo de `MIN_MOBILE_CONTRACT` | atualize pelo OTA oferecido ou pela loja |
+| Itens presos em "Envios pendentes" | sem rede, ou recusa que espera revisão | abra o item e revise; com rede, a fila esvazia sozinha |
+| Pré-checagem nunca aparece | empresa sem IA contratada, ou build sem o módulo nativo | é opcional; o envio funciona sem ela |
+| `android-manifest.test.ts` falha depois do E2E | pasta `android/` gerada pelo prebuild ficou no disco | apague `android/` |
+
+## Licença
+
+Software proprietário da Trajetto, com todos os direitos reservados. O uso, a
+cópia, a modificação e a distribuição dependem de autorização por escrito da
+Trajetto. Os termos completos estão em [`LICENSE`](./LICENSE), os mesmos do
+`trajetto-api`. O `package.json` declara `"license": "UNLICENSED"` e
+`"private": true`.

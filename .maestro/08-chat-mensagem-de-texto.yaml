@@ -1,0 +1,43 @@
+# The driver writes to the operation: the text message leaves the composer,
+# shows in the thread and its clock turns into a check once the API accepts
+# it (scripts/e2e/check-db.sh confirms the row). Continues the session of
+# flow 07 (deliveries-only driver).
+appId: com.trajetto.fleetmanager
+name: 08 Chat, mensagem de texto
+tags:
+  - driver
+  - chat
+---
+- tapOn:
+    id: tab-chat
+- extendedWaitUntil:
+    visible: "Chat com a operação"
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: chat-input
+    timeout: 60000
+- tapOn:
+    id: chat-input
+- inputText: "Cheguei no cliente E2E, portaria fechada."
+- tapOn:
+    id: chat-send
+- extendedWaitUntil:
+    visible: "Cheguei no cliente E2E, portaria fechada."
+    timeout: 30000
+# "Enviando" (clock) until the API answers; then one check or two.
+- extendedWaitUntil:
+    visible: "Enviada|Recebida pela operação|Lida pela operação"
+    timeout: 120000
+- assertNotVisible: "Reenviar mensagem"
+- assertVisible:
+    id: chat-input
+- takeScreenshot: 08-chat-texto
+# The chat owns the whole screen (the tab bar steps aside): the arrow up top
+# returns to the tabs, where the next flow starts.
+- hideKeyboard
+- tapOn: "Voltar"
+- extendedWaitUntil:
+    visible:
+      id: tab-vehicles
+    timeout: 30000

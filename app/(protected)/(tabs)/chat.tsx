@@ -2,12 +2,14 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
+  RefreshControl,
+  ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+
+import { KeyboardAvoidingView } from "../../../components/ui/keyboard-avoiding-view";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -24,15 +26,14 @@ import { StatusBanners } from "../../../components/status-banners";
 import { Button, LoadingSpinner } from "../../../components/ui";
 import {
   ChatComposer,
+  TicketPickerSheet,
   ChatImageGrid,
   ChatMediaViewer,
   ChatMessageBubble,
   ChatRecordingIndicator,
   ChatTypingIndicator,
-  type DeliveryChip,
 } from "../../../components/screens/chat";
 
-import { useChatConversation } from "@/features/chat/hooks/use-chat-conversation";
 import {
   chatPresenceHintLabel,
   formatDayLabel,
@@ -47,6 +48,21 @@ import {
 
 import { stopChatAudio } from "@/features/chat/audio-focus";
 
+import {
+  contextOfTicket,
+  useChatWithContext,
+} from "@/features/chat/hooks/use-chat-with-context";
+import { useDriverTickets } from "@/features/chat/hooks/use-driver-tickets";
+import Toast from "react-native-toast-message";
+import {
+  needsTicketSeparator,
+  readCursorOf,
+  ticketSeparatorLabel,
+} from "@/features/chat/ticket-rules";
+
+import type { ChatContextParams } from "@/features/chat/chat-context";
+import { useThemeColors } from "@/hooks/use-theme";
+
 import type { ChatFeedItem } from "@/features/chat/chat-rules";
 import type { MediaViewerAnchor } from "@/features/chat/media-viewer-rules";
 import type { ClientChatMessage } from "@/features/chat/types";
@@ -59,19 +75,42 @@ import type { ClientChatMessage } from "@/features/chat/types";
  */
 const ChatScreen = () => {
   const router = useRouter();
+  const colors = useThemeColors();
 
-  const params = useLocalSearchParams<{
-    deliveryId?: string;
-    recipient?: string;
-  }>();
+  const params = useLocalSearchParams<Record<keyof ChatContextParams, string>>();
 
-  const chat = useChatConversation();
+  // The conversation and what the driver's messages are about (decision
+  // 6.7), wired where the tests can mount them.
+  const { chip, chat, composerContext, contextIsAutomatic } = useChatWithContext(params);
 
-  const [deliveryChip, setDeliveryChip] = useState<DeliveryChip | null>(
-    params.deliveryId && params.recipient
-      ? { id: params.deliveryId, recipient: params.recipient }
-      : null,
-  );
+  // "Sobre o quê?" (decision 14.5, design §8.2): the driver picks the subject.
+  const [isSubjectSheetOpen, setIsSubjectSheetOpen] = useState<boolean>(false);
+  const driverTickets = useDriverTickets(isSubjectSheetOpen);
+
+  const handleNewSubject = async () => {
+    try {
+      const opened = await driverTickets.openNewSubject();
+
+      chip.choose(contextOfTicket(opened.data));
+      setIsSubjectSheetOpen(false);
+
+      Toast.show({
+        type: "success",
+        text1: opened.created
+          ? `Novo assunto #${opened.data.number}`
+          : `Assunto #${opened.data.number}`,
+        text2: opened.data.subject,
+        position: "top",
+      });
+    } catch {
+      Toast.show({
+        type: "error",
+        text1: "Não foi possível abrir um novo assunto",
+        text2: "Verifique a conexão e tente de novo.",
+        position: "top",
+      });
+    }
+  };
 
   /**
    * Which photo the fullscreen viewer is on, as a message identity.
@@ -100,9 +139,12 @@ const ChatScreen = () => {
   const listRef = useRef<FlatList<ChatFeedItem>>(null);
   const nearBottomRef = useRef<boolean>(true);
 
-  // Leaving the conversation silences the voice note that was playing. A
-  // player is bound to its bubble, and a bubble that is no longer on screen
-  // has no business still talking over whatever the driver opened next.
+  const { setViewingLatest } = chat;
+
+  // Leaving the conversation silences the voice note that was playing and
+  // releases the one native player the thread holds. A bubble that is no
+  // longer on screen has no business still talking over whatever the driver
+  // opened next, nor holding a decoder nobody is listening to.
   useFocusEffect(useCallback(() => () => stopChatAudio(), []));
 
   const handleBack = () => {
@@ -125,10 +167,15 @@ const ChatScreen = () => {
       const { contentOffset, contentSize, layoutMeasurement } =
         event.nativeEvent;
 
-      nearBottomRef.current =
+      const nearBottom =
         contentSize.height - contentOffset.y - layoutMeasurement.height < 120;
+
+      nearBottomRef.current = nearBottom;
+
+      // Only what the driver can see is reported as read to the SAC.
+      setViewingLatest(nearBottom);
     },
-    [],
+    [setViewingLatest],
   );
 
   const handleContentSizeChange = useCallback(() => {
@@ -144,6 +191,19 @@ const ChatScreen = () => {
   }, []);
 
   const handleCloseViewer = useCallback(() => setViewerAnchor(null), []);
+
+  // The manual escape hatch: whatever the socket missed is fetched and folded
+  // in, and the history on screen stays where it is. The empty conversation
+  // gets it too — it is exactly where a missed first message would hide.
+  const refreshControl = (
+    <RefreshControl
+      refreshing={chat.isRefreshing}
+      onRefresh={() => void chat.refresh()}
+      colors={[colors.primarySurface]}
+      tintColor={colors.primary}
+      progressBackgroundColor={colors.card}
+    />
+  );
 
   const handlePressDelivery = useCallback(
     (deliveryId: string) => {
@@ -180,11 +240,23 @@ const ChatScreen = () => {
       <View className="pb-1.5">
         {needsDaySeparator(previous?.created_at, first.created_at) && (
           <View className="items-center py-2">
-            <View className="rounded-full bg-white px-3 py-1 shadow-sm">
-              <Text className="text-xs text-gray-500">
+            <View className="rounded-full border border-border bg-card px-3 py-1 shadow-sm">
+              <Text className="text-xs text-muted">
                 {formatDayLabel(first.created_at)}
               </Text>
             </View>
+          </View>
+        )}
+
+        {/* Decision 14.5: one conversation, split by subject. */}
+        {needsTicketSeparator(previous, first) && (
+          <View className="items-center py-1.5" accessibilityRole="header">
+            <Text
+              className="px-4 text-center text-xs font-medium text-muted"
+              numberOfLines={2}
+            >
+              {ticketSeparatorLabel(chat.tickets.get(first.ticketId ?? ""))}
+            </Text>
           </View>
         )}
 
@@ -193,7 +265,10 @@ const ChatScreen = () => {
             messages={item.messages}
             isMine={isMine}
             showSenderName={showSenderName}
-            counterpartReadAt={chat.counterpartReadAt}
+            counterpartReadAt={readCursorOf(
+              item.messages[item.messages.length - 1],
+              chat.readCursors,
+            )}
             counterpartDeliveredAt={chat.counterpartDeliveredAt}
             onPressImage={handlePressImage}
             onPressDelivery={handlePressDelivery}
@@ -203,7 +278,7 @@ const ChatScreen = () => {
             message={first}
             isMine={isMine}
             showSenderName={showSenderName}
-            counterpartReadAt={chat.counterpartReadAt}
+            counterpartReadAt={readCursorOf(first, chat.readCursors)}
             counterpartDeliveredAt={chat.counterpartDeliveredAt}
             onPressImage={handlePressImage}
             onPressDelivery={handlePressDelivery}
@@ -239,11 +314,11 @@ const ChatScreen = () => {
     if (chat.moduleDisabled) {
       return (
         <View className="flex-1 items-center justify-center px-8">
-          <Ionicons name="chatbubbles-outline" size={44} color="#9ca3af" />
-          <Text className="mt-3 text-center text-base font-medium text-gray-700">
+          <Ionicons name="chatbubbles-outline" size={44} color={colors.muted} />
+          <Text className="mt-3 text-center text-base font-medium text-ink-soft">
             O chat não está disponível
           </Text>
-          <Text className="mt-1 text-center text-sm text-gray-500">
+          <Text className="mt-1 text-center text-sm text-muted">
             O módulo Entregas não está habilitado para a sua empresa.
           </Text>
         </View>
@@ -253,8 +328,8 @@ const ChatScreen = () => {
     if (chat.loadError) {
       return (
         <View className="flex-1 items-center justify-center px-8">
-          <Ionicons name="cloud-offline-outline" size={44} color="#9ca3af" />
-          <Text className="mb-4 mt-3 text-center text-sm text-gray-500">
+          <Ionicons name="cloud-offline-outline" size={44} color={colors.muted} />
+          <Text className="mb-4 mt-3 text-center text-sm text-muted">
             {chat.loadError}
           </Text>
           <Button onPress={() => void chat.reload()}>Tentar de novo</Button>
@@ -264,13 +339,22 @@ const ChatScreen = () => {
 
     if (chat.messages.length === 0) {
       return (
-        <View className="flex-1 justify-center px-8">
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: "center",
+            paddingHorizontal: 32,
+          }}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={refreshControl}
+        >
           <View className="items-center">
-            <Ionicons name="chatbubbles-outline" size={44} color="#9ca3af" />
-            <Text className="mt-3 text-center text-base font-medium text-gray-700">
+            <Ionicons name="chatbubbles-outline" size={44} color={colors.muted} />
+            <Text className="mt-3 text-center text-base font-medium text-ink-soft">
               Fale com a operação
             </Text>
-            <Text className="mt-1 text-center text-sm text-gray-500">
+            <Text className="mt-1 text-center text-sm text-muted">
               Dúvida no endereço? Cliente ausente? Escreva — ou toque no
               microfone e mande um áudio.
             </Text>
@@ -284,7 +368,7 @@ const ChatScreen = () => {
           {chat.staffHint && (
             <View className="mt-6 items-start">{renderHintBubble()}</View>
           )}
-        </View>
+        </ScrollView>
       );
     }
 
@@ -300,6 +384,7 @@ const ChatScreen = () => {
         // Prepending the past must not yank the reader's position.
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         contentContainerStyle={{ paddingVertical: 12 }}
+        refreshControl={refreshControl}
         // The hint bubble — "digitando" or "gravando" — rides at the end of
         // the list, so it grows the content the same way a new message does,
         // and the same rule applies: a reader browsing the past is never
@@ -314,10 +399,10 @@ const ChatScreen = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Carregar mensagens anteriores"
                 className="flex-row items-center gap-1 rounded-full border
-                border-gray-200 bg-white px-3 py-1.5"
+                border-border bg-card px-3 py-1.5"
               >
-                <Ionicons name="chevron-up" size={14} color="#374151" />
-                <Text className="text-xs font-medium text-gray-700">
+                <Ionicons name="chevron-up" size={14} color={colors.inkSoft} />
+                <Text className="text-xs font-medium text-ink-soft">
                   {chat.isLoadingOlder
                     ? "Carregando..."
                     : "Mensagens anteriores"}
@@ -338,12 +423,12 @@ const ChatScreen = () => {
       applied as PADDING, and an `absolute inset-0` child is laid out from the
       padding box — a "fullscreen" viewer would open between two pale bands
       where the status bar and the gesture bar are. */}
-      <View className="flex-1 bg-gray-50">
+      <View className="flex-1 bg-background">
         <SafeAreaView className="flex-1">
         {/* Header */}
         <View
-          className="flex-row items-center gap-3 border-b border-gray-200
-          bg-white px-4 py-3"
+          className="flex-row items-center gap-3 border-b border-border
+          bg-surface px-4 py-3"
         >
           <TouchableOpacity
             onPress={handleBack}
@@ -351,26 +436,26 @@ const ChatScreen = () => {
             accessibilityLabel="Voltar"
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={22} color="#111827" />
+            <Ionicons name="arrow-back" size={22} color={colors.ink} />
           </TouchableOpacity>
 
           <View
             className="h-10 w-10 items-center justify-center rounded-full
-            bg-blue-100"
+            bg-primary-soft"
           >
-            <Ionicons name="headset-outline" size={20} color="#2563eb" />
+            <Ionicons name="headset-outline" size={20} color={colors.primary} />
           </View>
 
           <View className="flex-1">
-            <Text className="text-lg font-semibold text-gray-900">
+            <Text className="text-lg font-semibold text-ink">
               Chat com a operação
             </Text>
             {chat.staffHint ? (
-              <Text className="text-xs font-medium text-blue-600">
+              <Text className="text-xs font-medium text-primary">
                 {chatPresenceHintLabel(chat.staffHint)}
               </Text>
             ) : (
-              <Text className="text-xs text-gray-500">
+              <Text className="text-xs text-muted">
                 Central da sua empresa
               </Text>
             )}
@@ -379,10 +464,12 @@ const ChatScreen = () => {
 
         <StatusBanners />
 
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
+        {/* "padding" like every other screen with a field: with edge-to-edge
+            (SDK 54) Android no longer resizes the window for the keyboard,
+            and `undefined` here left the composer under it (MOB-17). Not
+            "height": on a flex-1 view the height it sets is ignored, and the
+            Maestro chat flow found the composer still under the keyboard. */}
+        <KeyboardAvoidingView className="flex-1" behavior="padding">
           {renderBody()}
 
           {!chat.moduleDisabled && (
@@ -391,8 +478,10 @@ const ChatScreen = () => {
               onSendMany={chat.sendMany}
               onTyping={chat.emitTyping}
               onRecording={chat.emitRecording}
-              deliveryChip={deliveryChip}
-              onClearDeliveryChip={() => setDeliveryChip(null)}
+              context={composerContext}
+              contextIsAutomatic={contextIsAutomatic}
+              onClearContext={chip.clear}
+              onPressContext={() => setIsSubjectSheetOpen(true)}
             />
           )}
         </KeyboardAvoidingView>
@@ -413,6 +502,22 @@ const ChatScreen = () => {
             onRenewUrl={chat.renewAttachmentUrl}
           />
         )}
+
+        <TicketPickerSheet
+          visible={isSubjectSheetOpen}
+          onClose={() => setIsSubjectSheetOpen(false)}
+          tickets={driverTickets.tickets}
+          isLoading={driverTickets.isLoading}
+          isError={driverTickets.isError}
+          onRetry={() => void driverTickets.refetch()}
+          currentTicketId={composerContext?.ticket?.id ?? null}
+          onChoose={(ticket) => {
+            chip.choose(contextOfTicket(ticket));
+            setIsSubjectSheetOpen(false);
+          }}
+          onNewSubject={() => void handleNewSubject()}
+          isOpening={driverTickets.isOpening}
+        />
       </View>
     </ProtectedRoute>
   );

@@ -15,7 +15,8 @@ import {
   mediaPositionLabel,
   mediaViewerAnchor,
   mediaWindowIndexes,
-  prefetchRingUrls,
+  chatImageCacheKey,
+  chatImageSource,
   resistedPagePan,
   resolveAnchorIndex,
   resolveDragAxis,
@@ -231,62 +232,43 @@ describe("only three photos ever exist", () => {
   });
 });
 
-// ----------------------------------------------------------------- prefetch
-describe("the ring outside the window is warmed, the local files are not", () => {
-  it("warms the photos the NEXT swipe will mount, not the mounted ones", () => {
-    const gallery = buildMediaGallery([
-      photo("p1", 1),
-      photo("p2", 2),
-      photo("p3", 3),
-      photo("p4", 4),
-      photo("p5", 5),
-    ]);
+// ---------------------------------------------------------------- cache key
+describe("a chat photo is cached by message, not by its signed url", () => {
+  it("keeps the same cache identity across two signatures of the same photo", () => {
+    const first = chatImageSource(
+      "https://cdn.example.com/p1.jpg?sig=abc&expires=1",
+      "p1",
+    );
+    const resigned = chatImageSource(
+      "https://cdn.example.com/p1.jpg?sig=xyz&expires=2",
+      "p1",
+    );
 
-    // Standing on p3, the window already mounts p2 and p4 as real image
-    // views, and an image view fetches its own source: warming those is the
-    // same request twice, and on Android a second decode at full resolution
-    // that is then thrown away. The ones worth warming are one swipe further.
-    expect(prefetchRingUrls(gallery, 2)).toEqual([
-      gallery[0].url,
-      gallery[4].url,
-    ]);
+    // The url changes on every listing; the key must not, or every thumbnail
+    // is downloaded again on each load of the thread.
+    expect(first.uri).not.toBe(resigned.uri);
+    expect(first.cacheKey).toBeDefined();
+    expect(first.cacheKey).toBe(resigned.cacheKey);
   });
 
-  it("asks for nothing when the ring falls outside the gallery", () => {
-    const gallery = buildMediaGallery([
-      photo("p1", 1),
-      photo("p2", 2),
-      photo("p3", 3),
-    ]);
-
-    // Three photos: standing in the middle, distance two lands off both ends.
-    expect(prefetchRingUrls(gallery, 1)).toEqual([]);
-    expect(prefetchRingUrls(buildMediaGallery([photo("p1", 1)]), 0)).toEqual([]);
+  it("gives two different photos two different identities", () => {
+    expect(chatImageSource("https://cdn.example.com/a.jpg?sig=1", "a").cacheKey).not.toBe(
+      chatImageSource("https://cdn.example.com/a.jpg?sig=1", "b").cacheKey,
+    );
   });
 
-  it("warms only the side that exists near an edge", () => {
-    const gallery = buildMediaGallery([
-      photo("p1", 1),
-      photo("p2", 2),
-      photo("p3", 3),
-      photo("p4", 4),
-    ]);
+  it("is the same identity the viewer uses for the photo the bubble shows", () => {
+    const [shown] = buildMediaGallery([photo("p1", 1)]);
 
-    expect(prefetchRingUrls(gallery, 0)).toEqual([gallery[2].url]);
+    expect(chatImageSource(shown.url, shown.anchor.messageId).cacheKey).toBe(
+      chatImageCacheKey("p1"),
+    );
   });
 
-  it("skips a photo that is already a file on this device", () => {
-    const gallery = buildMediaGallery([
-      photo("p1", 1, { attachment_url: "file:///cache/pending.jpg" }),
-      photo("p2", 2),
-      photo("p3", 3),
-      photo("p4", 4),
-      photo("p5", 5),
-    ]);
-
-    // A local file has nothing to fetch; handing it to a network cache is
-    // noise, not a warm-up.
-    expect(prefetchRingUrls(gallery, 2)).toEqual([gallery[4].url]);
+  it("reads a photo still on this device straight from disk, with no key", () => {
+    expect(chatImageSource("file:///cache/pending.jpg", "local-1")).toEqual({
+      uri: "file:///cache/pending.jpg",
+    });
   });
 });
 

@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { clearQueryCache } from "../providers/query-provider";
+import { cancelChatUnreadRefresh } from "../features/chat/unread-refresh";
 import {
   clearAllSubmissionData,
   disableSubmissionPersistence,
@@ -20,11 +21,33 @@ import type {
   UserMeResponse,
 } from "../types";
 
+import { signOutRemotely } from "../features/auth/remote-logout";
+import { clearOnTheWayStore } from "../features/deliveries/on-the-way-store";
+import { clearProofFeedbackStore } from "../features/notifications/proof-feedback-store";
+import { flushBeforeSignOut } from "../features/tracking/reporter";
+import { isUpgradeRequired } from "../features/app-update/upgrade-rules";
 import { ApiError, apiClient } from "../utils/api";
+import {
+  forgetTwoFactorChallenge,
+  rememberTwoFactorChallenge,
+  twoFactorChallengeFor,
+} from "../features/auth/two-factor-challenge";
+import { isTokenExpired } from "../utils/jwt";
 import { logger } from "../utils/logger";
 
 import { validateUserAccess } from "../utils/permissions";
+import {
+  SIGN_IN_REFUSED_MESSAGE,
+  accessMessage,
+} from "../features/access/access-messages";
 import { disconnectSocket } from "../utils/socket";
+
+import {
+  modulesAfterServerRefresh,
+  withSessionModules,
+} from "../features/access/module-rules";
+import { observeEnabledModules } from "../features/access/module-observations";
+import { stampAiFlag } from "../features/ai-precheck/precheck-gate";
 
 import { authSessionStorage, tokenStorage } from "../utils/storage";
 import {
@@ -59,7 +82,11 @@ const isCurrentOperation = (operationEpoch: number): boolean =>
 const isAbortError = (error: unknown): boolean =>
   error instanceof Error && error.name === "AbortError";
 
-const mergeServerUser = (serverUser: User, cachedUser: User | null): User => {
+const mergeServerUser = (received: User, cachedUser: User | null): User => {
+  // Stamped on arrival: the pre-check flag is trusted for the offline
+  // window only (decision 14.2).
+  const serverUser = stampAiFlag(received);
+
   if (
     serverUser.role === "MASTER" &&
     cachedUser?.role === "MASTER" &&
@@ -70,43 +97,41 @@ const mergeServerUser = (serverUser: User, cachedUser: User | null): User => {
       ...serverUser,
       businessId: cachedUser.businessId,
       selectedBusiness: cachedUser.selectedBusiness,
+      // The selected company's plan, not the "everything" /user/me gives a
+      // MASTER (decision 4.3).
+      enabledModules: modulesAfterServerRefresh(serverUser, cachedUser),
     };
   }
 
   return serverUser;
 };
 
-const getAccessErrorMessage = (reason?: string): string => {
-  switch (reason) {
-    case "session_expired":
-      return "Sua sessao expirou. Faca login novamente.";
-    case "session_not_renewed":
-      return "Nao foi possivel renovar sua sessao. Faca login novamente.";
-    case "access_revoked":
-      return "Seu acesso foi revogado. Entre em contato com o administrador.";
-    case "driver_inactive":
-      return "Seu cadastro como motorista esta inativo. Entre em contato com o administrador.";
-    case "no_permissions":
-      return "Usuario sem perfil de acesso ou permissoes configuradas.";
-    case "no_vehicle_permission":
-      return "Voce nao possui permissao para visualizar veiculos.";
-    case "access_denied":
-      return "Sua conta foi excluida ou nao esta autorizada.";
-    case "permissions_changed":
-      return "Suas permissoes foram atualizadas. Faca login novamente.";
-    default:
-      return "Acesso negado. Entre em contato com o administrador.";
-  }
+/**
+ * Tells the offline queue what `/user/me` just said about the company's plan,
+ * so submissions parked while a module was off go out once it is back
+ * (MOB-03). A MASTER's `/user/me` is not a company's plan; theirs arrives
+ * through `applyBusinessModules`.
+ */
+const observeServerModules = (user: User): void => {
+  if (user.role === "MASTER") return;
+
+  void observeEnabledModules({
+    businessId: user.businessId,
+    enabledModules: user.enabledModules ?? [],
+  }).catch(() => undefined);
 };
+
+const getAccessErrorMessage = (reason?: string): string =>
+  accessMessage(reason, SIGN_IN_REFUSED_MESSAGE);
 
 const getAuthenticationErrorMessage = (
   error: unknown,
   fallback: string,
 ): string => {
-  if (isAbortError(error)) return "Operacao cancelada.";
+  if (isAbortError(error)) return "Operação cancelada.";
   if (error instanceof ApiError) {
     if (error.category === "NETWORK") {
-      return "Erro de rede. Verifique sua conexao.";
+      return "Erro de rede. Verifique sua conexão.";
     }
 
     return error.message || fallback;
@@ -197,11 +222,12 @@ export const useAuthStore = create<AuthState>()(
 
           enableSubmissionPersistence(user.id);
           set({
-            user,
+            user: stampAiFlag(user),
             isAuthenticated: true,
             isLoading: false,
             isInitialized: true,
           });
+          observeServerModules(user);
           return { success: true };
         } catch (error) {
           if (tokensWereStaged && isCurrentOperation(operationEpoch)) {
@@ -211,7 +237,7 @@ export const useAuthStore = create<AuthState>()(
             success: false,
             error: getAuthenticationErrorMessage(
               error,
-              "Nao foi possivel concluir a autenticacao.",
+              "Não foi possível concluir a autenticação.",
             ),
           };
         }
@@ -223,9 +249,14 @@ export const useAuthStore = create<AuthState>()(
         isLoading: false,
         isInitialized: false,
 
-        setUser: (user: User) => set({ user }),
-        setServerUser: (user: User) =>
-          set((state) => ({ user: mergeServerUser(user, state.user) })),
+        // A local change of company (MASTER) drops the previous company's
+        // plan until the new one is fetched — see withSessionModules.
+        setUser: (user: User) =>
+          set((state) => ({ user: withSessionModules(user, state.user) })),
+        setServerUser: (user: User) => {
+          set((state) => ({ user: mergeServerUser(user, state.user) }));
+          observeServerModules(user);
+        },
 
         login: async (email, password) => {
           const operationEpoch = beginAuthOperation();
@@ -242,7 +273,7 @@ export const useAuthStore = create<AuthState>()(
             >("/user/session", { email, password }, false);
 
             if (!isCurrentOperation(operationEpoch)) {
-              return { success: false, error: "Operacao cancelada." };
+              return { success: false, error: "Operação cancelada." };
             }
 
             if ("emailVerification" in response && response.emailVerification) {
@@ -258,6 +289,12 @@ export const useAuthStore = create<AuthState>()(
               "twoFactorVerification" in response &&
               response.twoFactorVerification
             ) {
+              // Proof of the password for the code step (in memory only).
+              rememberTwoFactorChallenge(
+                email,
+                response.twoFactorChallenge,
+              );
+
               return {
                 success: false,
                 requiresTwoFactor: true,
@@ -302,12 +339,17 @@ export const useAuthStore = create<AuthState>()(
             const response =
               await apiClient.post<TwoFactorVerificationResponse>(
                 "/user/two-factor-verification",
-                { email, code },
+                // The challenge goes only when the API sent one; otherwise
+                // this is the body older builds send.
+                { email, code, ...twoFactorChallengeFor(email) },
                 false,
               );
 
+            // The code is spent, and the challenge with it.
+            forgetTwoFactorChallenge();
+
             if (!isCurrentOperation(operationEpoch)) {
-              return { success: false, error: "Operacao cancelada." };
+              return { success: false, error: "Operação cancelada." };
             }
 
             return establishSession(
@@ -322,7 +364,7 @@ export const useAuthStore = create<AuthState>()(
               success: false,
               error: getAuthenticationErrorMessage(
                 error,
-                "Codigo invalido ou expirado.",
+                "Código inválido ou expirado.",
               ),
             };
           } finally {
@@ -336,7 +378,8 @@ export const useAuthStore = create<AuthState>()(
           try {
             await apiClient.post(
               "/user/resend-two-factor-code",
-              { email },
+              // The API resends only to whoever just proved the password.
+              { email, ...twoFactorChallengeFor(email) },
               false,
             );
             return { success: true };
@@ -345,7 +388,7 @@ export const useAuthStore = create<AuthState>()(
               success: false,
               error: getAuthenticationErrorMessage(
                 error,
-                "Erro ao reenviar codigo.",
+                "Erro ao reenviar código.",
               ),
             };
           }
@@ -360,42 +403,65 @@ export const useAuthStore = create<AuthState>()(
             return logoutPromise;
           }
 
-          // Capture the access token before local cleanup. This request does
-          // not participate in authenticated-request cancellation, so the
-          // server can revoke every refresh-token family for this user even
-          // after the local session epoch is invalidated.
-          const serverLogoutPromise = tokenStorage
-            .getAccessToken()
-            .then((accessToken) => {
-              if (!accessToken) return;
-              return apiClient.request("/user/logout", {
-                method: "POST",
-                requiresAuth: false,
-                headers: { Authorization: `Bearer ${accessToken}` },
-                timeoutMs: 5_000,
-              });
-            });
+          forgetTwoFactorChallenge();
 
-          // Best-effort: stop pushing at a device whose user just left. If
-          // this never runs (killed app, no network), the server still
-          // reassigns the token on the next login and prunes dead ones.
+          // Capture the tokens before local cleanup (the storage queue reads
+          // them ahead of the clear below). These requests do not take part
+          // in authenticated-request cancellation, so they still reach the
+          // server after the local session epoch is invalidated.
+          //
+          // Unregister the push device FIRST, then end the session — see
+          // features/auth/remote-logout. Sent side by side, the logout often
+          // won and the unregister was refused. If none of this reaches the
+          // server (killed app, no network), the server drops the session's
+          // devices once the session expires.
           const registeredPushToken = getRegisteredPushToken();
-          const pushCleanupPromise = registeredPushToken
-            ? tokenStorage
-                .getAccessToken()
-                .then((accessToken) => {
-                  if (!accessToken) return;
-                  return apiClient.request("/notification/push-token", {
-                    method: "DELETE",
-                    requiresAuth: false,
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                    body: { token: registeredPushToken },
-                    timeoutMs: 5_000,
-                  });
-                })
-                .then(() => setRegisteredPushToken(null))
-                .catch(() => undefined)
-            : Promise.resolve();
+          setRegisteredPushToken(null);
+
+          const signingOutUserId = get().user?.id ?? null;
+
+          const remoteLogoutPromise = tokenStorage
+            .getTokens()
+            .then(async (tokens) => {
+              // The route's last stretch goes out while the session still
+              // exists — before the server logout ends it (MOB-24). Bounded
+              // and never throws; see flushBeforeSignOut.
+              await flushBeforeSignOut({
+                userId: signingOutUserId,
+                accessToken: tokens?.accessToken ?? null,
+              });
+
+              return signOutRemotely(
+                {
+                  accessToken: tokens?.accessToken ?? null,
+                  refreshToken: tokens?.refreshToken ?? null,
+                  pushToken: registeredPushToken,
+                },
+                {
+                  send: (method, path, accessToken, body) =>
+                    apiClient.request(path, {
+                      method,
+                      body,
+                      requiresAuth: false,
+                      headers: { Authorization: `Bearer ${accessToken}` },
+                      timeoutMs: 5_000,
+                    }),
+                  renew: async (refreshToken) => {
+                    const renewed = await apiClient.request<{
+                      token?: string;
+                    }>("/user/refresh-token", {
+                      method: "POST",
+                      body: { token: refreshToken },
+                      requiresAuth: false,
+                      timeoutMs: 5_000,
+                    });
+
+                    return renewed?.token ?? null;
+                  },
+                  isExpired: (accessToken) => isTokenExpired(accessToken),
+                },
+              );
+            });
 
           const operationEpoch = beginAuthOperation();
           logoutOperationEpoch = operationEpoch;
@@ -409,21 +475,29 @@ export const useAuthStore = create<AuthState>()(
           disconnectSocket(true);
           setUnauthenticated(true);
 
+          // A badge refetch still inside its coalescing window belongs to
+          // the session that is ending (MOB-09): dropped with the cache
+          // below instead of firing on whoever signs in next.
+          cancelChatUnreadRefresh();
+
           const promise = (async () => {
             const results = await Promise.allSettled([
-              serverLogoutPromise,
-              pushCleanupPromise,
+              remoteLogoutPromise,
               authSessionStorage.markLoggedOut(markerEpoch),
               tokenStorage.clearTokens(),
               authSessionStorage.clearPersistedAuth(),
               clearAllSubmissionData(),
               clearQueryCache(),
+              // The driver's own records (decision 2.6); the pause store is
+              // kept on purpose (see pause-store).
+              clearProofFeedbackStore(),
+              clearOnTheWayStore(),
             ]);
-            // The remote calls (server logout, push unregister) are
+            // The remote calls (push unregister, server logout) are
             // deliberately best-effort. Local credential cleanup failures
             // are the ones that require diagnostics.
             const failures = results
-              .slice(2)
+              .slice(1)
               .filter((result) => result.status === "rejected");
             if (failures.length > 0) {
               logger.error("logout: one or more storage cleanups failed");
@@ -527,6 +601,7 @@ export const useAuthStore = create<AuthState>()(
                 isLoading: false,
                 isInitialized: true,
               });
+              observeServerModules(response.user);
             } catch (error) {
               if (!isCurrentOperation(operationEpoch)) return;
 
@@ -535,7 +610,16 @@ export const useAuthStore = create<AuthState>()(
                 return;
               }
 
-              if (error instanceof ApiError && error.isTransient) {
+              // A 426 CLIENT_UPGRADE_REQUIRED is about this BUILD, not the
+              // session (GAP5-2): logging out here cost the driver the
+              // session, the drafts and a 2FA sign-in after the update. The
+              // cached session is kept, as when the API is unreachable, and
+              // the update screen (raised by apiClient) takes over.
+              if (
+                error instanceof ApiError &&
+                (error.isTransient ||
+                  isUpgradeRequired(error.status, error.code))
+              ) {
                 logger.info(
                   "checkAuth: transient validation failure, preserving cached session",
                 );
@@ -589,3 +673,38 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 );
+
+const sameModules = (
+  current: readonly string[] | undefined,
+  next: readonly string[],
+): boolean =>
+  Array.isArray(current) &&
+  current.length === next.length &&
+  next.every((module) => current.includes(module));
+
+/**
+ * A MASTER's view of the company they picked: its plan, from the plan
+ * endpoint (`/user/me` answers a MASTER with every module).
+ *
+ * Applied only while that company is still the one selected — an answer that
+ * lands after the MASTER switched again belongs to the previous company.
+ * `observedAt` is when the server answered, so two screens reading the same
+ * cached answer count as one word for the offline queue, not two.
+ */
+export const applyBusinessModules = (
+  businessId: string,
+  enabledModules: string[],
+  observedAt: number,
+): void => {
+  const { user } = useAuthStore.getState();
+
+  if (!user || user.role !== "MASTER" || user.businessId !== businessId) return;
+
+  if (!sameModules(user.enabledModules, enabledModules)) {
+    useAuthStore.setState({ user: { ...user, enabledModules } });
+  }
+
+  void observeEnabledModules({ businessId, enabledModules, observedAt }).catch(
+    () => undefined,
+  );
+};

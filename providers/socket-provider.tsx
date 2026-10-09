@@ -12,26 +12,24 @@ import { ApiError, apiClient } from "../utils/api";
 import { validateUserAccess } from "../utils/permissions";
 
 import {
+  backgroundSocket,
   disconnectSocket,
+  foregroundSocket,
   initializeSocket,
-  pauseSocket,
-  reconnectSocket,
-  updateSocketAuthToken,
 } from "../utils/socket";
+import { securityActionEndsSession } from "../utils/socket-auth-rules";
+
+import {
+  bindAccessEvents,
+  rereadWithTrailing,
+} from "../features/access/access-events";
+import {
+  SESSION_ENDED_MESSAGE,
+  accessMessage,
+  refusalReason,
+} from "../features/access/access-messages";
 
 const SECURITY_EVENT = "securityAction";
-
-const REVOKE_MESSAGES: Record<string, string> = {
-  access_revoked:
-    "Seu acesso foi revogado. Entre em contato com o administrador.",
-  access_denied: "Sua conta foi excluida ou nao esta autorizada.",
-  driver_inactive:
-    "Seu cadastro como motorista esta inativo. Entre em contato com o administrador.",
-  no_permissions: "Seu usuario nao possui permissoes configuradas.",
-  no_vehicle_permission: "Voce nao possui permissao para visualizar veiculos.",
-  permissions_changed:
-    "Suas permissoes foram atualizadas. Faca login novamente.",
-};
 
 export const SocketProvider = ({ children }: PropsWithChildren) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -40,7 +38,6 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
   const setServerUser = useAuthStore((state) => state.setServerUser);
 
   const isHandlingLogout = useRef(false);
-  const permissionsCheck = useRef<Promise<void> | null>(null);
 
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
@@ -52,9 +49,7 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
       Toast.show({
         type: "error",
         text1: "Acesso encerrado",
-        text2:
-          REVOKE_MESSAGES[reason] ??
-          "Sua sessao foi encerrada. Faca login novamente.",
+        text2: accessMessage(reason, SESSION_ENDED_MESSAGE),
         position: "top",
         visibilityTime: 6_000,
       });
@@ -64,40 +59,52 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
     [logout],
   );
 
-  const handlePermissionsChanged = useCallback(async () => {
-    if (permissionsCheck.current) return permissionsCheck.current;
+  const readAccess = useCallback(async () => {
+    // A read queued behind one that ended the session has nothing to read.
+    if (isHandlingLogout.current) return;
 
-    const promise = (async () => {
-      try {
-        const response = await apiClient.get<UserMeResponse>("/user/me");
-        const accessValidation = validateUserAccess(response.user);
-
-        if (!accessValidation.hasAccess) {
-          await handleForceLogout(
-            accessValidation.reason ?? "permissions_changed",
-          );
-          return;
-        }
-
-        setServerUser(response.user);
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 403) {
-          await handleForceLogout("access_denied");
-        }
-        // Offline/5xx must not revoke a valid local session. A 401 is already
-        // handled centrally by ApiClient's logout callback.
-      }
-    })();
-
-    permissionsCheck.current = promise;
     try {
-      await promise;
-    } finally {
-      if (permissionsCheck.current === promise) {
-        permissionsCheck.current = null;
+      const response = await apiClient.get<UserMeResponse>("/user/me");
+      const accessValidation = validateUserAccess(response.user);
+
+      if (!accessValidation.hasAccess) {
+        await handleForceLogout(
+          accessValidation.reason ?? "permissions_changed",
+        );
+        return;
       }
+
+      setServerUser(response.user);
+    } catch (error) {
+      // /user/me refuses only for the session's eligibility; the code says
+      // which (an inactive company is not a deleted account, decision 4.1).
+      if (error instanceof ApiError && error.status === 403) {
+        await handleForceLogout(refusalReason(error.code));
+      }
+      // Offline/5xx must not revoke a valid local session. A 401 is already
+      // handled centrally by ApiClient's logout callback.
     }
   }, [handleForceLogout, setServerUser]);
+
+  // The latest readAccess, for a runner created once per mount.
+  const latestReadAccess = useRef(readAccess);
+  useEffect(() => {
+    latestReadAccess.current = readAccess;
+  }, [readAccess]);
+
+  // One /user/me at a time, plus one more when a change arrived during it:
+  // that read may have left before the change reached the server (MOB-11).
+  const permissionsCheck = useRef<(() => Promise<void>) | null>(null);
+  if (!permissionsCheck.current) {
+    permissionsCheck.current = rereadWithTrailing(() =>
+      latestReadAccess.current(),
+    );
+  }
+
+  const handlePermissionsChanged = useCallback(
+    () => permissionsCheck.current?.() ?? Promise.resolve(),
+    [],
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -109,12 +116,15 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
 
     let disposed = false;
     let boundSocket: Awaited<ReturnType<typeof initializeSocket>> | null = null;
+    let unbindAccessEvents: (() => void) | null = null;
 
     const handleSecurityAction = async (event?: { reason?: string }) => {
       if (disposed) return;
       const reason = event?.reason ?? "access_denied";
 
-      if (reason === "permissions_changed") {
+      // Authorization-only reasons (the server keeps the socket for them):
+      // re-read /user/me instead of logging out.
+      if (!securityActionEndsSession(reason)) {
         await handlePermissionsChanged();
         return;
       }
@@ -131,6 +141,12 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
         socket.off(SECURITY_EVENT, handleSecurityAction);
         socket.on(SECURITY_EVENT, handleSecurityAction);
 
+        // A module switched on or off: the same /user/me re-read as a
+        // permission change, so tabs, screens and parked submissions follow
+        // at once instead of on the next foreground (MOB-11).
+        unbindAccessEvents?.();
+        unbindAccessEvents = bindAccessEvents(socket, handlePermissionsChanged);
+
         if (!socket.connected && !socket.active) socket.connect();
       })
       .catch(() => {
@@ -141,6 +157,7 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
     return () => {
       disposed = true;
       boundSocket?.off(SECURITY_EVENT, handleSecurityAction);
+      unbindAccessEvents?.();
     };
   }, [isAuthenticated, handleForceLogout, handlePermissionsChanged]);
 
@@ -152,18 +169,22 @@ export const SocketProvider = ({ children }: PropsWithChildren) => {
 
       if (!useAuthStore.getState().isAuthenticated) return;
 
+      // Paused only after a grace: a glance at Waze and back keeps the
+      // socket, and with it every event sent meanwhile (MOB-20).
       if (nextState !== "active") {
-        pauseSocket();
+        backgroundSocket();
         return;
       }
 
       if (!becameActive) return;
 
-      void updateSocketAuthToken()
-        .then(() => reconnectSocket())
-        .catch(() => {
-          // AuthProvider performs the authoritative /user/me revalidation.
-        });
+      void foregroundSocket().catch(() => {
+        // Nothing to add here. A failed reconnection means the socket did not
+        // carry the absence, so AuthProvider re-checks /user/me; when it did
+        // carry it, any securityAction already arrived live, and the
+        // server's periodic sweep still ends (announcing why) a socket whose
+        // session died if that frame was lost.
+      });
     });
 
     return () => subscription.remove();

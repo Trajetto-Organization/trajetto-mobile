@@ -11,18 +11,18 @@ export const VehicleStats: React.FC<VehicleStatsProps> = ({
 }) => {
   return (
     <View className="flex-row justify-between mt-4 -mb-4">
-      <View className="bg-red-50 rounded-2xl p-4 flex-1 mr-2">
-        <Text className="text-xs font-medium mb-1">Total</Text>
-        <Text className="text-xl font-bold">{total || 0}</Text>
-        <Text className="text-xs">veículos</Text>
+      <View className="bg-card border border-border rounded-2xl p-4 flex-1 mr-2">
+        <Text className="text-xs font-medium text-muted mb-1">Total</Text>
+        <Text className="text-xl font-bold text-ink">{total || 0}</Text>
+        <Text className="text-xs text-muted">veículos</Text>
       </View>
-      <View className="bg-red-50 rounded-2xl p-4 flex-1 ml-2">
-        <Text className="text-xs font-medium mb-1">Status</Text>
-        <Text className="text-xl font-bold">
+      <View className="bg-card border border-border rounded-2xl p-4 flex-1 ml-2">
+        <Text className="text-xs font-medium text-muted mb-1">Status</Text>
+        <Text className="text-xl font-bold text-ink">
           {activeCount}{" "}
-          <Text className="animate-pulse text-green-400 text-sm">●</Text>
+          <Text className="animate-pulse text-success text-sm">●</Text>
         </Text>
-        <Text className="text-xs">ativos</Text>
+        <Text className="text-xs text-muted">ativos</Text>
       </View>
     </View>
   );

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
+import { useThemeColors } from "../../hooks/use-theme";
 import { cn } from "../../utils/cn";
 
 interface TwoFactorInputProps {
@@ -18,6 +19,7 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
   disabled = false,
   className = "",
 }) => {
+  const colors = useThemeColors();
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
@@ -168,13 +170,13 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
                   className={cn(
                     "w-12 h-12 border-2 rounded-lg justify-center items-center",
                     focusedIndex === index
-                      ? "border-blue-500 bg-blue-50"
+                      ? "border-primary bg-primary-soft"
                       : error
-                      ? "border-red-500 bg-red-50"
+                      ? "border-destructive bg-destructive-soft"
                       : isEnabled
-                      ? "border-gray-300 bg-white"
-                      : "border-gray-200 bg-gray-100",
-                    disabled && "bg-gray-100"
+                      ? "border-input bg-card"
+                      : "border-border bg-subtle",
+                    disabled && "bg-subtle"
                   )}
                 >
                   <TextInput
@@ -198,7 +200,7 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
                       textAlign: "center",
                       fontSize: 18,
                       fontWeight: "600",
-                      color: isEnabled ? "#111827" : "#9ca3af",
+                      color: isEnabled ? colors.ink : colors.muted,
                     }}
                   />
                 </View>
@@ -209,7 +211,7 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
 
         {/* Separator */}
         <View
-          className="bg-gray-400 mx-4"
+          className="bg-input mx-4"
           style={{
             width: 12,
             height: 2,
@@ -232,13 +234,13 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
                   className={cn(
                     "w-12 h-12 border-2 rounded-lg justify-center items-center",
                     focusedIndex === actualIndex
-                      ? "border-blue-500 bg-blue-50"
+                      ? "border-primary bg-primary-soft"
                       : error
-                      ? "border-red-500 bg-red-50"
+                      ? "border-destructive bg-destructive-soft"
                       : isEnabled
-                      ? "border-gray-300 bg-white"
-                      : "border-gray-200 bg-gray-100",
-                    disabled && "bg-gray-100"
+                      ? "border-input bg-card"
+                      : "border-border bg-subtle",
+                    disabled && "bg-subtle"
                   )}
                 >
                   <TextInput
@@ -264,7 +266,7 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
                       textAlign: "center",
                       fontSize: 18,
                       fontWeight: "600",
-                      color: isEnabled ? "#111827" : "#9ca3af",
+                      color: isEnabled ? colors.ink : colors.muted,
                     }}
                   />
                 </View>
@@ -277,7 +279,7 @@ export const TwoFactorInput: React.FC<TwoFactorInputProps> = ({
       {error && (
         <Text
           style={{
-            color: "#dc2626",
+            color: colors.destructive,
             fontSize: 14,
             marginTop: 8,
             textAlign: "center",

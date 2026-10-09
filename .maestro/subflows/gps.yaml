@@ -1,0 +1,9 @@
+# A fresh GPS fix near the seeded addresses (Avenida Paulista). The emulator
+# reports a position only when one is sent, and the app refuses a last known
+# fix older than five minutes for an arrival (one minute for a refuelling):
+# without this, a step run long after boot fails on "sem localização".
+appId: com.trajetto.fleetmanager
+---
+- setLocation:
+    latitude: -23.5614
+    longitude: -46.6565
