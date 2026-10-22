@@ -40,11 +40,13 @@ describe("the delivery card's date", () => {
   });
 
   it("shows the 17th for a delivery of the 17th, in Brazil", () => {
-    // What the phone's zone made of it — the defect this replaces.
+    // What the phone's zone made of it — the defect this replaces. The zone is
+    // explicit: Node on Linux caches the default zone before beforeAll sets TZ.
     expect(
       new Date(API_VALUE).toLocaleDateString("pt-BR", {
         day: "2-digit",
         month: "2-digit",
+        timeZone: "America/Sao_Paulo",
       }),
     ).toBe("16/09");
 
