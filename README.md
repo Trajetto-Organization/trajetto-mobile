@@ -49,8 +49,8 @@ com o motorista, integrações).
 | Repositório no GitHub (pasta local) | O que é | Onde roda |
 |---|---|---|
 | `trajetto-api` | API (Fastify, Prisma, PostgreSQL, Redis), tempo real, filas, crons e o serviço local de IA/OCR | Dokploy, app Compose (Docker Stack) |
-| `trajetto-fleet-manager-ui` (`trajetto-ui`) | painel web e site público (Next.js) | Dokploy, Application |
-| `trajetto-fleet-manager-mobile` (`trajetto-mobile`, este) | app do motorista, só Android | EAS (APK interno e Play Store) |
+| `trajetto-ui` (`trajetto-ui`) | painel web e site público (Next.js) | Dokploy, Application |
+| `trajetto-mobile` (`trajetto-mobile`, este) | app do motorista, só Android | EAS (APK interno e Play Store) |
 
 ## O que o app faz
 

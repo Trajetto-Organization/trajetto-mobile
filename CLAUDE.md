@@ -31,7 +31,7 @@ Documentação completa: [`docs/arquitetura.md`](docs/arquitetura.md),
 
 ## O que é este repositório
 
-`trajetto-mobile` (no GitHub: `Trajetto-Organization/trajetto-fleet-manager-mobile`)
+`trajetto-mobile` (no GitHub: `Trajetto-Organization/trajetto-mobile`)
 é o **app de campo do motorista** do Trajetto, um SaaS B2B multiempresa de
 Gestão de Frotas e Gestão de Entregas para transportadoras. **Só Android**:
 Expo SDK 54 com dev client, React Native 0.81 (nova arquitetura, Hermes,
