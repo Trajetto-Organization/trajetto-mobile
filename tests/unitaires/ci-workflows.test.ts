@@ -115,7 +115,9 @@ describe("the release workflow (deploy.yml)", () => {
 
     expect(staging).toMatch(/if: .*github\.ref == 'refs\/heads\/staging'/);
     expect(staging).toMatch(/^ {4}environment: staging$/m);
-    expect(staging).toMatch(/eas update --branch staging --environment staging\b/);
+    // EAS has only development, preview and production on this plan: the
+    // staging channel takes its variables from "preview".
+    expect(staging).toMatch(/eas update --branch staging --environment preview\b/);
     expect(staging).toMatch(/eas build --platform android --profile staging\b/);
 
     expect(production).toMatch(/if: .*github\.ref == 'refs\/heads\/main'/);

@@ -33,7 +33,8 @@ como gerar.
 - **O EAS não lê o `.env`.** O `.env` (copiado de `.env.example`) serve só
   para o Metro local (`npm start`). `eas build` e `eas update` usam as
   variáveis do **ambiente EAS** indicado no perfil do `eas.json`
-  (`development`, `preview`, `staging`, `production`), cadastradas em
+  (`development`, `preview` ou `production`; o EAS não tem ambiente
+  `staging`, e o perfil `staging` usa o `preview`), cadastradas em
   expo.dev ou com `eas env:create`. Copiar `.env.production` para `.env`
   antes de um build não tem efeito nenhum.
 - O `app.config.js` lê as variáveis de build e **recusa** configurações
@@ -62,10 +63,10 @@ como gerar.
 | Obrigatória | **Sim** em todo ambiente. Sem ela o app mostra "EXPO_PUBLIC_API_URL não configurada" e o build de release para |
 | Formato | URL absoluta, sem barra final (é removida), sem credenciais, query ou fragmento. Em release: **HTTPS** e host público |
 | Desenvolvimento | `http://localhost:3333` (emulador: `http://10.0.2.2:3333`; aparelho físico: `http://<IP da máquina>:3333`) |
-| Staging | a URL pública da API de staging, ex. `https://trajettoapi-staging.thorsolucoes.com.br` |
-| Produção | a URL pública da API de produção, hoje `https://trajettoapi.thorsolucoes.com.br` |
+| Staging | `https://api-staging.intrajetto.com` |
+| Produção | a URL pública da API de produção (a definir, ex. `https://api.intrajetto.com`) |
 | Secreta | Não |
-| Onde | `.env` local; ambientes EAS `development`, `preview`, `staging`, `production` |
+| Onde | `.env` local; ambientes EAS `development`, `preview` (staging) e `production` |
 
 A regra de URL segura (`utils/api-url-rules.ts` e `app.config.js`) recusa em
 release: `http://`, `localhost`, `10.0.2.2`, `*.local`, `*.internal`,
@@ -107,8 +108,8 @@ para a torre dizer que só vê motoristas com o app aberto.
 | | |
 | --- | --- |
 | Para quê | Nome do ambiente EAS. O `app.config.js` usa para rodar a checagem de HTTPS também no `eas update` (que não passa pelo EAS Build e não tem `EAS_BUILD_PROFILE`) |
-| Obrigatória | **Sim** nos ambientes EAS `preview`, `staging` e `production` |
-| Valor | o próprio nome: `preview`, `staging`, `production` (em `development` pode ficar ausente: a checagem relaxa para desenvolvimento) |
+| Obrigatória | **Sim** nos ambientes EAS `preview` e `production` |
+| Valor | o próprio nome: `preview` ou `production` (em `development` pode ficar ausente: a checagem relaxa para desenvolvimento) |
 | Secreta | Não |
 | Onde | só nos ambientes EAS (nunca no `.env` local: ligaria a checagem de release no Metro) |
 
@@ -117,7 +118,7 @@ para a torre dizer que só vê motoristas com o app aberto.
 | | |
 | --- | --- |
 | Para quê | Configuração Android do Firebase (`google-services.json`). Sem ela o app instala, mas nunca recebe push (o token Expo depende do FCM) |
-| Obrigatória | **Sim** nos ambientes `preview`, `staging` e `production`. Um build de release sem ela para no worker do EAS com a mensagem explicando |
+| Obrigatória | **Sim** nos ambientes `preview` e `production`. Um build de release sem ela para no worker do EAS com a mensagem explicando |
 | Tipo | variável do tipo **arquivo** (o EAS grava o arquivo e põe o caminho na variável) |
 | Visibilidade | **secreta** (o arquivo traz a API key do projeto Firebase) |
 | Onde | ambientes EAS. Localmente, o `google-services.json` na raiz (gitignored, liberado no `.easignore`) é usado quando a variável não existe |
@@ -142,16 +143,19 @@ ambientes EAS.
 
 ## Matriz por ambiente
 
-| Variável | `.env` local | EAS `development` | EAS `preview` | EAS `staging` | EAS `production` |
-| --- | --- | --- | --- | --- | --- |
-| `EXPO_PUBLIC_API_URL` | `http://localhost:3333` | API local ou de staging | API de staging (HTTPS) | API de staging (HTTPS) | API de produção (HTTPS) |
-| `EXPO_PUBLIC_WEB_APPLICATION_URL` | `http://localhost:3000/login` | web local ou de staging | web de staging | web de staging | web de produção |
-| `EXPO_PUBLIC_BACKGROUND_TRACKING` | `false` | `false` | `false` | `false` | `false` (até a aprovação) |
-| `APP_ENV` | — | — | `preview` | `staging` | `production` |
-| `GOOGLE_SERVICES_JSON` (arquivo, secreto) | arquivo local opcional | opcional | **sim** | **sim** | **sim** |
+O EAS só tem `development`, `preview` e `production`. Os perfis `preview` e
+`staging` do `eas.json` leem os dois o ambiente `preview`, que aponta para a
+stack de staging.
 
-O perfil `preview` é para testes internos; aponte-o para staging (nunca para
-produção com dados reais de clientes sem necessidade).
+| Variável | `.env` local | EAS `development` | EAS `preview` (perfis `preview` e `staging`) | EAS `production` |
+| --- | --- | --- | --- | --- |
+| `EXPO_PUBLIC_API_URL` | `http://localhost:3333` | API local ou de staging | `https://api-staging.intrajetto.com` | API de produção (HTTPS) |
+| `EXPO_PUBLIC_WEB_APPLICATION_URL` | `http://localhost:3000/login` | web local ou de staging | `https://staging.intrajetto.com/login` | `https://www.intrajetto.com/login` |
+| `EXPO_PUBLIC_BACKGROUND_TRACKING` | `false` | `false` | `false` | `false` (até a aprovação) |
+| `APP_ENV` | — | — | `preview` | `production` |
+| `GOOGLE_SERVICES_JSON` (arquivo, secreto) | arquivo local opcional | opcional | **sim** | **sim** |
+
+O ambiente `preview` é o staging do app: nunca o aponte para a produção.
 
 ## GitHub Actions
 
@@ -223,24 +227,19 @@ no host de `EXPO_PUBLIC_WEB_APPLICATION_URL` servindo `/legal/privacidade` e
 Com `eas-cli@21.7.0` instalado e `eas login` feito, na raiz do repositório:
 
 ```bash
-# URL da API e do web, por ambiente (texto simples, visibilidade "plaintext")
-eas env:create --scope project --environment staging \
-  --name EXPO_PUBLIC_API_URL --value https://<host da API de staging> --visibility plaintext
-eas env:create --scope project --environment staging \
-  --name EXPO_PUBLIC_WEB_APPLICATION_URL --value https://<host do web de staging>/login --visibility plaintext
-eas env:create --scope project --environment staging \
-  --name EXPO_PUBLIC_BACKGROUND_TRACKING --value false --visibility plaintext
-eas env:create --scope project --environment staging \
-  --name APP_ENV --value staging --visibility plaintext
-# repita para preview (apontando para staging) e production (hosts de produção)
+# Staging: no ambiente preview (o EAS não tem ambiente staging; os perfis
+# preview e staging do eas.json leem o preview). Texto simples, "plaintext".
+eas env:create --scope project --environment preview   --name EXPO_PUBLIC_API_URL --value https://api-staging.intrajetto.com --visibility plaintext
+eas env:create --scope project --environment preview   --name EXPO_PUBLIC_WEB_APPLICATION_URL --value https://staging.intrajetto.com/login --visibility plaintext
+eas env:create --scope project --environment preview   --name EXPO_PUBLIC_BACKGROUND_TRACKING --value false --visibility plaintext
+eas env:create --scope project --environment preview   --name APP_ENV --value preview --visibility plaintext
+# repita para production, com os hosts de produção e APP_ENV=production
 
-# Firebase: uma vez, para os três ambientes de release
-eas env:create --scope project --name GOOGLE_SERVICES_JSON --type file \
-  --value ./google-services.json --visibility secret \
-  --environment preview --environment staging --environment production
+# Firebase: uma vez, para os dois ambientes de release
+eas env:create --scope project --name GOOGLE_SERVICES_JSON --type file   --value ./google-services.json --visibility secret   --environment preview --environment production
 
 # Conferir
-eas env:list --environment staging
+eas env:list --environment preview
 ```
 
 Pelo site: expo.dev → projeto `trajetto-fleet-manager-mobile` → Environment

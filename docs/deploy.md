@@ -154,9 +154,10 @@ android` e `eas build:version:set -p android`.
 | | Staging | Produção |
 | --- | --- | --- |
 | Branch git | `staging` | `main` |
-| Perfil / ambiente EAS / canal | `staging` | `production` |
+| Perfil / canal | `staging` | `production` |
+| Ambiente EAS (variáveis) | `preview` | `production` |
 | Artefato | APK instalado à mão pelos testadores (link no expo.dev) | AAB na Play Store |
-| API | a API de staging (stack própria, decisão 12.2), ex. `https://trajettoapi-staging.thorsolucoes.com.br` | `https://trajettoapi.thorsolucoes.com.br` |
+| API | a API de staging (stack própria, decisão 12.2): `https://api-staging.intrajetto.com` | a definir, ex. `https://api.intrajetto.com` |
 | Web (links legais) | o web de staging, ex. `https://staging.intrajetto.com` | `https://www.intrajetto.com` |
 | OTA pelo CI | a cada push com mudança de app; assinada quando há chave | a cada merge com mudança de app; **sempre assinada**, após aprovação |
 | Binário pelo CI | quando o lado nativo muda | quando o lado nativo muda (+ envio à trilha internal com `PLAY_SUBMIT_ENABLED=true`) |
@@ -169,9 +170,11 @@ O APK de staging e o de produção podem ficar no mesmo celular? Não: os dois
 usam o mesmo pacote `com.trajetto.fleetmanager`, então um substitui o outro.
 Use um aparelho de teste para staging.
 
-O ambiente `staging` é um ambiente personalizado do EAS (os padrões são
-`development`, `preview` e `production`). Confirme em expo.dev → Environment
-variables que ele existe no plano da conta antes do primeiro build.
+O EAS só oferece os ambientes `development`, `preview` e `production` no
+plano da conta (ambiente personalizado, como `staging`, não existe). Por isso
+o perfil e o canal `staging` usam as variáveis do ambiente **`preview`**
+(`eas.json` e o `eas update` do `deploy.yml`). O perfil `preview` usa o mesmo
+ambiente: os dois apontam para a stack de staging.
 
 ## Pipeline
 
@@ -211,7 +214,7 @@ O E2E Maestro não roda no CI (precisa de emulador e API locais; ver
 | `checks` | todo gatilho | chama o `ci.yml` inteiro; nada abaixo roda sem ele |
 | `plan` | push | classifica o diff desde o **último release verde desta branch** (ou, sem ele, desde o push anterior): `app` (algo além de docs/testes/CI/E2E) e `native` (algo que muda o runtime) |
 | `staging-evidence` | push em `main` | acha o commit de staging (2º pai do merge ou o próprio commit) e exige uma execução verde deste workflow em `staging` para ele; num merge commit, exige também que a árvore do merge seja idêntica à do commit de staging (`git diff --quiet HEAD^2 HEAD`); senão falha com a explicação |
-| `staging` | push em `staging` com `app=true` | ambiente `staging`: OTA no canal `staging`; build `staging` (APK, `--no-wait`) se `native=true` |
+| `staging` | push em `staging` com `app=true` | environment `staging` do GitHub: OTA no canal `staging` com as variáveis do ambiente EAS `preview`; build `staging` (APK, `--no-wait`) se `native=true` |
 | `production` | push em `main` com `app=true` | ambiente `production` (espera aprovação): OTA **assinada** no canal `production`; build `production` (AAB, `--no-wait`) se `native=true`, com auto-submit à trilha internal quando `PLAY_SUBMIT_ENABLED=true` (`--auto-submit-with-profile production`; não combinar com `--auto-submit`, as duas flags se excluem) |
 | `manual-build` | `workflow_dispatch` | build do perfil escolhido (development, preview, staging, production) depois do CI; produção usa o ambiente `production` |
 
@@ -350,8 +353,7 @@ privada correspondente.
    se preciso, uma atualização obrigatória) antes de depender de OTA para um
    hotfix. Binários antigos continuam aceitando atualização sem assinatura
    até serem substituídos: acompanhe a adoção.
-6. **Definir `APP_ENV`** nos ambientes EAS `preview`, `staging` e
-   `production`, para a checagem de HTTPS rodar também no `eas update`.
+6. **Definir `APP_ENV`** nos ambientes EAS `preview` e `production`, para a checagem de HTTPS rodar também no `eas update`.
 7. **Decidir onde a chave assina:**
    - **só manual** (padrão mais fechado): não cadastre
      `EXPO_UPDATE_PRIVATE_KEY`; o CI pula a OTA e você publica com
@@ -419,7 +421,7 @@ manda para a loja e o motorista fica parado até a versão aparecer lá.
 1. No Firebase, registre o app Android `com.trajetto.fleetmanager` e baixe o
    `google-services.json`.
 2. Cadastre-o como variável de **arquivo** secreta `GOOGLE_SERVICES_JSON` nos
-   ambientes EAS `preview`, `staging` e `production`
+   ambientes EAS `preview` e `production`
    ([passo a passo](./variaveis-de-ambiente.md#como-cadastrar-no-eas-passo-a-passo)).
    Um build de release sem ela para no worker do EAS.
 3. Guarde a mesma cópia na raiz local (gitignored; o `.easignore` deixa ir no
@@ -493,8 +495,8 @@ de um contrato que o app já usa.
 Contas e acessos:
 
 - [ ] Projeto no expo.dev acessível; `eas-cli@21.7.0`; `eas login`.
-- [ ] Ambiente EAS `staging` disponível no plano (além de `development`,
-      `preview`, `production`).
+- [ ] Variáveis de staging cadastradas no ambiente EAS `preview` (o EAS não
+      tem ambiente `staging`; o perfil `staging` lê o `preview`).
 - [ ] Robot user no expo.dev e token salvo como secret `EXPO_TOKEN` no GitHub;
       tokens antigos revogados (inclusive o do `.env.production` local).
 
@@ -610,7 +612,7 @@ _classic_ `read:packages`, informado no provider Docker de cada Application.
 |                        | Staging                                                                           | Produção                                                           |
 | ---------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | Web                    | `https://staging.intrajetto.com`                                                  | `https://www.intrajetto.com` (o apex `intrajetto.com` redireciona) |
-| API (REST e Socket.IO) | `https://trajettoapi-staging.thorsolucoes.com.br`                                 | `https://trajettoapi.thorsolucoes.com.br`                          |
+| API (REST e Socket.IO) | `https://api-staging.intrajetto.com`                                              | a definir, ex. `https://api.intrajetto.com`                        |
 | Serviço de IA          | sem endereço público: `http://trajetto-ai-staging:8080` na rede `dokploy-network` | sem endereço público: `http://trajetto-ai-production:8080`         |
 
 ### O que precisa casar entre os repositórios
@@ -666,7 +668,8 @@ está detalhada no `docs/variaveis-de-ambiente.md` do repositório que a lê.
    `HTTP_REQUEST` da API de staging igual à origem da web de staging. Depois,
    `DOKPLOY_STAGING_WEBHOOK_URL` e `METADATA_BASE_STAGING` no environment
    `staging` da web.
-6. **App de staging** (manual do app): ambiente EAS `staging` com
+6. **App de staging** (manual do app): ambiente EAS `preview` (o EAS não
+   tem ambiente `staging`; o perfil `staging` lê o `preview`) com
    `EXPO_PUBLIC_API_URL` = API de staging e
    `EXPO_PUBLIC_WEB_APPLICATION_URL` = web de staging; `EXPO_TOKEN` no
    GitHub; um push em `staging` gera o APK de staging.

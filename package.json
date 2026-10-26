@@ -24,7 +24,7 @@
     "build:production": "eas build --platform android --profile production",
     "submit:android": "eas submit --platform android --profile production",
     "update:preview": "eas update --branch preview --environment preview --message",
-    "update:staging": "eas update --branch staging --environment staging --message",
+    "update:staging": "eas update --branch staging --environment preview --message",
     "update:production": "eas update --branch production --environment production --message",
     "codesigning:generate": "expo-updates codesigning:generate --key-output-directory keys --certificate-output-directory certs --certificate-validity-duration-years 10 --certificate-common-name Trajetto",
     "doctor": "expo-doctor"

@@ -553,7 +553,7 @@ repositório) e valem para o app. Ficam aqui para quem só tem este repo.
 | --- | --- |
 | 6.1 / 6.3 / 6.4 / 6.9 | Pausas, autorização de ocorrência pela torre, "a caminho" e retorno da IA sobre comprovantes seguem os contratos da API (`docs/contratos-app/*` no projeto) |
 | 7.3 | Rastreamento em segundo plano pronto e desligado até a aprovação do Play Console |
-| 12.2 | Staging é uma stack própria (API e hosts próprios); o app de staging aponta para ela pelo ambiente EAS `staging` |
+| 12.2 | Staging é uma stack própria (API e hosts próprios); o app de staging aponta para ela pelo ambiente EAS `preview` (o EAS não tem ambiente `staging`; o perfil e o canal `staging` leem o `preview`) |
 | 13.1 | Cobertura medida de verdade e publicada; piso no baseline medido (MOB-30) |
 | 13.4 | E2E do app com Maestro no emulador |
 | 13.5 | Teste de mutação nas regras críticas, corte em 90 |

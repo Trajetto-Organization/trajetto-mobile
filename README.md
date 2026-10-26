@@ -233,8 +233,8 @@ motorista vinculado a um usuário).
 | `GOOGLE_SERVICES_JSON` | só no EAS: variável do tipo arquivo com o `google-services.json` do Firebase (push) |
 
 **O EAS não lê o `.env`.** `eas build` e `eas update` usam as variáveis do
-ambiente EAS indicado no `eas.json` (`development`, `preview`, `staging`,
-`production`), definidas no expo.dev ou com `eas env:create`. Tudo é embutido
+ambiente EAS indicado no `eas.json` (`development`, `preview` ou
+`production`; o perfil `staging` usa o `preview`), definidas no expo.dev ou com `eas env:create`. Tudo é embutido
 em tempo de build: não há configuração em tempo de execução. A referência
 completa (valores por ambiente, secrets do GitHub, credenciais do EAS) está em
 [`docs/variaveis-de-ambiente.md`](docs/variaveis-de-ambiente.md).

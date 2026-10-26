@@ -96,16 +96,25 @@ describe("the build profiles", () => {
     }
   });
 
-  it("build staging against its own EAS environment and OTA channel", () => {
+  it("build staging against the preview EAS environment and its own OTA channel", () => {
     // The staging stack has its own API and hosts (decision 12.2): its URL
-    // lives in the "staging" environment, never in this file.
+    // lives in the "preview" environment, never in this file. EAS offers only
+    // development, preview and production on this plan, and a profile that
+    // names any other environment builds with no variables at all.
     const staging = profile("staging");
 
-    expect(staging).toMatchObject({ channel: "staging", environment: "staging" });
+    expect(staging).toMatchObject({ channel: "staging", environment: "preview" });
     expect(JSON.stringify(staging)).not.toMatch(/https?:\/\//);
 
     for (const other of ["development", "preview", "production"]) {
       expect(profile(other).channel, other).not.toBe("staging");
+    }
+
+    const environments = ["development", "preview", "staging", "production"].map(
+      (name) => profile(name).environment,
+    );
+    for (const environment of environments) {
+      expect(["development", "preview", "production"]).toContain(environment);
     }
   });
 

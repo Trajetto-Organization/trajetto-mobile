@@ -240,6 +240,8 @@ jobs:
             echo "::warning::Sem certificado de OTA no repositório: a atualização de staging sai sem assinatura."
           fi
 
+      # EAS has only development, preview and production on this plan, so the
+      # staging channel takes its variables from "preview" (eas.json).
       - name: Publish the OTA update to the staging channel
         if: steps.eas.outputs.enabled == 'true' && steps.signing.outputs.publish == 'true'
         env:
@@ -248,7 +250,7 @@ jobs:
         run: |
           message="$(printf '%s' "$HEAD_MESSAGE" | head -n 1 | cut -c1-200) (${GITHUB_SHA::7})"
           # shellcheck disable=SC2086
-          eas update --branch staging --environment staging --platform android \
+          eas update --branch staging --environment preview --platform android \
             --message "$message" --non-interactive $SIGNING_ARGS
 
       # --no-wait: the build runs on EAS, not here, so a green step means

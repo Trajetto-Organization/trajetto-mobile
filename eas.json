@@ -21,7 +21,7 @@
     "staging": {
       "extends": "preview",
       "channel": "staging",
-      "environment": "staging"
+      "environment": "preview"
     },
     "production": {
       "autoIncrement": true,

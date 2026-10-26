@@ -39,9 +39,7 @@
         "android.permission.RECORD_AUDIO"
       ]
     },
-    "platforms": [
-      "android"
-    ],
+    "platforms": ["android"],
     "updates": {
       "enabled": true,
       "fallbackToCacheTimeout": 0,
