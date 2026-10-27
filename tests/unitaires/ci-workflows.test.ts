@@ -156,6 +156,19 @@ describe("the release workflow (deploy.yml)", () => {
     expect(plan).toMatch(/^ {6}actions: read$/m);
   });
 
+  it("asks for a new binary when a file that enters the runtime version changes", () => {
+    // .fingerprintignore and .easignore change the fingerprint without
+    // touching native code: classified as JS-only, the push published an OTA
+    // for a runtime no binary had, and no build was queued.
+    const plan = deployJobs.get("plan") ?? "";
+    const native = plan.match(/case "\$file" in\n\s+(package\.json[^)]*)\) native=true/)?.[1] ?? "";
+    const patterns = native.split("|").map((pattern) => pattern.replace(/\\/g, "").trim());
+
+    for (const file of ["package.json", "app.json", "app.config.js", "eas.json", ".easignore", ".fingerprintignore"]) {
+      expect(patterns, file).toContain(file);
+    }
+  });
+
   it("asks EAS to auto-submit with one flag only (the two are mutually exclusive)", () => {
     expect(deploy).not.toMatch(/--auto-submit\s+--auto-submit-with-profile/);
     expect(deploy).toMatch(/--auto-submit-with-profile production/);

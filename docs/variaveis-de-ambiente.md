@@ -123,10 +123,12 @@ para a torre dizer que só vê motoristas com o app aberto.
 | Visibilidade | **secreta** (o arquivo traz a API key do projeto Firebase) |
 | Onde | ambientes EAS. Localmente, o `google-services.json` na raiz (gitignored, liberado no `.easignore`) é usado quando a variável não existe |
 
-Mantenha o arquivo local **idêntico** ao cadastrado no EAS: o `eas update`
-feito de uma máquina calcula o runtime (fingerprint) com a cópia local, o
-build calcula com a do EAS, e conteúdos diferentes fazem a OTA nunca chegar ao
-binário.
+O arquivo **não entra** no runtime (fingerprint): o `.fingerprintignore`
+o deixa de fora. O runner do CI que dispara o `eas build` não tem a cópia
+(gitignored), o worker do EAS tem (variável de arquivo), e com ele no cálculo
+os dois runtimes divergiam e o EAS recusava o build ("Runtime version
+mismatch"). Como ele não muda o runtime, trocar de projeto Firebase exige um
+build novo, não uma OTA (`fingerprint-firebase.test.ts` guarda a regra).
 
 ### Definidas pelo próprio EAS (não configure)
 

@@ -425,8 +425,10 @@ manda para a loja e o motorista fica parado até a versão aparecer lá.
    ([passo a passo](./variaveis-de-ambiente.md#como-cadastrar-no-eas-passo-a-passo)).
    Um build de release sem ela para no worker do EAS.
 3. Guarde a mesma cópia na raiz local (gitignored; o `.easignore` deixa ir no
-   `eas build` local). Mantenha-as **idênticas** (o fingerprint usa o
-   arquivo).
+   `eas build` local). O arquivo fica fora do runtime (fingerprint), pelo
+   `.fingerprintignore`: o CI não tem a cópia, o EAS tem, e com o arquivo no
+   cálculo o build falhava com "Runtime version mismatch". Trocar de projeto
+   Firebase pede um build novo.
 4. Gere a chave de conta de serviço **FCM V1** (Firebase → Contas de serviço)
    e cadastre em `eas credentials` → Android → Push Notifications (FCM V1). A
    API envia pela Expo Push API, que usa essa credencial; a API não guarda

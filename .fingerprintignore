@@ -1,0 +1,10 @@
+# The Firebase config stays out of the runtime version (fingerprint).
+# CI checkouts never have the gitignored google-services.json, the EAS worker
+# gets it from the GOOGLE_SERVICES_JSON file variable (written under
+# ../eas-environment-secrets/), and a developer may keep a local copy. With
+# the file hashed, `eas build` on CI and the build on EAS computed different
+# runtime versions and EAS failed the build. The package name in it is
+# already part of the app config, and a new Firebase project needs a new
+# build anyway (docs/variaveis-de-ambiente.md, GOOGLE_SERVICES_JSON).
+google-services.json
+**/eas-environment-secrets/**

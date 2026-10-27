@@ -110,6 +110,7 @@ jobs:
               esac
               case "$file" in
                 package.json | package-lock.json | app.json | app.config.js | eas.json \
+                  | .easignore | .fingerprintignore \
                   | plugins/* | modules/* | assets/* | certs/*) native=true ;;
               esac
             done < "$RUNNER_TEMP/changed.txt"
