@@ -420,6 +420,9 @@ Pendências do dono: essa medição; revisar o formulário de segurança de dado
 do Play com a divulgação do ML Kit; o fluxo Maestro `proof-precheck.yaml`
 (decisão 13.4) ainda não existe.
 
+O tamanho do app inteiro, medido num APK de staging, e as reduções possíveis
+estão em [deploy.md → Tamanho do app](./deploy.md#tamanho-do-app).
+
 ## Tema claro e escuro
 
 O motorista escolhe em **Configurações → Tema: Claro · Escuro · Sistema**

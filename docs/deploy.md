@@ -25,6 +25,7 @@ Variáveis citadas aqui estão detalhadas em
 - [Versão do contrato e gate com a API](#versão-do-contrato-e-gate-com-a-api)
 - [Firebase e push (FCM)](#firebase-e-push-fcm)
 - [Play Store](#play-store)
+- [Tamanho do app](#tamanho-do-app)
 - [Localização em segundo plano](#localização-em-segundo-plano)
 - [Rollback](#rollback)
 - [Checklist do primeiro release](#checklist-do-primeiro-release)
@@ -105,7 +106,7 @@ também passa, mas o push direto em `main` fica bloqueado; use merge commit.
 | ------------- | ------------- | ------------- | --------------------------- | ------------ | ----------------------------------------------------------------- |
 | `development` | `development` | `development` | APK com dev client          | interna      | desenvolvimento local e E2E                                       |
 | `preview`     | `preview`     | `preview`     | **APK**                     | interna      | testes internos avulsos                                           |
-| `staging`     | `staging`     | `staging`     | **APK** (herda o `preview`) | interna      | homologação contra a stack de staging                             |
+| `staging`     | `preview`     | `staging`     | **APK** (herda o `preview`) | interna      | homologação contra a stack de staging                             |
 | `production`  | `production`  | `production`  | **AAB**                     | loja         | Play Store; `versionCode` incrementado pelo EAS (`autoIncrement`) |
 
 - Os APKs de `preview` e `staging` levam só `arm64-v8a` e `armeabi-v7a`
@@ -458,6 +459,255 @@ manda para a loja e o motorista fica parado até a versão aparecer lá.
 5. `npm run submit:android` envia manualmente o último build de produção à
    trilha internal.
 
+## Tamanho do app
+
+O que se sabe do tamanho do app, medido num artefato real, e o que ainda
+falta medir. Nenhum número desta seção é promessa: uma redução só vale depois
+de um build comparável medido e de um teste no aparelho.
+
+### O artefato medido
+
+|                    |                                                                                                                                                                                                                                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Arquivo            | `application-ef6c2390-dc17-4e38-8379-f44a070015db.apk`, baixado do expo.dev em 27/10/2026 (build id `ef6c2390-dc17-4e38-8379-f44a070015db`)                                                                                                                                                                             |
+| Tipo               | APK **release** universal do perfil `staging`, com duas ABIs (`arm64-v8a` e `armeabi-v7a`). **Não** é o dev client                                                                                                                                                                                                      |
+| Tamanho do arquivo | **75.133.771 bytes** = 75,1 MB (71,7 MiB)                                                                                                                                                                                                                                                                               |
+| Como se sabe       | o manifesto traz `{"expo-channel-name":"staging"}` e nenhuma `DevLauncherActivity`; os recursos foram renomeados pelo R8 (`res/CU.ttf`…), sinal do `shrinkResources`; `assets/index.android.bundle` começa com o número mágico do bytecode do Hermes (`c6 1f bc 03 c1 03 19 1f`); `lib/` só tem as duas ABIs de celular |
+| Configuração       | `eas.json`: `staging` herda o `preview` (`buildType: apk`, sem `developmentClient`), então o EAS roda `assembleRelease`; `app.json`: Hermes, nova arquitetura, `enableMinifyInReleaseBuilds` e `enableShrinkResourcesInReleaseBuilds`; `plugins/with-preview-abis.js` deixa só as ABIs de celular                       |
+| De onde veio       | `deploy.yml`, job de staging: `eas build --platform android --profile staging` quando o lado nativo muda                                                                                                                                                                                                                |
+
+### De onde vem o "~96 MB"
+
+O arquivo tem 75,1 MB. O número de ~96 MB provavelmente é o **tamanho
+instalado**, o "Tamanho do app" de Configurações → Apps → Trajetto →
+Armazenamento. Ele soma o APK inteiro (as bibliotecas nativas ficam dentro
+dele, sem extrair, porque estão guardadas sem compressão) e o que o ART gera
+na instalação: o `.vdex`, com o dex descomprimido (15,1 MB), e o `.odex` e o
+`.art` compilados a partir do perfil `assets/dexopt/baseline.prof`. A conta
+75,1 + ~15,1 + alguns MB dá 93 a 96 MB. Um APK com as quatro ABIs não
+explicaria o número: só as bibliotecas x86_64 somariam cerca de 34 MB.
+
+**Não confirmado.** Para confirmar, com o APK instalado num celular e a
+depuração USB ligada:
+
+```bash
+# 1. Onde o pacote está instalado
+adb shell pm path com.trajetto.fleetmanager
+#    package:/data/app/~~<id>==/com.trajetto.fleetmanager-<id>==/base.apk
+
+# 2. O APK e os artefatos do ART, no diretório da linha anterior
+adb shell ls -lR /data/app/~~<id>==/com.trajetto.fleetmanager-<id>==/
+#    base.apk (75.133.771 bytes, se for o mesmo build) e oat/arm64/base.vdex,
+#    base.odex e base.art. Se a listagem for negada, pergunte pelos nomes:
+adb shell stat -c '%s %n' <dir>/base.apk <dir>/oat/arm64/base.vdex <dir>/oat/arm64/base.odex
+
+# 3. O número que a tela de Armazenamento mostra
+adb shell dumpsys diskstats
+#    "Package Names" e "App Sizes" são listas na mesma ordem: ache a posição de
+#    com.trajetto.fleetmanager na primeira e leia a mesma posição na segunda.
+#    O Android recalcula essas listas de tempos em tempos; confira com a tela.
+```
+
+Se `base.apk` + `base.vdex` + `base.odex` + `base.art` baterem com o "Tamanho
+do app", a hipótese está confirmada; registre os números aqui. Se o 96 MB veio
+de outro lugar (outro build, outro aparelho), anote o build id e meça de novo.
+Sem login no EAS, a lista dos builds não foi consultada nesta medição:
+`npx eas-cli build:list --platform android --limit 5` e
+`npx eas-cli build:view <build id>` mostram perfil e artefato de cada um.
+
+### Composição medida
+
+Do APK de staging acima, medido com `zipinfo` em 28/10/2026, em bytes dentro
+do arquivo. Os tamanhos das bibliotecas do ML Kit, dos modelos de código de
+barras e dos recursos do Picnic também batem com os AARs e o JAR de origem no
+cache do Gradle.
+
+| Parte                                                         | No APK         | Observação                                                                                                                                                      |
+| ------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/arm64-v8a/` (24 `.so`)                                   | 34.194.200     | guardadas sem compressão (padrão do Expo). As maiores: `libmlkit_google_ocr_pipeline.so` 11,06 MB, `libreactnative.so` 5,88 MB, `libbarhopper_v3.so` 4,95 MB    |
+| `lib/armeabi-v7a/` (24 `.so`)                                 | 22.527.396     | as mesmas: 6,78 MB, 4,17 MB e 3,24 MB                                                                                                                           |
+| `classes*.dex` (3 arquivos, depois do R8)                     | 6.247.992      | 15.098.940 descomprimidos                                                                                                                                       |
+| `assets/index.android.bundle` (bytecode do Hermes)            | 4.456.000      | guardado sem compressão, para ser mapeado direto na memória (comprimido daria ~2,03 MB)                                                                         |
+| `resources.arsc`                                              | 1.800.304      | guardado sem compressão                                                                                                                                         |
+| o resto: `res/`, outros `assets/`, `META-INF/`, recursos Java | 5.357.923      | por diferença. Inclui os modelos de código de barras (880.888), o BouncyCastle `pqc` (1.214.815) e quatro fontes Inter (669.808), descritos nas reduções abaixo |
+| **soma das entradas**                                         | **74.583.815** | 1.620 entradas; 85.231.921 descomprimidas                                                                                                                       |
+| arquivo                                                       | 75.133.771     | as entradas mais o diretório do zip e o bloco de assinatura                                                                                                     |
+
+- As bibliotecas nativas são 76% do conteúdo do APK (56,7 de 74,6 MB).
+- O OCR do ML Kit embutido (17,8 MB de `.so` nas duas ABIs, mais os modelos)
+  é decisão de produto: a pré-checagem funciona sem rede (decisão 14.2,
+  [ADR 0010](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/adr/0010-ia-local.md);
+  ver [arquitetura.md](./arquitetura.md#tamanho-do-binário)). Fica.
+- Já está no lugar: Hermes, nova arquitetura, R8, `shrinkResources`, filtro de
+  ABI nos APKs, AAB na produção, assets do repositório pequenos (280 KB) e o
+  `app-dependencies.test.ts`, que exige um motivo para cada dependência.
+
+### Que artefato comparar com qual
+
+| Artefato               | Perfil                        | Como sai                                                                          | O que leva                                                                   | Tamanho                                  |
+| ---------------------- | ----------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------- |
+| APK de desenvolvimento | `development`                 | `npm run build:development`                                                       | dev client, build debug, quatro ABIs, sem R8; o JS vem do Metro              | não medido; não se compara com os outros |
+| APK de staging         | `staging` (herda o `preview`) | `deploy.yml` num push em `staging` com mudança nativa, ou `npm run build:staging` | release, duas ABIs, R8, Hermes                                               | **75,1 MB** (build `ef6c2390-…`)         |
+| AAB de produção        | `production`                  | `deploy.yml` em `main`, depois da aprovação do ambiente `production`              | release, quatro ABIs; a Play entrega a cada aparelho só o que serve para ele | não medido; estimativa abaixo            |
+
+Compare sempre artefatos do mesmo tipo e do mesmo perfil, e anote o build id
+de cada medição.
+
+### Estimativa por ABI do AAB de produção
+
+Contas feitas sobre a composição acima; **nenhum AAB foi gerado nem medido**.
+
+| Celular       | Download pela Play | Instalado, sem o ART | De onde sai a conta                                                                                                                                                                                                     |
+| ------------- | ------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `arm64-v8a`   | ≈ 25 a 27 MB       | ≈ 52,6 MB            | instalado: o APK de staging sem as `.so` de armeabi-v7a (75,13 − 22,53). Download: os 34,19 MB de `.so` de arm64 chegam comprimidos (≈ 12,59 MB), somados aos 17,86 MB que não são `.so`, também comprimidos na entrega |
+| `armeabi-v7a` | ≈ 23 a 25 MB       | ≈ 40,9 MB            | instalado: 75,13 − 34,19. Download: 22,53 MB de `.so` viram ≈ 10,55 MB, mais o mesmo resto                                                                                                                              |
+
+Com os artefatos do ART, o "Tamanho do app" num celular arm64 instalado pela
+Play deve ficar na casa de 70 MB, e não nos ~96 MB do APK universal de
+staging. Também é estimativa. Para medir de verdade, baixe o AAB do build de
+produção no expo.dev e rode:
+
+```bash
+bundletool build-apks --bundle=app.aab --output=app.apks
+bundletool get-size total --apks=app.apks --dimensions=ABI
+```
+
+### Reduções possíveis
+
+Nenhuma das duas foi aplicada nesta rodada: as duas mudam o binário e
+precisam de build e de teste no aparelho antes de entrar.
+
+#### 1. O dev client fora dos builds de release (~9,7 MB no APK de staging)
+
+O `expo-dev-client` está nas dependências por causa do perfil `development`
+(o `app-dependencies.test.ts` registra esse motivo), e o autolinking do Expo
+liga os módulos dele em **todo** build, de qualquer perfil. Ele percorre
+`dependencies` e `devDependencies`, então mover o pacote para
+`devDependencies` não resolve. No release o launcher fica inativo, mas o peso
+nativo vai junto:
+
+| Item no APK de staging                     | Bytes                            | Origem                                                                                                                                                |
+| ------------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/arm64-v8a/libbarhopper_v3.so`         | 4.946.720                        | ML Kit `barcode-scanning:17.3.0`, declarado como `implementation` no `android/build.gradle` do `expo-dev-launcher`; só o leitor de QR do launcher usa |
+| `lib/armeabi-v7a/libbarhopper_v3.so`       | 3.244.440                        | idem                                                                                                                                                  |
+| `assets/mlkit_barcode_models/` (3 modelos) | 880.888                          | idem                                                                                                                                                  |
+| 4 fontes Inter em `res/`                   | 669.808                          | `expo-dev-menu/android/src/main/res/font/inter_*.ttf`                                                                                                 |
+| **total**                                  | **9.741.856** (≈ 13% do arquivo) | mais uma parte do dex, não medida                                                                                                                     |
+
+O R8 e o `shrinkResources` não tiram `.so` de `lib/` nem `assets/` de uma
+AAR, e o manifesto do release ainda registra a
+`GmsBarcodeScanningDelegateActivity` do leitor.
+
+**Plano:**
+
+1. Um config plugin `plugins/with-release-autolinking-exclude.js`, no molde do
+   `plugins/with-preview-abis.js`:
+   - uma função pura `excludedModulesFor(profile)` que devolve
+     `["expo-dev-client", "expo-dev-launcher", "expo-dev-menu", "expo-dev-menu-interface"]`
+     para `preview`, `staging` e `production`, e `null` para `development`,
+     para o perfil ausente e para o build local do E2E
+     (`scripts/e2e/build-apk.sh` roda `assembleDebug` e precisa do dev
+     client);
+   - uma função pura `withExclude(settingsGradle, modules)` que escreve
+     `expoAutolinking.exclude = [...]` logo antes de
+     `expoAutolinking.useExpoModules()` no `settings.gradle` gerado. A
+     propriedade existe no `expo-modules-autolinking` 3.0.27
+     (`ExpoAutolinkingSettingsExtension.kt`). A função é idempotente (a linha
+     inserida é marcada) e falha se a âncora sumir, para uma mudança do
+     template do Expo falhar alto;
+   - aplicada com `withSettingsGradle`, lendo `EAS_BUILD_PROFILE`, como o
+     filtro de ABIs. Ela muda só o arquivo gerado, nunca o objeto de
+     configuração, para o fingerprint (o runtime) sair igual no `eas build` e
+     no `eas update`, que roda sem `EAS_BUILD_PROFILE`;
+   - registrada em `app.json` → `plugins`.
+2. Testes unitários: `excludedModulesFor` para cada perfil; `withExclude`
+   insere antes da âncora, é idempotente e falha sem ela; o plugin está no
+   `app.json`; o runtime é o mesmo com e sem `EAS_BUILD_PROFILE=staging` (no
+   molde do `fingerprint-firebase.test.ts`).
+3. O `expo-updates` só olha o dev client para preencher
+   `BuildConfig.USE_DEV_CLIENT`, que ele lê apenas com o suporte de
+   desenvolvimento ligado (build debug). O release não deve mudar; o build
+   confirma.
+
+**Validação no aparelho**, antes de adotar:
+
+- build de staging pelo pipeline (push com mudança nativa, ou o `deploy.yml`
+  manual com o perfil `staging`); `unzip -l` sem `libbarhopper_v3.so`, sem
+  `assets/mlkit_barcode_models/` e sem as quatro fontes Inter; manifesto sem
+  a `GmsBarcodeScanningDelegateActivity`;
+- no celular: login e 2FA; câmera (canhoto e odômetro); pré-checagem por OCR
+  (o ML Kit de texto é outra biblioteca e precisa continuar funcionando);
+  push recebido e aberto; localização durante a rota; fila offline; uma OTA
+  assinada aplicada;
+- o perfil `development` continua abrindo o launcher e o menu de
+  desenvolvimento (`npm run build:development` ou o build local do E2E);
+- os dois tamanhos registrados aqui, antes e depois, com o build id.
+
+Ganho esperado, a confirmar: −9,7 MB no APK de staging (75,1 → ~65,4 MB). No
+AAB, para arm64, cerca de 6,5 MB a menos instalado e 3 MB a menos no
+download.
+
+#### 2. Os recursos do Picnic no BouncyCastle (1,21 MB)
+
+O `expo-updates` declara `org.bouncycastle:bcutil-jdk15to18:1.78.1`, que traz
+o `bcprov`. Com ele vêm três recursos Java do esquema pós-quântico Picnic,
+`org/bouncycastle/pqc/crypto/picnic/lowmcL1.bin.properties`, `lowmcL3` e
+`lowmcL5`: 1.221.059 bytes descomprimidos, 1.214.815 dentro do APK. A OTA é
+assinada com `rsa-v1_5-sha256` (`codeSigningMetadata` no `app.config.js`),
+que não usa Picnic, e o R8 não remove recursos Java.
+
+**Plano:** em `app.json` → `expo-build-properties` → `android`, acrescentar
+`"packagingOptions": { "exclude": ["org/bouncycastle/pqc/crypto/picnic/**"] }`.
+O `expo-build-properties` 1.0.10 repassa a lista para
+`android.packagingOptions.excludes`. Só esse caminho: nada além disso no
+BouncyCastle. Um teste em `app-config-release.test.ts` fixa o padrão.
+
+**Validação no aparelho:** build com a exclusão; `unzip -l` sem
+`org/bouncycastle/pqc/crypto/picnic/`; publicar uma OTA **assinada** no canal
+`staging` e ver o celular aplicá-la, porque a assinatura da OTA é conferida
+no aparelho. Se a OTA não aplicar, desfaça a exclusão.
+
+Ganho esperado, a confirmar: cerca de 1,2 MB no APK e no AAB.
+
+### Comprimir as bibliotecas nativas: troca, não ganho
+
+Hoje as `.so` ficam guardadas sem compressão (`useLegacyPackaging=false`,
+padrão do template do Expo) e o Android as carrega direto do APK, sem
+extrair. Com `expo-build-properties` → `android.useLegacyPackaging: true`:
+
+- o arquivo do APK de staging cairia cerca de 33,6 MB: os 56,7 MB de `.so`
+  viram ~23,1 MB com deflate nível 6 (as de arm64 ficam com 37% do tamanho,
+  as de armeabi-v7a com 47%);
+- mas na instalação o Android extrai as `.so` da ABI do celular para o disco.
+  Num celular arm64, o APK instalado fica ~33,6 MB menor e o disco ganha
+  34,2 MB de `.so` extraídas: o espaço instalado fica igual ou maior, e a
+  instalação demora mais;
+- na Play não há ganho de download, porque a loja já comprime o que entrega
+  e recomenda bibliotecas sem compressão no AAB;
+- o APK de staging passaria a ser empacotado de um jeito diferente do de
+  produção.
+
+**Recomendação:** manter como está. Só considerar a compressão para o APK de
+staging se o tamanho do download instalado à mão virar um problema medido,
+e registrar aqui que staging e produção passaram a ser empacotados de forma
+diferente. Pelo mesmo motivo, o bundle do Hermes continua sem compressão
+(`enableBundleCompression` desligado): comprimir economizaria ~2,4 MB e
+custaria tempo de abertura.
+
+### Como medir de novo
+
+```bash
+# Tamanho e composição de um APK (somente leitura)
+ls -l app.apk                         # tamanho do arquivo
+zipinfo -t app.apk                    # entradas e totais
+unzip -l app.apk 'lib/*'              # bibliotecas nativas por ABI
+unzip -p app.apk assets/index.android.bundle | head -c 8 | od -An -tx1
+#   c6 1f bc 03 c1 03 19 1f = bytecode do Hermes
+```
+
+Registre em cada medição: tipo do artefato, perfil, build id, tamanho do
+arquivo, download e instalado por ABI (quando for AAB) e o método.
+
 ## Localização em segundo plano
 
 O rastreamento com a tela desligada está pronto e **desligado** (decisão 7.3).
@@ -468,7 +718,7 @@ Para ligar:
    aviso dentro do app e o uso durante a rota.
 2. Aguarde a aprovação do Google.
 3. Defina `EXPO_PUBLIC_BACKGROUND_TRACKING=true` no ambiente EAS `production`
-   (e `staging`, para homologar antes).
+   (e no `preview`, o ambiente do staging, para homologar antes).
 4. Gere **binários novos** (a chave muda o manifesto; OTA não leva).
 5. No web, defina `BACKGROUND_TRACKING` conforme o `trajetto-ui` documenta,
    para a torre parar de avisar que só vê quem está com o app aberto.

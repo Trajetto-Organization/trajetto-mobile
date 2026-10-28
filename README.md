@@ -1,5 +1,23 @@
 # Trajetto — App do motorista
 
+<p align="center">
+  <img alt="Expo SDK 54" src="https://img.shields.io/badge/Expo_SDK-54-000020?style=for-the-badge&logo=expo&logoColor=white" />
+  <img alt="React Native 0.81" src="https://img.shields.io/badge/React_Native-0.81-087EA4?style=for-the-badge&logo=react&logoColor=white" />
+  <img alt="React 19.1" src="https://img.shields.io/badge/React-19.1-087EA4?style=for-the-badge&logo=react&logoColor=white" />
+  <img alt="TypeScript 5.9" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+  <img alt="Motor JS Hermes" src="https://img.shields.io/badge/Motor_JS-Hermes-4B32C3?style=for-the-badge" />
+  <img alt="NativeWind 4.2" src="https://img.shields.io/badge/NativeWind-4.2-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" />
+  <img alt="TanStack Query 5.89" src="https://img.shields.io/badge/TanStack_Query-5.89-FF4154?style=for-the-badge&logo=reactquery&logoColor=white" />
+  <img alt="Zustand 5.0" src="https://img.shields.io/badge/Zustand-5.0-443E38?style=for-the-badge" />
+  <img alt="React Hook Form 7.62" src="https://img.shields.io/badge/React_Hook_Form-7.62-EC5990?style=for-the-badge&logo=reacthookform&logoColor=white" />
+  <img alt="Zod 3.25" src="https://img.shields.io/badge/Zod-3.25-3E67B1?style=for-the-badge&logo=zod&logoColor=white" />
+  <img alt="Socket.IO 4.8" src="https://img.shields.io/badge/Socket.IO-4.8-010101?style=for-the-badge&logo=socketdotio&logoColor=white" />
+  <img alt="Android SDK 36" src="https://img.shields.io/badge/Android-SDK_36-3DDC84?style=for-the-badge&logo=android&logoColor=white" />
+  <img alt="ML Kit 16.0" src="https://img.shields.io/badge/ML_Kit-16.0-4285F4?style=for-the-badge&logo=google&logoColor=white" />
+  <img alt="EAS CLI 21.7" src="https://img.shields.io/badge/EAS_CLI-21.7-000020?style=for-the-badge&logo=expo&logoColor=white" />
+  <img alt="Vitest 1.6" src="https://img.shields.io/badge/Vitest-1.6-6E9F18?style=for-the-badge&logo=vitest&logoColor=white" />
+</p>
+
 Aplicativo de campo do Trajetto, **só Android**, feito com Expo e React
 Native. É o que o motorista usa no dia a dia: rota do dia, chegada, comprovante
 de entrega com foto e assinatura, ocorrências, pausas, "a caminho", chat com a
@@ -20,6 +38,7 @@ enviado quando a rede volta.
 - [Stack e por que cada peça](#stack-e-por-que-cada-peça)
 - [Como o código está organizado](#como-o-código-está-organizado)
 - [Rodando localmente](#rodando-localmente)
+- [Depuração](#depuração)
 - [Variáveis de ambiente](#variáveis-de-ambiente)
 - [Scripts](#scripts)
 - [Sessão, empresa e módulos](#sessão-empresa-e-módulos)
@@ -39,13 +58,21 @@ enviado quando a rede volta.
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`docs/arquitetura.md`](docs/arquitetura.md)                     | como o app é montado: offline (cache e fila), formulários, sessão e módulos, tempo real, rastreamento, contrato com a API, pré-checagem, tema, manifesto e decisões |
 | [`docs/testes.md`](docs/testes.md)                               | suítes (Vitest, cobertura, mutação, Maestro no emulador), o que cada uma prova e as regras para escrever testes                                                     |
-| [`docs/deploy.md`](docs/deploy.md)                               | perfis do EAS, staging e produção, pipeline, OTA assinada, Play Store, Firebase, rollback e checklist do primeiro release                                           |
+| [`docs/deploy.md`](docs/deploy.md)                               | perfis do EAS, staging e produção, pipeline, OTA assinada, Play Store, tamanho do app, Firebase, rollback e checklist do primeiro release                           |
 | [`docs/variaveis-de-ambiente.md`](docs/variaveis-de-ambiente.md) | cada variável, secret e credencial: para quê, formato, valor por ambiente e onde configurar                                                                         |
 | [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md)              | guia para agentes de código (e para quem chega agora): comandos, convenções e o que não fazer                                                                       |
 
-O mapa navegável da plataforma inteira (web, app, API, Postgres, Redis, IA,
-R2, provedores e deploy) fica na API:
-[`trajetto-api/docs/arquitetura.md` → Visão de componentes](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/arquitetura.md#vis%C3%A3o-de-componentes).
+A arquitetura da plataforma inteira (web, app, API, Postgres, Redis, IA, R2,
+provedores e deploy) fica documentada na API:
+
+- [mapa da arquitetura](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/arquitetura.md)
+  (`trajetto-api/docs/arquitetura.md`), com a
+  [visão de componentes](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/arquitetura.md#vis%C3%A3o-de-componentes)
+  navegável e a tabela de componentes e relações;
+- [tour pela arquitetura](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/arquitetura-tour.md)
+  (`trajetto-api/docs/arquitetura-tour.md`), que percorre a plataforma um
+  assunto por vez, com os links ◀ Anterior e Próximo ▶ e o mesmo mapa aceso
+  nas peças de cada passo.
 
 ## O Trajetto em 1 minuto
 
@@ -162,7 +189,7 @@ Versões instaladas pelo `package-lock.json`.
 | socket.io-client                                            | 4.8.3                      | tempo real (rota, decisões da torre, chat, catálogos)                                             |
 | expo-notifications                                          | 0.32.17                    | token de push e toque na notificação                                                              |
 | expo-secure-store                                           | 15.0.8                     | tokens de sessão fora do AsyncStorage                                                             |
-| expo-location + expo-task-manager                           | 19.0.8 / 14.0.7            | posição durante a rota                                                                            |
+| expo-location + expo-task-manager                           | 19.0.8 / 14.0.9            | posição durante a rota                                                                            |
 | expo-image-picker, expo-image-manipulator, expo-file-system | 17.0.11 / 14.0.8 / 19.0.24 | câmera, re-encode (tira EXIF e GPS) e cópia das fotos para a fila                                 |
 | expo-updates                                                | 29.0.20                    | OTA assinada, runtime por fingerprint                                                             |
 | `modules/text-reader` (Kotlin, ML Kit)                      | próprio                    | OCR no aparelho para a pré-checagem                                                               |
@@ -236,6 +263,97 @@ motorista vinculado a um usuário). Gerar o APK de desenvolvimento localmente
 (`npx expo prebuild` + Gradle) também funciona, mas deixa a pasta `android/`
 no disco, que precisa ser apagada depois (o `android-manifest.test.ts` falha
 com ela).
+
+## Depuração
+
+### Dev client ou release
+
+O Hermes é o motor JS dos dois (`jsEngine: "hermes"` no `app.json`); o resto
+muda bastante:
+
+|                                                 | Build de desenvolvimento (perfil `development`)      | Release (`preview`, `staging`, `production`)                                                     |
+| ----------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| De onde vem o JS                                | do Metro, na hora; salvar um arquivo atualiza a tela | embutido no binário, já compilado para bytecode do Hermes; muda por OTA do canal ou binário novo |
+| Menu de desenvolvimento e React Native DevTools | sim                                                  | não                                                                                              |
+| Logs                                            | terminal do Metro, DevTools e `adb logcat`           | só `adb logcat`                                                                                  |
+| Ler os arquivos do app pelo `adb` (`run-as`)    | sim, o build é depurável                             | não                                                                                              |
+| Binário                                         | build debug, quatro ABIs, sem R8                     | APK com duas ABIs (`preview`, `staging`) ou AAB (`production`), com R8 e `shrinkResources`       |
+
+### Depurar o JavaScript (dev client)
+
+```bash
+npm start        # Metro; abra o app de desenvolvimento no aparelho
+npm run clear    # o mesmo, limpando o cache do Metro (use depois de mudar o .env)
+```
+
+- `j` no terminal do Metro abre o React Native DevTools ligado ao Hermes do
+  aparelho: console, fontes com pontos de parada e memória.
+- `m` no terminal, chacoalhar o aparelho ou `adb shell input keyevent 82`
+  abrem o menu de desenvolvimento (recarregar, abrir o DevTools, monitor de
+  desempenho).
+- Aparelho no USB: `adb reverse tcp:8081 tcp:8081` leva o aparelho ao Metro, e
+  `adb reverse tcp:3333 tcp:3333` faz o `http://localhost:3333` do `.env`
+  chegar à API do computador.
+
+### Logs (`adb logcat`)
+
+```bash
+adb logcat -s ReactNativeJS:V ReactNative:V                       # console do JS e avisos do React Native
+adb logcat --pid=$(adb shell pidof -s com.trajetto.fleetmanager)  # só o processo do app
+adb logcat -b crash                                               # quedas nativas
+```
+
+- Valem também no release: o `console` do JS sai no logcat com a tag
+  `ReactNativeJS`.
+- `logger.dev` só escreve em desenvolvimento (`__DEV__`); `logger.info` e
+  `logger.error` escrevem sempre, sem dados pessoais (`utils/logger.ts`).
+  Posições e textos do motorista ficam fora do log
+  (`tracking-log-privacy.test.ts`).
+- Falhas que só o aparelho vê (foto recusada pelo R2, fila presa) chegam à
+  API: com sessão válida, o app manda um resumo para `POST /diagnostics/client`,
+  no máximo um a cada 5 minutos, e ele vira uma linha `client.diagnostics` no
+  log da API, com usuário, empresa e o resumo da fila (`features/diagnostics/`).
+
+### Apontar para o staging
+
+- **APK de staging**: já aponta para `https://api-staging.intrajetto.com`,
+  porque a URL é embutida no build pelo ambiente EAS `preview`. Baixe o APK
+  do build no expo.dev e instale com `adb install -r <arquivo>.apk`. Ele
+  recebe as OTAs do canal `staging`.
+- **Dev client contra a API de staging**: no `.env`,
+  `EXPO_PUBLIC_API_URL=https://api-staging.intrajetto.com` e
+  `EXPO_PUBLIC_WEB_APPLICATION_URL=https://staging.intrajetto.com/login`;
+  depois `npm run clear`, porque as `EXPO_PUBLIC_*` são embutidas no bundle.
+  Entre com um usuário do staging e volte o `.env` para o local ao terminar.
+- O dev client, o APK de staging e o de produção usam o mesmo pacote
+  (`com.trajetto.fleetmanager`): instalar um substitui o outro. Se o Android
+  recusar por assinatura diferente, desinstalar apaga a fila de envios e o
+  cache do aparelho: mande os pendentes antes.
+
+### Fila de envios e cache offline
+
+- **No app**: a tela **Envios pendentes** (toque no aviso da fila, que
+  aparece no topo quando há itens, ou no aviso do logout) mostra cada item
+  com o estado e o motivo, e permite enviar agora, revisar ou descartar.
+- **No disco**, só no build de desenvolvimento (o `run-as` exige um build
+  depurável). A fila e o cache ficam no AsyncStorage, um SQLite chamado
+  `RKStorage`; os tokens ficam no SecureStore, fora dele. Os arquivos têm
+  dados do motorista: não compartilhe e apague depois.
+
+  ```bash
+  for f in RKStorage RKStorage-wal; do
+    adb exec-out run-as com.trajetto.fleetmanager cat databases/$f > $f
+  done
+  sqlite3 RKStorage "select key, length(value) from catalystLocalStorage order by key;"
+  sqlite3 RKStorage "select value from catalystLocalStorage where key = '@trajetto:outbox:v1';"
+  ```
+
+  | Chave                               | O que guarda                                                               |
+  | ----------------------------------- | -------------------------------------------------------------------------- |
+  | `@trajetto:outbox:v1`               | a fila de envios (`features/submissions/outbox.ts`)                        |
+  | `@trajetto:react-query:offline-v1`  | o cache de leitura, até 7 dias (`providers/query-provider.tsx`)            |
+  | `@trajetto:submission:…`            | rascunhos dos formulários e os ids de envio (`client_submission_id`)       |
+  | `@trajetto:driver-pause:v1` e afins | estado persistido das pausas, do "a caminho" e do retorno dos comprovantes |
 
 ## Variáveis de ambiente
 
@@ -372,6 +490,17 @@ que repassa ao FCM com a credencial do projeto EAS.
 | Mutação                                             | `stryker.config.mjs`        | `npm run test:mutation`                                    | só Node (lento)                                                               |
 | E2E no emulador (Maestro)                           | `.maestro/`, `scripts/e2e/` | [`docs/testes.md`](docs/testes.md#e2e-no-emulador-maestro) | emulador Android, Maestro, API (porta 3335) e banco `mobile_e2e` descartáveis |
 
+```bash
+npm test                                                  # todos os unitários (Vitest, tests/unitaires)
+npx vitest run tests/unitaires/outbox-rules.test.ts       # um arquivo
+npx vitest run tests/unitaires/outbox-rules.test.ts -t "trecho do nome"   # só os casos com esse nome
+npm run test:watch                                        # modo watch
+npm run test:coverage                                     # com cobertura e o piso
+npm run test:mutation                                     # mutação (Stryker), lento
+npm run typecheck                                         # tsc --noEmit
+npm run validate                                          # typecheck, testes, lint e expo-doctor, em sequência
+```
+
 O piso de cobertura está em `vitest.config.ts` (suba quando a cobertura subir,
 nunca baixe). Os testes de paridade leem `../trajetto-api` e se pulam sem ele.
 O E2E dirige o app de verdade no emulador (scripts Bash em `scripts/e2e/`,
@@ -404,6 +533,9 @@ branch de trabalho ──PR──► staging ──PR (merge commit)──► ma
   mesmo código nativo; mudança nativa exige build novo.
 - Sem o secret `EXPO_TOKEN`, os jobs de publicação terminam com um aviso e
   não publicam nada.
+- Tamanho: o APK de staging medido (release, duas ABIs) tem 75,1 MB; a
+  composição, a estimativa do AAB por ABI e as reduções possíveis estão em
+  [`docs/deploy.md` → Tamanho do app](docs/deploy.md#tamanho-do-app).
 - Guia completo (OTA assinada, Play Store, Firebase, gate de versão, rollback
   e checklist do primeiro release): [`docs/deploy.md`](docs/deploy.md). A
   seção "Os três repositórios juntos" (igual nos três repositórios) traz a
@@ -455,6 +587,11 @@ substitui o outro no aparelho.
   build.
 - O host da API de produção ainda está a definir (previsto
   `api.intrajetto.com`).
+- **APK de staging com 75,1 MB** (build `ef6c2390-…`); os ~96 MB vistos são,
+  provavelmente, o tamanho instalado (APK mais os artefatos do ART), ainda não
+  confirmado. O dev client leva ~9,7 MB de peso nativo aos builds de release;
+  tirá-lo exige build novo e teste no aparelho
+  ([`docs/deploy.md` → Tamanho do app](docs/deploy.md#tamanho-do-app)).
 
 ## Licença
 
