@@ -7,7 +7,7 @@ import {
 
 import {
   EMPTY_STATE,
-  afterFlushFailure,
+  afterFlushAttempt,
   afterFlushSuccess,
   capBuffer,
   ingestInto,
@@ -106,7 +106,11 @@ describe("which way the phone follows the truck", () => {
 
   it("follows in the background when the build and the driver both allow it", () => {
     expect(
-      trackingMode({ ...granted, backgroundGranted: true, backgroundBuild: true }),
+      trackingMode({
+        ...granted,
+        backgroundGranted: true,
+        backgroundBuild: true,
+      }),
     ).toBe("background");
   });
 
@@ -164,13 +168,15 @@ describe("and when it is worth asking for all-the-time", () => {
   });
 
   it("never asks before the basic permission is granted", () => {
-    expect(
-      shouldRequestBackground({ ...base, foregroundGranted: false }),
-    ).toBe(false);
+    expect(shouldRequestBackground({ ...base, foregroundGranted: false })).toBe(
+      false,
+    );
   });
 
   it("does not ask twice", () => {
-    expect(shouldRequestBackground({ ...base, alreadyAsked: true })).toBe(false);
+    expect(shouldRequestBackground({ ...base, alreadyAsked: true })).toBe(
+      false,
+    );
   });
 
   it("and stops asking once it is granted", () => {
@@ -204,7 +210,9 @@ describe("the state a batch of fixes leaves behind", () => {
      * the batch arrived keeps all twenty.
      */
     const parked = Array.from({ length: 20 }, (_, index) =>
-      ping({ recorded_at: new Date(AT.getTime() + index * 15_000).toISOString() }),
+      ping({
+        recorded_at: new Date(AT.getTime() + index * 15_000).toISOString(),
+      }),
     );
 
     const result = ingestInto(EMPTY_STATE, parked);
@@ -265,22 +273,24 @@ describe("what a flush leaves behind", () => {
     );
   });
 
-  it("puts a failed batch back IN FRONT of what arrived meanwhile", () => {
+  it("keeps a failed batch IN FRONT of what arrived meanwhile", () => {
     /**
      * A trail is only readable in order. The batch that failed is older than
-     * whatever the phone collected while the request was in flight, so it goes
-     * back at the front — appending it would draw a line that jumps back in
-     * time halfway through the day.
+     * whatever the phone collected while the request was in flight; it never
+     * left the stored buffer, so nothing settled means nothing moves — it is
+     * still at the front, the newer points after it.
      */
-    const arrived = [movedPing(10), movedPing(11)];
     const sending = [movedPing(1), movedPing(2)];
+    const arrived = [movedPing(10), movedPing(11)];
 
-    const after = afterFlushFailure(
-      { ...EMPTY_STATE, buffer: arrived },
-      sending,
+    const after = afterFlushAttempt(
+      { ...EMPTY_STATE, buffer: [...sending, ...arrived] },
+      [],
     );
 
-    expect(after.buffer.map((entry) => entry.recorded_at)).toEqual([
+    expect(
+      after.buffer.map((entry: TrackablePing) => entry.recorded_at),
+    ).toEqual([
       sending[0].recorded_at,
       sending[1].recorded_at,
       arrived[0].recorded_at,
@@ -288,23 +298,20 @@ describe("what a flush leaves behind", () => {
     ]);
   });
 
-  it("and re-applies the ceiling when the restored batch overflows it", () => {
-    // An hour in a dead zone can otherwise grow the buffer past what any
-    // request may carry, and the next flush would be refused forever.
-    const sending = Array.from({ length: MAX_BUFFERED }, (_, index) =>
+  it("and re-applies the ceiling when the restored buffer overflows it", () => {
+    // A state restored above the cap (an older build, two contexts writing)
+    // would otherwise carry more than any flush may ever drain.
+    const over = Array.from({ length: MAX_BUFFERED + 10 }, (_, index) =>
       movedPing(index),
     );
 
-    const after = afterFlushFailure(
-      { ...EMPTY_STATE, buffer: [movedPing(9999)] },
-      sending,
-    );
+    const after = afterFlushAttempt({ ...EMPTY_STATE, buffer: over }, []);
 
     expect(after.buffer).toHaveLength(MAX_BUFFERED);
 
     // The newest survive: they are what somebody is looking at a map for.
     expect(after.buffer[after.buffer.length - 1].recorded_at).toBe(
-      movedPing(9999).recorded_at,
+      movedPing(MAX_BUFFERED + 9).recorded_at,
     );
   });
 });

@@ -3,7 +3,10 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { subscribeCloseOnBack, type BackPressSource } from "../../utils/close-on-back";
+import {
+  subscribeCloseOnBack,
+  type BackPressSource,
+} from "../../utils/close-on-back";
 
 /**
  * Found on the emulator: with the settings drawer (a @gorhom bottom sheet)
@@ -76,15 +79,29 @@ describe("closing a bottom sheet with the back button", () => {
     expect(back.defaults()).toBe(1);
   });
 
+  it("is wired into the shared sheet while it is visible", () => {
+    const source = fs.readFileSync(
+      join(ROOT, "components/ui/sheet.tsx"),
+      "utf8",
+    );
+
+    expect(source).toMatch(/useCloseOnBack\(visible, onClose\);/);
+  });
+
   it.each([
     "components/ui/user-settings-drawer.tsx",
     "components/ui/image-picker-bottom-sheet.tsx",
     "components/screens/chat/ticket-picker-sheet.tsx",
-  ])("is wired into %s while it is visible", (path) => {
-    const source = fs.readFileSync(join(ROOT, path), "utf8");
+  ])(
+    "reaches %s through the shared sheet, with its own visible and onClose",
+    (path) => {
+      const source = fs.readFileSync(join(ROOT, path), "utf8");
 
-    expect(source).toMatch(/useCloseOnBack\(visible, onClose\);/);
-  });
+      expect(source).toMatch(
+        /<Sheet\b[^>]*visible=\{visible\}[^>]*onClose=\{onClose\}/s,
+      );
+    },
+  );
 
   it("covers every bottom sheet modal in the app", () => {
     const files = ["components", "app"].flatMap((dir) =>
@@ -94,11 +111,15 @@ describe("closing a bottom sheet with the back button", () => {
         .map((file) => `${dir}/${file.split("\\").join("/")}`),
     );
 
-    const sheets = files.filter((file) => /<BottomSheetModal\b/.test(fs.readFileSync(join(ROOT, file), "utf8")));
+    const sheets = files.filter((file) =>
+      /<BottomSheetModal\b/.test(fs.readFileSync(join(ROOT, file), "utf8")),
+    );
     expect(sheets.length).toBeGreaterThan(0);
 
     for (const file of sheets) {
-      expect(fs.readFileSync(join(ROOT, file), "utf8"), file).toContain("useCloseOnBack(");
+      expect(fs.readFileSync(join(ROOT, file), "utf8"), file).toContain(
+        "useCloseOnBack(",
+      );
     }
   });
 });

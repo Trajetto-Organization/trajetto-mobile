@@ -59,9 +59,9 @@ ambiente esteja no ar, com HTTPS público e WebSocket liberado.
 
 Dois jeitos de o código chegar ao aparelho:
 
-| Meio | O que leva | Quando |
-| --- | --- | --- |
-| **OTA** (EAS Update) | só JavaScript e assets | na próxima abertura do app, para binários do **mesmo runtime** |
+| Meio                    | O que leva                  | Quando                                                                |
+| ----------------------- | --------------------------- | --------------------------------------------------------------------- |
+| **OTA** (EAS Update)    | só JavaScript e assets      | na próxima abertura do app, para binários do **mesmo runtime**        |
 | **Binário** (EAS Build) | código nativo + JS embutido | instalação do APK (staging) ou atualização pela Play Store (produção) |
 
 ## Por que o app não promove o mesmo artefato
@@ -101,12 +101,12 @@ também passa, mas o push direto em `main` fica bloqueado; use merge commit.
 
 ## Perfis de build (`eas.json`)
 
-| Perfil | Ambiente EAS | Canal OTA | Artefato | Distribuição | Para quê |
-| --- | --- | --- | --- | --- | --- |
-| `development` | `development` | `development` | APK com dev client | interna | desenvolvimento local e E2E |
-| `preview` | `preview` | `preview` | **APK** | interna | testes internos avulsos |
-| `staging` | `staging` | `staging` | **APK** (herda o `preview`) | interna | homologação contra a stack de staging |
-| `production` | `production` | `production` | **AAB** | loja | Play Store; `versionCode` incrementado pelo EAS (`autoIncrement`) |
+| Perfil        | Ambiente EAS  | Canal OTA     | Artefato                    | Distribuição | Para quê                                                          |
+| ------------- | ------------- | ------------- | --------------------------- | ------------ | ----------------------------------------------------------------- |
+| `development` | `development` | `development` | APK com dev client          | interna      | desenvolvimento local e E2E                                       |
+| `preview`     | `preview`     | `preview`     | **APK**                     | interna      | testes internos avulsos                                           |
+| `staging`     | `staging`     | `staging`     | **APK** (herda o `preview`) | interna      | homologação contra a stack de staging                             |
+| `production`  | `production`  | `production`  | **AAB**                     | loja         | Play Store; `versionCode` incrementado pelo EAS (`autoIncrement`) |
 
 - Os APKs de `preview` e `staging` levam só `arm64-v8a` e `armeabi-v7a`
   (`plugins/with-preview-abis.js`): o modelo do ML Kit tem código nativo por
@@ -127,7 +127,7 @@ também passa, mas o push direto em `main` fica bloqueado; use merge commit.
   `production` → `production`). Os scripts `update:*` publicam na branch do
   canal com as variáveis do ambiente correspondente.
 - O **runtime** é calculado por fingerprint (`runtimeVersion.policy:
-  "fingerprint"` no `app.json`): hash do código nativo e da configuração
+"fingerprint"` no `app.json`): hash do código nativo e da configuração
   nativa. Uma OTA só chega a binários com o mesmo runtime. Mudou dependência
   nativa, `app.json`, `app.config.js`, plugin, ícone ou o certificado de OTA?
   O runtime muda e só um binário novo leva a mudança.
@@ -138,30 +138,30 @@ também passa, mas o push direto em `main` fica bloqueado; use merge commit.
 
 ## Versionamento
 
-| Número | Onde | Quem muda |
-| --- | --- | --- |
-| `version` (ex.: 1.0.0) | `app.json` → `expo.version` | à mão, a cada release de loja (1.0.0 → 1.1.0) |
-| `versionCode` | remoto no EAS (`appVersionSource: "remote"`) | o EAS, a cada build de produção (`autoIncrement`) |
-| Runtime | fingerprint | automático |
-| `CLIENT_CONTRACT` | `utils/client-version.ts` (hoje 3) | à mão, em todo release que muda o que o app envia à API |
-| `OUTBOX_SCHEMA_VERSION` | `utils/client-version.ts` (hoje 1) | à mão, quando muda o formato dos itens da fila |
+| Número                  | Onde                                         | Quem muda                                               |
+| ----------------------- | -------------------------------------------- | ------------------------------------------------------- |
+| `version` (ex.: 1.0.0)  | `app.json` → `expo.version`                  | à mão, a cada release de loja (1.0.0 → 1.1.0)           |
+| `versionCode`           | remoto no EAS (`appVersionSource: "remote"`) | o EAS, a cada build de produção (`autoIncrement`)       |
+| Runtime                 | fingerprint                                  | automático                                              |
+| `CLIENT_CONTRACT`       | `utils/client-version.ts` (hoje 3)           | à mão, em todo release que muda o que o app envia à API |
+| `OUTBOX_SCHEMA_VERSION` | `utils/client-version.ts` (hoje 1)           | à mão, quando muda o formato dos itens da fila          |
 
 Para consultar ou acertar o `versionCode` remoto: `eas build:version:get -p
 android` e `eas build:version:set -p android`.
 
 ## Ambientes: staging e produção
 
-| | Staging | Produção |
-| --- | --- | --- |
-| Branch git | `staging` | `main` |
-| Perfil / canal | `staging` | `production` |
-| Ambiente EAS (variáveis) | `preview` | `production` |
-| Artefato | APK instalado à mão pelos testadores (link no expo.dev) | AAB na Play Store |
-| API | a API de staging (stack própria, decisão 12.2): `https://api-staging.intrajetto.com` | a definir, ex. `https://api.intrajetto.com` |
-| Web (links legais) | o web de staging, ex. `https://staging.intrajetto.com` | `https://www.intrajetto.com` |
-| OTA pelo CI | a cada push com mudança de app; assinada quando há chave | a cada merge com mudança de app; **sempre assinada**, após aprovação |
-| Binário pelo CI | quando o lado nativo muda | quando o lado nativo muda (+ envio à trilha internal com `PLAY_SUBMIT_ENABLED=true`) |
-| Aprovação | não | revisores do ambiente `production` |
+|                          | Staging                                                                              | Produção                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Branch git               | `staging`                                                                            | `main`                                                                               |
+| Perfil / canal           | `staging`                                                                            | `production`                                                                         |
+| Ambiente EAS (variáveis) | `preview`                                                                            | `production`                                                                         |
+| Artefato                 | APK instalado à mão pelos testadores (link no expo.dev)                              | AAB na Play Store                                                                    |
+| API                      | a API de staging (stack própria, decisão 12.2): `https://api-staging.intrajetto.com` | a definir, ex. `https://api.intrajetto.com`                                          |
+| Web (links legais)       | o web de staging, ex. `https://staging.intrajetto.com`                               | `https://www.intrajetto.com`                                                         |
+| OTA pelo CI              | a cada push com mudança de app; assinada quando há chave                             | a cada merge com mudança de app; **sempre assinada**, após aprovação                 |
+| Binário pelo CI          | quando o lado nativo muda                                                            | quando o lado nativo muda (+ envio à trilha internal com `PLAY_SUBMIT_ENABLED=true`) |
+| Aprovação                | não                                                                                  | revisores do ambiente `production`                                                   |
 
 Como o app aponta para cada API: a URL vem do ambiente EAS do perfil
 (`EXPO_PUBLIC_API_URL`), cadastrada uma vez por ambiente (passo a passo em
@@ -183,12 +183,12 @@ Três workflows em `.github/workflows/`, todos com actions fixadas por SHA
 
 ### `ci.yml` — a validação
 
-| Gatilho | Quando |
-| --- | --- |
-| `push` | qualquer branch exceto `staging`, `main` e `master` (branches de trabalho) |
-| `pull_request` | PR para `staging`, `main` ou `master` |
-| `workflow_call` | chamado pelo `deploy.yml` antes de qualquer publicação |
-| `workflow_dispatch` | manual |
+| Gatilho             | Quando                                                                     |
+| ------------------- | -------------------------------------------------------------------------- |
+| `push`              | qualquer branch exceto `staging`, `main` e `master` (branches de trabalho) |
+| `pull_request`      | PR para `staging`, `main` ou `master`                                      |
+| `workflow_call`     | chamado pelo `deploy.yml` antes de qualquer publicação                     |
+| `workflow_dispatch` | manual                                                                     |
 
 Jobs:
 
@@ -209,14 +209,14 @@ O E2E Maestro não roda no CI (precisa de emulador e API locais; ver
 
 ### `deploy.yml` — Release (EAS)
 
-| Job | Quando | O que faz |
-| --- | --- | --- |
-| `checks` | todo gatilho | chama o `ci.yml` inteiro; nada abaixo roda sem ele |
-| `plan` | push | classifica o diff desde o **último release verde desta branch** (ou, sem ele, desde o push anterior): `app` (algo além de docs/testes/CI/E2E) e `native` (algo que muda o runtime) |
-| `staging-evidence` | push em `main` | acha o commit de staging (2º pai do merge ou o próprio commit) e exige uma execução verde deste workflow em `staging` para ele; num merge commit, exige também que a árvore do merge seja idêntica à do commit de staging (`git diff --quiet HEAD^2 HEAD`); senão falha com a explicação |
-| `staging` | push em `staging` com `app=true` | environment `staging` do GitHub: OTA no canal `staging` com as variáveis do ambiente EAS `preview`; build `staging` (APK, `--no-wait`) se `native=true` |
-| `production` | push em `main` com `app=true` | ambiente `production` (espera aprovação): OTA **assinada** no canal `production`; build `production` (AAB, `--no-wait`) se `native=true`, com auto-submit à trilha internal quando `PLAY_SUBMIT_ENABLED=true` (`--auto-submit-with-profile production`; não combinar com `--auto-submit`, as duas flags se excluem) |
-| `manual-build` | `workflow_dispatch` | build do perfil escolhido (development, preview, staging, production) depois do CI; produção usa o ambiente `production` |
+| Job                | Quando                           | O que faz                                                                                                                                                                                                                                                                                                           |
+| ------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `checks`           | todo gatilho                     | chama o `ci.yml` inteiro; nada abaixo roda sem ele                                                                                                                                                                                                                                                                  |
+| `plan`             | push                             | classifica o diff desde o **último release verde desta branch** (ou, sem ele, desde o push anterior): `app` (algo além de docs/testes/CI/E2E) e `native` (algo que muda o runtime)                                                                                                                                  |
+| `staging-evidence` | push em `main`                   | acha o commit de staging (2º pai do merge ou o próprio commit) e exige uma execução verde deste workflow em `staging` para ele; num merge commit, exige também que a árvore do merge seja idêntica à do commit de staging (`git diff --quiet HEAD^2 HEAD`); senão falha com a explicação                            |
+| `staging`          | push em `staging` com `app=true` | environment `staging` do GitHub: OTA no canal `staging` com as variáveis do ambiente EAS `preview`; build `staging` (APK, `--no-wait`) se `native=true`                                                                                                                                                             |
+| `production`       | push em `main` com `app=true`    | ambiente `production` (espera aprovação): OTA **assinada** no canal `production`; build `production` (AAB, `--no-wait`) se `native=true`, com auto-submit à trilha internal quando `PLAY_SUBMIT_ENABLED=true` (`--auto-submit-with-profile production`; não combinar com `--auto-submit`, as duas flags se excluem) |
+| `manual-build`     | `workflow_dispatch`              | build do perfil escolhido (development, preview, staging, production) depois do CI; produção usa o ambiente `production`                                                                                                                                                                                            |
 
 Comportamento sem configuração: sem `EXPO_TOKEN`, os jobs `staging` e
 `production` terminam verdes com um aviso ("EXPO_TOKEN ausente: nada foi
@@ -225,11 +225,11 @@ O build manual falha explicitamente sem o token.
 
 Regras de assinatura no CI:
 
-| Situação | Staging | Produção |
-| --- | --- | --- |
-| `EXPO_UPDATE_PRIVATE_KEY` no ambiente | OTA assinada | OTA assinada (se `certs/certificate.pem` existe) |
-| certificado no repo, sem chave no ambiente | OTA pulada com aviso | OTA pulada com aviso |
-| sem certificado no repo | OTA sem assinatura (com aviso) | **OTA pulada** (produção nunca publica sem assinatura) |
+| Situação                                   | Staging                        | Produção                                               |
+| ------------------------------------------ | ------------------------------ | ------------------------------------------------------ |
+| `EXPO_UPDATE_PRIVATE_KEY` no ambiente      | OTA assinada                   | OTA assinada (se `certs/certificate.pem` existe)       |
+| certificado no repo, sem chave no ambiente | OTA pulada com aviso           | OTA pulada com aviso                                   |
+| sem certificado no repo                    | OTA sem assinatura (com aviso) | **OTA pulada** (produção nunca publica sem assinatura) |
 
 A chave vira um arquivo `0600` em `$RUNNER_TEMP/ota-signing/` e é apagada no
 fim do job, falhe ou não.
@@ -270,12 +270,12 @@ update:republish --group <id>`, reassinando quando há chave. Detalhes em
 
 ### Secrets e variáveis do pipeline
 
-| Nome | Onde | Obrigatório |
-| --- | --- | --- |
-| `EXPO_TOKEN` | secret do repositório (ou dos ambientes) | para publicar |
-| `EXPO_UPDATE_PRIVATE_KEY` | secret dos **ambientes** `staging` e `production` | para OTA assinada pelo CI |
-| `API_REPO_READ_TOKEN` | secret do repositório | não (testes de paridade) |
-| `PLAY_SUBMIT_ENABLED` | variável do repositório | não (padrão: não envia à loja) |
+| Nome                      | Onde                                              | Obrigatório                    |
+| ------------------------- | ------------------------------------------------- | ------------------------------ |
+| `EXPO_TOKEN`              | secret do repositório (ou dos ambientes)          | para publicar                  |
+| `EXPO_UPDATE_PRIVATE_KEY` | secret dos **ambientes** `staging` e `production` | para OTA assinada pelo CI      |
+| `API_REPO_READ_TOKEN`     | secret do repositório                             | não (testes de paridade)       |
+| `PLAY_SUBMIT_ENABLED`     | variável do repositório                           | não (padrão: não envia à loja) |
 
 Não há webhook de Dokploy neste repositório: o app não é hospedado lá.
 
@@ -301,8 +301,8 @@ Configure em Settings do repositório `trajetto-mobile`:
    - `production`: **Required reviewers** (o dono e mais uma pessoa,
      "Prevent self-review" ligado), **Deployment branches: `main`**, secret
      `EXPO_UPDATE_PRIVATE_KEY`.
-3. **Actions → General**: "Workflow permissions" em *Read repository
-   contents*; os jobs pedem só o que precisam (`actions: read` na prova de
+3. **Actions → General**: "Workflow permissions" em _Read repository
+   contents_; os jobs pedem só o que precisam (`actions: read` na prova de
    staging e no `plan`, que consulta o último release verde).
 
 ## OTA assinada (code signing)
@@ -478,14 +478,14 @@ app da loja.
 
 ## Rollback
 
-| Problema | Como voltar |
-| --- | --- |
-| OTA ruim | Actions → **OTA rollback** → canal e ID de um grupo anterior bom (`eas update:list --branch production` ou expo.dev → Updates). Republica aquele grupo como o mais novo; os aparelhos aplicam na próxima abertura. O canal escolhido precisa ser o do grupo (o workflow confere e recusa se não for) |
+| Problema                                                 | Como voltar                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| OTA ruim                                                 | Actions → **OTA rollback** → canal e ID de um grupo anterior bom (`eas update:list --branch production` ou expo.dev → Updates). Republica aquele grupo como o mais novo; os aparelhos aplicam na próxima abertura. O canal escolhido precisa ser o do grupo (o workflow confere e recusa se não for)                                                                                                                                             |
 | OTA ruim e o workflow não consegue ler a branch do grupo | o passo de conferência falha fechado (não republica). Fallback manual, numa máquina com a chave privada: `eas update:view <id>` para conferir a branch do grupo e, sendo a certa, `eas update:republish --group <id> --message "rollback" --private-key-path <caminho da private-key.pem>` (sem `--private-key-path` se não houver `certs/certificate.pem`). Depois corrija o `jq` do `ota-rollback.yml` para o formato que o `eas-cli` devolver |
-| OTA ruim, voltar ao JS embutido | manual: `eas update:roll-back-to-embedded --branch production --runtime-version <runtime> --message "…"` (com `--private-key-path` se houver certificado) |
-| Binário ruim na trilha internal/fechada | Play Console: não promova; envie um build novo |
-| Binário ruim em produção | Play Console: **interromper o lançamento gradual**; corrija com OTA se o defeito for de JS, ou publique um binário novo (não dá para "desinstalar" uma versão) |
-| Build de staging ruim | gere outro (`npm run build:staging`) e reinstale o APK |
+| OTA ruim, voltar ao JS embutido                          | manual: `eas update:roll-back-to-embedded --branch production --runtime-version <runtime> --message "…"` (com `--private-key-path` se houver certificado)                                                                                                                                                                                                                                                                                        |
+| Binário ruim na trilha internal/fechada                  | Play Console: não promova; envie um build novo                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Binário ruim em produção                                 | Play Console: **interromper o lançamento gradual**; corrija com OTA se o defeito for de JS, ou publique um binário novo (não dá para "desinstalar" uma versão)                                                                                                                                                                                                                                                                                   |
+| Build de staging ruim                                    | gere outro (`npm run build:staging`) e reinstale o APK                                                                                                                                                                                                                                                                                                                                                                                           |
 
 O rollback da API não desfaz o app: se a API voltar para uma versão que não
 entende o contrato atual do app, a fila guarda os envios recusados por
@@ -564,18 +564,18 @@ Primeiro ciclo:
 
 ## Problemas comuns
 
-| Sintoma | Causa provável | O que fazer |
-| --- | --- | --- |
-| `staging-evidence` falha em `main` | o commit não passou por `staging`, a execução de staging não terminou, o merge foi squash ou rebase do GitHub, ou a árvore do merge difere da de `staging` (mudança só em `main` ou conflito resolvido no PR) | publique em `staging`, espere verde e faça merge commit; leve para `staging` (por PR) o que estiver só em `main` e repita o release |
-| Job de staging/produção verde sem publicar nada | `EXPO_TOKEN` ausente, ou só docs/testes mudaram | veja os avisos (notice) do job |
-| "OTA de produção pulada" | falta `certs/certificate.pem` ou `EXPO_UPDATE_PRIVATE_KEY` no ambiente | siga [OTA assinada](#ota-assinada-code-signing) ou publique à mão |
-| "precisa do google-services.json" | falta `GOOGLE_SERVICES_JSON` no ambiente EAS do perfil | cadastre a variável de arquivo |
-| "exige EXPO_PUBLIC_API_URL com HTTPS" / "não aceita API local" | URL do ambiente EAS não é pública ou não usa HTTPS | corrija a variável do ambiente |
-| Build de release diz "API inacessível" no aparelho | URL insegura embutida | idem; gere build/OTA de novo |
-| OTA não chega ao aparelho | runtime diferente (código nativo mudou, ou `google-services.json` diferente entre `eas update` e build) | gere build novo; mantenha os arquivos iguais |
-| OTA recusada sem erro visível | binário com certificado e OTA sem assinatura (ou outra chave) | publique assinada com a chave certa |
-| Build falha no EAS | credenciais, `projectId`, dependência | veja o log em expo.dev; confira `EXPO_TOKEN` e `extra.eas.projectId` |
-| Tela de atualização obrigatória para todos | `MIN_MOBILE_CONTRACT` acima do contrato publicado | publique a OTA com o contrato novo ou baixe o mínimo na API |
+| Sintoma                                                        | Causa provável                                                                                                                                                                                                | O que fazer                                                                                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `staging-evidence` falha em `main`                             | o commit não passou por `staging`, a execução de staging não terminou, o merge foi squash ou rebase do GitHub, ou a árvore do merge difere da de `staging` (mudança só em `main` ou conflito resolvido no PR) | publique em `staging`, espere verde e faça merge commit; leve para `staging` (por PR) o que estiver só em `main` e repita o release |
+| Job de staging/produção verde sem publicar nada                | `EXPO_TOKEN` ausente, ou só docs/testes mudaram                                                                                                                                                               | veja os avisos (notice) do job                                                                                                      |
+| "OTA de produção pulada"                                       | falta `certs/certificate.pem` ou `EXPO_UPDATE_PRIVATE_KEY` no ambiente                                                                                                                                        | siga [OTA assinada](#ota-assinada-code-signing) ou publique à mão                                                                   |
+| "precisa do google-services.json"                              | falta `GOOGLE_SERVICES_JSON` no ambiente EAS do perfil                                                                                                                                                        | cadastre a variável de arquivo                                                                                                      |
+| "exige EXPO_PUBLIC_API_URL com HTTPS" / "não aceita API local" | URL do ambiente EAS não é pública ou não usa HTTPS                                                                                                                                                            | corrija a variável do ambiente                                                                                                      |
+| Build de release diz "API inacessível" no aparelho             | URL insegura embutida                                                                                                                                                                                         | idem; gere build/OTA de novo                                                                                                        |
+| OTA não chega ao aparelho                                      | runtime diferente (código nativo mudou, ou `google-services.json` diferente entre `eas update` e build)                                                                                                       | gere build novo; mantenha os arquivos iguais                                                                                        |
+| OTA recusada sem erro visível                                  | binário com certificado e OTA sem assinatura (ou outra chave)                                                                                                                                                 | publique assinada com a chave certa                                                                                                 |
+| Build falha no EAS                                             | credenciais, `projectId`, dependência                                                                                                                                                                         | veja o log em expo.dev; confira `EXPO_TOKEN` e `extra.eas.projectId`                                                                |
+| Tela de atualização obrigatória para todos                     | `MIN_MOBILE_CONTRACT` acima do contrato publicado                                                                                                                                                             | publique a OTA com o contrato novo ou baixe o mínimo na API                                                                         |
 
 ## Os três repositórios juntos
 
@@ -589,16 +589,16 @@ Primeiro ciclo:
 
 ### Quem é quem
 
-|                             | API (`Trajetto-Organization/trajetto-api`)                                                                                                                                                                                                                                                          | Web (`Trajetto-Organization/trajetto-ui`)                                                                                                                                                                       | App (`Trajetto-Organization/trajetto-mobile`)                                                                   |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Artefato                    | imagens `trajetto-api` e `trajetto-ai` em `ghcr.io/trajetto-organization/`                                                                                                                                                                                                                          | imagem `ghcr.io/trajetto-organization/trajetto-ui`                                                                                                                                                              | APK/AAB (EAS Build) e OTA (EAS Update)                                                                          |
-| Onde roda                   | Dokploy, projeto `trajetto-api` de cada environment (`staging` e `production`): as Applications `trajetto-api` (2 réplicas, com domínio) e `trajetto-ai` (sem domínio), puxando as imagens do GHCR, e os Databases PostgreSQL (com o backup diário do próprio Dokploy para o Cloudflare R2) e Redis | Dokploy, projeto `trajetto-ui` de cada environment: a Application `trajetto-ui`, puxando a imagem do GHCR                                                                                                       | no celular do motorista (APK interno em staging, Play Store em produção)                                        |
-| Nome no Dokploy / EAS       | App Names `trajetto-api-staging` e `trajetto-api-production` (e `trajetto-ai-*`, `trajetto-postgres-*`, `trajetto-redis-*`)                                                                                                                                                                         | Application `trajetto-ui` no projeto `trajetto-ui` de cada environment (App Names `trajetto-ui-staging` e `trajetto-ui-production`)                                                                             | perfis, ambientes e canais `staging` e `production`                                                             |
-| Como o pipeline publica     | API do Dokploy (`.github/scripts/dokploy-deploy.mjs`): `application.deploy` de cada Application, na ordem IA → API, acompanhando cada deployment até o fim e disparando de novo, até 3 vezes, o que termina em erro                                                                                 | API do Dokploy com o **mesmo** `.github/scripts/dokploy-deploy.mjs` (cópia comparada por teste): `application.deploy` da Application `trajetto-ui`, acompanhando o deployment, depois espera o `/build-id.json` | `eas update` e `eas build`                                                                                      |
-| Secrets de deploy no GitHub | environments `staging` e `production`: `DOKPLOY_URL`, `DOKPLOY_API_KEY`, `DOKPLOY_API_APPLICATION_ID` (obrigatórios) e `DOKPLOY_AI_APPLICATION_ID` (opcional); variável `SWARM_API_SERVICE`                                                                                                         | environments `staging` e `production`: `DOKPLOY_URL`, `DOKPLOY_API_KEY` e `DOKPLOY_UI_APPLICATION_ID`                                                                                                           | `EXPO_TOKEN` (repositório) e `EXPO_UPDATE_PRIVATE_KEY` (environments `staging` e `production`)                  |
-| Sem os secrets              | move as tags e pula o deploy com `::notice::`                                                                                                                                                                                                                                                       | move as tags e pula o deploy com aviso                                                                                                                                                                          | termina verde com aviso, sem publicar                                                                           |
-| De staging para produção    | promove por digest a imagem `sha-<7 do commit>` (tag `staging` → `stable`), sem rebuild                                                                                                                                                                                                             | igual à API, e exige o marcador `staged-<7 do commit>` no mesmo digest                                                                                                                                          | promove o **commit** verde em staging (a URL da API é embutida no build, então o artefato não pode ser o mesmo) |
-| Rollback                    | _Run workflow_ do `deploy.yml` com `image_tag=sha-<7>`                                                                                                                                                                                                                                              | _Run workflow_ do `deploy.yml` com `image_tag=sha-<7>`                                                                                                                                                          | `ota-rollback.yml` (republica um grupo de OTA)                                                                  |
+|                             | API (`Trajetto-Organization/trajetto-api`)                                                                                                                                                                                                                                                                                                   | Web (`Trajetto-Organization/trajetto-ui`)                                                                                                                                                                       | App (`Trajetto-Organization/trajetto-mobile`)                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Artefato                    | imagens `trajetto-api` e `trajetto-ai` em `ghcr.io/trajetto-organization/`                                                                                                                                                                                                                                                                   | imagem `ghcr.io/trajetto-organization/trajetto-ui`                                                                                                                                                              | APK/AAB (EAS Build) e OTA (EAS Update)                                                                          |
+| Onde roda                   | Dokploy, projeto `trajetto-api` de cada environment (`staging` e `production`): as Applications `trajetto-api` (2 réplicas, com domínio) e `trajetto-ai` (sem domínio), puxando as imagens do GHCR, e os Databases PostgreSQL (com o backup diário do próprio Dokploy para o Cloudflare R2) e Redis                                          | Dokploy, projeto `trajetto-ui` de cada environment: a Application `trajetto-ui`, puxando a imagem do GHCR                                                                                                       | no celular do motorista (APK interno em staging, Play Store em produção)                                        |
+| Nome no Dokploy / EAS       | App Names `trajetto-api-staging` e `trajetto-api-production` (e `trajetto-ai-*`, `trajetto-postgres-*`, `trajetto-redis-*`)                                                                                                                                                                                                                  | Application `trajetto-ui` no projeto `trajetto-ui` de cada environment (App Names `trajetto-ui-staging` e `trajetto-ui-production`)                                                                             | perfis, ambientes e canais `staging` e `production`                                                             |
+| Como o pipeline publica     | API do Dokploy (`.github/scripts/dokploy-deploy.mjs`): `application.deploy` de cada Application, na ordem IA → API, a IA só quando o digest muda, acompanhando cada deployment até o fim e disparando de novo, até 6 vezes e com espera crescente, o que termina em erro; depois espera a `/health/liveness` pública responder o commit novo | API do Dokploy com o **mesmo** `.github/scripts/dokploy-deploy.mjs` (cópia comparada por teste): `application.deploy` da Application `trajetto-ui`, acompanhando o deployment, depois espera o `/build-id.json` | `eas update` e `eas build`                                                                                      |
+| Secrets de deploy no GitHub | environments `staging` e `production`: `DOKPLOY_URL`, `DOKPLOY_API_KEY`, `DOKPLOY_API_APPLICATION_ID` (obrigatórios) e `DOKPLOY_AI_APPLICATION_ID` (opcional); variáveis `API_PUBLIC_URL` (a conferência pela liveness) e `SWARM_API_SERVICE` (a conferência por SSH)                                                                        | environments `staging` e `production`: `DOKPLOY_URL`, `DOKPLOY_API_KEY` e `DOKPLOY_UI_APPLICATION_ID`                                                                                                           | `EXPO_TOKEN` (repositório) e `EXPO_UPDATE_PRIVATE_KEY` (environments `staging` e `production`)                  |
+| Sem os secrets              | move as tags e pula o deploy com `::notice::`                                                                                                                                                                                                                                                                                                | move as tags e pula o deploy com aviso                                                                                                                                                                          | termina verde com aviso, sem publicar                                                                           |
+| De staging para produção    | promove por digest a imagem `sha-<7 do commit>` (tag `staging` → `stable`), sem rebuild, e exige o marcador `staged-<7 do commit>` no mesmo digest                                                                                                                                                                                           | igual à API, e exige o marcador `staged-<7 do commit>` no mesmo digest                                                                                                                                          | promove o **commit** verde em staging (a URL da API é embutida no build, então o artefato não pode ser o mesmo) |
+| Rollback                    | _Run workflow_ do `deploy.yml` com `image_tag=sha-<7>`                                                                                                                                                                                                                                                                                       | _Run workflow_ do `deploy.yml` com `image_tag=sha-<7>`                                                                                                                                                          | `ota-rollback.yml` (republica um grupo de OTA)                                                                  |
 
 Regras comuns aos três: a branch `staging` recebe o trabalho (push direto do
 dono ou merge de PR) e todo push nela roda a validação completa e publica o
@@ -662,7 +662,7 @@ está detalhada no `docs/variaveis-de-ambiente.md` do repositório que a lê.
    **backup** na aba _Backups_ do Database PostgreSQL (destino S3 no R2,
    diário). Confira `/health/readiness` e, como
    MASTER na web, _Sistema → Provedores_. Depois, os secrets `DOKPLOY_*` e a
-   variável `SWARM_API_SERVICE` no environment `staging` da API.
+   variável `API_PUBLIC_URL` no environment `staging` da API.
 5. **Web de staging** (Application `trajetto-ui` do projeto `trajetto-ui` no
    environment `staging`, manual da web): imagem
    `:staging`, `HTTP_REQUEST` e `PUBLIC_API_URL` apontando para a API de

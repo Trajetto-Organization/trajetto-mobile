@@ -32,11 +32,11 @@ O Trajetto é uma plataforma B2B multiempresa para transportadoras, com dois
 módulos contratados separadamente por empresa: **Frotas** e **Entregas**. São
 três repositórios:
 
-| Repositório | Papel |
-| --- | --- |
-| `trajetto-api` | API Fastify + Prisma + PostgreSQL + Redis, tempo real (socket.io), filas no Postgres, crons e o serviço local de IA (`infra/ai-ocr`) |
-| `trajetto-ui` | site público, portal de documentação e painel web (Next.js) |
-| `trajetto-mobile` (este) | app de campo do motorista, **só Android** |
+| Repositório              | Papel                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `trajetto-api`           | API Fastify + Prisma + PostgreSQL + Redis, tempo real (socket.io), filas no Postgres, crons e o serviço local de IA (`infra/ai-ocr`) |
+| `trajetto-ui`            | site público, portal de documentação e painel web (Next.js)                                                                          |
+| `trajetto-mobile` (este) | app de campo do motorista, **só Android**                                                                                            |
 
 O app é o cliente de campo: rota do dia, chegada, "a caminho", comprovante com
 foto e assinatura, ocorrências (com formulário e autorização da torre),
@@ -69,7 +69,7 @@ durante o laço do motorista.
 - **expo-location** e **expo-task-manager** para posição; **expo-image-picker**
   e **expo-image-manipulator** para fotos; **expo-audio** para os áudios do
   chat; **react-native-signature-canvas** para a assinatura.
-- **expo-updates** com runtime por *fingerprint* e OTA assinada.
+- **expo-updates** com runtime por _fingerprint_ e OTA assinada.
 - **expo-secure-store** para tokens; AsyncStorage para o resto.
 - Módulo nativo próprio **`modules/text-reader`** (Kotlin, ML Kit Text
   Recognition v2 embutido) para a pré-checagem.
@@ -138,9 +138,10 @@ O alias `@/` aponta para a raiz do repositório (`tsconfig.json` e
 - Login com e-mail e senha, verificação em duas etapas quando a conta exige
   (`app/(auth)/two-factor.tsx`), recuperação de senha.
 - Tokens no **SecureStore** (`utils/storage.ts`); o resto (cache, fila,
-  preferências) no AsyncStorage. O refresh é *single-flight*: várias
+  preferências) no AsyncStorage. O refresh é _single-flight_: várias
   requisições com token vencido disparam um único refresh.
-- Usuário com mais de uma empresa escolhe em `select-business`.
+- O MASTER, que não tem empresa, escolhe uma em `select-business`
+  (`features/access/app-surfaces.ts`); o motorista usa a empresa do token.
 - **Módulos** (`features/access/module-rules.ts`): `FLEET` e `DELIVERIES`. A
   mesma regra decide abas, cartão do veículo, telas de abastecimento e
   checklist, a tela de entrada pós-login e a fila. Motorista de empresa sem
@@ -185,6 +186,15 @@ escritório; o motorista é a persona offline.
   (`OFFLINE_QUERY_KEYS`): `my-deliveries`, `vehicles`, `vehicle`,
   `branches`, `fuelTypes`, `drivers`, `businesses`, `business-entitlements`.
 - Sem rede, o app abre com o último dia baixado.
+- Campo novo no payload entra **opcional** no tipo e é lido por uma regra
+  tolerante: o cache guarda até 7 dias de respostas sem a chave. Exemplo:
+  `kind` da entrega (`DELIVERY`, `PICKUP`, `SERVICE_ORDER`), lido por
+  `deliveryKindBadge` (`features/deliveries/delivery-identity-rules.ts`):
+  ausente ou desconhecido vale como entrega, sem selo.
+- Todo item de lista mostra o identificador canônico: o cartão e a tela da
+  entrega mostram `Pedido: <código> · NF-e <número>` e o selo "Coleta" /
+  "Ordem de serviço"; a tela de pendências e o chip do chat leem o código da
+  entrega no cache do dia (o item da fila e a mensagem do chat não o trazem).
 
 ### Fila de envios (outbox)
 
@@ -289,6 +299,12 @@ atualização do app.
   aviso equivalente pela variável `BACKGROUND_TRACKING` do `trajetto-ui`.
 - Posições com mais de 5 minutos não valem para a chegada e com mais de
   1 minuto não valem para o abastecimento.
+- O buffer de posições (`reporter.ts`, até 900 pontos, lotes de 200) fica
+  **guardado até a API responder**: o lote só sai do AsyncStorage quando a
+  API o aceita (2xx) ou recusa um ponto como inválido (400). Um processo
+  morto no meio do `POST /route/positions` reenvia o lote depois, e a API
+  descarta o ponto repetido. Pontos que outro contexto (a tarefa em segundo
+  plano) acrescentou durante a requisição ficam (`afterFlushAttempt`).
 
 ## Versão do contrato e atualização obrigatória
 
@@ -332,11 +348,11 @@ com o envio, é confirmada pela leitura do servidor (serviço de IA da API) e
 
 ### O que o motorista vê
 
-| Fluxo | Quando | Aviso | Ações |
-| --- | --- | --- | --- |
-| Comprovar entrega | logo depois da foto do canhoto | "O número da NF 123.456 não aparece na foto…" ou "A data de recebimento na foto não é a de hoje…" | "Tirar outra" / "Enviar assim" |
-| Abastecimento | foto do odômetro + km digitada (espera 0,8 s sem mudança) | "A km 45.210 não aparece na foto do odômetro…" | "Corrigir km" / "Tirar outra" / "Enviar assim" |
-| Checklist | foto do campo de km + km digitada | idem | idem |
+| Fluxo             | Quando                                                    | Aviso                                                                                             | Ações                                          |
+| ----------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Comprovar entrega | logo depois da foto do canhoto                            | "O número da NF 123.456 não aparece na foto…" ou "A data de recebimento na foto não é a de hoje…" | "Tirar outra" / "Enviar assim"                 |
+| Abastecimento     | foto do odômetro + km digitada (espera 0,8 s sem mudança) | "A km 45.210 não aparece na foto do odômetro…"                                                    | "Corrigir km" / "Tirar outra" / "Enviar assim" |
+| Checklist         | foto do campo de km + km digitada                         | idem                                                                                              | idem                                           |
 
 Sem aviso, nada aparece. O envio nunca espera a pré-checagem (tempo-limite de
 5 s). Enviar com aviso na tela grava `driver_overrode: true`.
@@ -372,16 +388,16 @@ redigitar a km descarta o resultado anterior.
 
 ### Onde está
 
-| Peça | Arquivo |
-| --- | --- |
-| Módulo nativo (Kotlin, ML Kit v2 Latin embutido) | `modules/text-reader/` |
-| Filtro de ABIs dos APKs | `plugins/with-preview-abis.js` |
-| Sinal da sessão (`canPrecheck`, `stampAiFlag`) | `features/ai-precheck/precheck-gate.ts` |
-| Regras do canhoto / do odômetro | `features/ai-precheck/proof-precheck-rules.ts`, `odometer-precheck-rules.ts` |
-| Payload, avisos, tempo-limite | `features/ai-precheck/device-precheck.ts` |
-| Orquestração com leitor injetável | `features/ai-precheck/evaluate-precheck.ts` |
-| Hook das telas | `features/ai-precheck/use-photo-precheck.ts` |
-| Esquema (espelho da API) | `schemas/device-precheck.ts` |
+| Peça                                             | Arquivo                                                                      |
+| ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Módulo nativo (Kotlin, ML Kit v2 Latin embutido) | `modules/text-reader/`                                                       |
+| Filtro de ABIs dos APKs                          | `plugins/with-preview-abis.js`                                               |
+| Sinal da sessão (`canPrecheck`, `stampAiFlag`)   | `features/ai-precheck/precheck-gate.ts`                                      |
+| Regras do canhoto / do odômetro                  | `features/ai-precheck/proof-precheck-rules.ts`, `odometer-precheck-rules.ts` |
+| Payload, avisos, tempo-limite                    | `features/ai-precheck/device-precheck.ts`                                    |
+| Orquestração com leitor injetável                | `features/ai-precheck/evaluate-precheck.ts`                                  |
+| Hook das telas                                   | `features/ai-precheck/use-photo-precheck.ts`                                 |
+| Esquema (espelho da API)                         | `schemas/device-precheck.ts`                                                 |
 
 ### Tamanho do binário
 
@@ -413,15 +429,15 @@ e a de Cookies do web citam essa preferência (09/10/2026).
 
 ### Peças
 
-| Peça | Onde | O que faz |
-| --- | --- | --- |
-| Paleta | `utils/theme-tokens.js` | Fonte única das cores, clara e escura (CommonJS: o `tailwind.config.js` também lê) |
-| Variáveis CSS | `tailwind.config.js` (plugin) | Gera `:root { --color-* }` e `.dark:root { --color-* }` |
-| Classes | `tailwind.config.js` (`colors`) | `bg-card`, `text-ink`… apontam para `rgb(var(--color-*) / <alpha-value>)` |
-| Escolha | `store/theme-store.ts` | Zustand persistido; chama `colorScheme.set()` do NativeWind |
-| Cromo | `providers/theme-provider.tsx` | Tema do React Navigation, fundo da raiz (expo-system-ui), barra de status |
-| Valores em JS | `hooks/use-theme.ts` | `useThemeColors()` para props que não aceitam classe |
-| Seletor | `components/ui/theme-selector.tsx` | Controle segmentado na gaveta de configurações |
+| Peça          | Onde                               | O que faz                                                                          |
+| ------------- | ---------------------------------- | ---------------------------------------------------------------------------------- |
+| Paleta        | `utils/theme-tokens.js`            | Fonte única das cores, clara e escura (CommonJS: o `tailwind.config.js` também lê) |
+| Variáveis CSS | `tailwind.config.js` (plugin)      | Gera `:root { --color-* }` e `.dark:root { --color-* }`                            |
+| Classes       | `tailwind.config.js` (`colors`)    | `bg-card`, `text-ink`… apontam para `rgb(var(--color-*) / <alpha-value>)`          |
+| Escolha       | `store/theme-store.ts`             | Zustand persistido; chama `colorScheme.set()` do NativeWind                        |
+| Cromo         | `providers/theme-provider.tsx`     | Tema do React Navigation, fundo da raiz (expo-system-ui), barra de status          |
+| Valores em JS | `hooks/use-theme.ts`               | `useThemeColors()` para props que não aceitam classe                               |
+| Seletor       | `components/ui/theme-selector.tsx` | Controle segmentado na gaveta de configurações                                     |
 
 A troca é instantânea e não remonta nada: navegação, formulários e rascunhos
 ficam onde estavam. O `colorScheme.set` muda o modo noturno nativo, então
@@ -434,28 +450,28 @@ Activity. **Nunca remova esse plugin do `app.json`.**
 
 ### Tokens
 
-| Token | Classe | Uso | Claro | Escuro |
-| --- | --- | --- | --- | --- |
-| background | `bg-background` | Fundo da tela | `#f8f9fc` | `#0f1624` |
-| surface | `bg-surface` | Cabeçalho fixo, barra de abas, bottom sheet | `#ffffff` | `#131b2a` |
-| card | `bg-card` | Cartão, modal, item de lista | `#ffffff` | `#171f31` |
-| subtle | `bg-subtle` | Chip, botão neutro, campo em repouso | `#f1f5f9` | `#1e293b` |
-| ink | `text-ink` | Texto principal, títulos | `#020817` | `#f8fafc` |
-| ink-soft | `text-ink-soft` | Rótulo de campo, texto de botão neutro | `#334155` | `#cbd5e1` |
-| muted | `text-muted` | Descrição, legenda, placeholder, ícone apagado | `#506795` | `#94a3b8` |
-| border | `border-border`, `bg-border` | Divisória, contorno, esqueleto | `#e2e8f0` | `#273449` |
-| input | `border-input` | Contorno de campo | `#cbd5e1` | `#334155` |
+| Token      | Classe                       | Uso                                            | Claro     | Escuro    |
+| ---------- | ---------------------------- | ---------------------------------------------- | --------- | --------- |
+| background | `bg-background`              | Fundo da tela                                  | `#f8f9fc` | `#0f1624` |
+| surface    | `bg-surface`                 | Cabeçalho fixo, barra de abas, bottom sheet    | `#ffffff` | `#131b2a` |
+| card       | `bg-card`                    | Cartão, modal, item de lista                   | `#ffffff` | `#171f31` |
+| subtle     | `bg-subtle`                  | Chip, botão neutro, campo em repouso           | `#f1f5f9` | `#1e293b` |
+| ink        | `text-ink`                   | Texto principal, títulos                       | `#020817` | `#f8fafc` |
+| ink-soft   | `text-ink-soft`              | Rótulo de campo, texto de botão neutro         | `#334155` | `#cbd5e1` |
+| muted      | `text-muted`                 | Descrição, legenda, placeholder, ícone apagado | `#506795` | `#94a3b8` |
+| border     | `border-border`, `bg-border` | Divisória, contorno, esqueleto                 | `#e2e8f0` | `#273449` |
+| input      | `border-input`               | Contorno de campo                              | `#cbd5e1` | `#334155` |
 
 Cores de estado e de módulo, em três formas (claro / escuro):
 
-| Família | `text-X` / `border-X` | `bg-X` (texto branco) | `bg-X-soft` (com `text-X`) |
-| --- | --- | --- | --- |
-| primary (azul da marca) | `#2563eb` / `#60a5fa` | `#2563eb` / `#2563eb` | `#eff6ff` / `#172554` |
-| destructive | `#c81e1e` / `#f36868` | `#c81e1e` / `#ce2222` | `#fef2f2` / `#3b1219` |
-| success | `#15803d` / `#4ade80` | `#15803d` / `#15803d` | `#f0fdf4` / `#0d2b1c` |
-| warning | `#b45309` / `#fbbf24` | `#b45309` / `#b45309` | `#fffbeb` / `#33210a` |
-| deliveries (Entregas, rosa) | `#d81b60` / `#f36398` | `#d81b60` / `#d81b60` | `#fdf2f6` / `#3a1426` |
-| fleet (Frotas, violeta) | `#6a3fe0` / `#9b7dff` | `#6a3fe0` / `#6a3fe0` | `#f4f0fe` / `#251a4a` |
+| Família                     | `text-X` / `border-X` | `bg-X` (texto branco) | `bg-X-soft` (com `text-X`) |
+| --------------------------- | --------------------- | --------------------- | -------------------------- |
+| primary (azul da marca)     | `#2563eb` / `#60a5fa` | `#2563eb` / `#2563eb` | `#eff6ff` / `#172554`      |
+| destructive                 | `#c81e1e` / `#f36868` | `#c81e1e` / `#ce2222` | `#fef2f2` / `#3b1219`      |
+| success                     | `#15803d` / `#4ade80` | `#15803d` / `#15803d` | `#f0fdf4` / `#0d2b1c`      |
+| warning                     | `#b45309` / `#fbbf24` | `#b45309` / `#b45309` | `#fffbeb` / `#33210a`      |
+| deliveries (Entregas, rosa) | `#d81b60` / `#f36398` | `#d81b60` / `#d81b60` | `#fdf2f6` / `#3a1426`      |
+| fleet (Frotas, violeta)     | `#6a3fe0` / `#9b7dff` | `#6a3fe0` / `#6a3fe0` | `#f4f0fe` / `#251a4a`      |
 
 Texto sobre `bg-primary`, `bg-destructive`, `bg-success` e `bg-warning`:
 `text-primary-foreground`, `text-destructive-foreground` etc. (brancos). Os
@@ -491,12 +507,21 @@ temas (`tests/unitaires/theme-tokens.test.ts`).
 13. Estados que mudam a mesma propriedade são classes exclusivas
     (`cond ? "bg-a" : "bg-b"`): o NativeWind decide pela ordem da folha, não
     pela ordem na string.
-14. Toda `BottomSheetModal` usa `useCloseOnBack(visible, onClose)`, e bottom
-    sheet com conteúdo que pode passar da altura usa `BottomSheetScrollView`
-    com `enableDynamicSizing={false}`.
+14. Todo bottom sheet usa o `Sheet` de `components/ui/sheet.tsx`, a única
+    `BottomSheetModal` do app: ele liga o `useCloseOnBack(visible, onClose)`,
+    pinta com os tokens e cuida da área segura (o topo nunca passa da barra de
+    status; o corpo termina 16 dp acima da barra de navegação, ou da borda numa
+    tela sem ela, por `utils/sheet-layout.ts`). Sem `snapPoints`, o sheet tem a
+    altura do conteúdo; conteúdo que pode passar da altura recebe `snapPoints`
+    fixos e o corpo vira `BottomSheetScrollView` com
+    `enableDynamicSizing={false}`. Nada de `paddingBottom` com inset na tela.
 15. Tela com campo usa o `KeyboardAvoidingView` de
     `components/ui/keyboard-avoiding-view.tsx` (com `behavior="padding"`),
     nunca o do `react-native`.
+16. Toast só pelo `Toast.show` do `react-native-toast-message`, que o
+    `ToastProvider` desenha: cores de `toastColors` e geometria de
+    `utils/toast-layout.ts` (o cartão cresce com o texto, título e mensagem
+    com espaço entre si, abaixo da barra de status), igual nos três tipos.
 
 Substituições rápidas: `bg-gray-50` → `bg-background`; `bg-white` →
 `bg-card` (ou `bg-surface`); `bg-gray-100` → `bg-subtle`; `bg-gray-200` →
@@ -549,16 +574,16 @@ defeitos achados viraram as decisões 16.980–16.985.
 As decisões abaixo vêm do documento de decisões da fase final (fora deste
 repositório) e valem para o app. Ficam aqui para quem só tem este repo.
 
-| Decisão | O que ficou |
-| --- | --- |
-| 6.1 / 6.3 / 6.4 / 6.9 | Pausas, autorização de ocorrência pela torre, "a caminho" e retorno da IA sobre comprovantes seguem os contratos da API (`docs/contratos-app/*` no projeto) |
-| 7.3 | Rastreamento em segundo plano pronto e desligado até a aprovação do Play Console |
-| 12.2 | Staging é uma stack própria (API e hosts próprios); o app de staging aponta para ela pelo ambiente EAS `preview` (o EAS não tem ambiente `staging`; o perfil e o canal `staging` leem o `preview`) |
-| 13.1 | Cobertura medida de verdade e publicada; piso no baseline medido (MOB-30) |
-| 13.4 | E2E do app com Maestro no emulador |
-| 13.5 | Teste de mutação nas regras críticas, corte em 90 |
-| 14.2 | Pré-checagem das fotos no aparelho, só sugestão |
-| 14.3 / 14.4 | Comprovante é uma ocorrência da categoria entrega; pausas levam `occurrence_type_id` (contrato 3) |
-| 16.700 | Validação ao vivo "recompensa cedo, pune tarde" |
-| 16.980–16.985 | Correções do tema achadas no emulador |
-| INFRA-16 / INFRA-21 | Cadeia de suprimentos (Dependabot, actions por SHA, audit-ci) e varredura de segredos (gitleaks) |
+| Decisão               | O que ficou                                                                                                                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6.1 / 6.3 / 6.4 / 6.9 | Pausas, autorização de ocorrência pela torre, "a caminho" e retorno da IA sobre comprovantes seguem os contratos da API (`docs/contratos-app/*` no projeto)                                        |
+| 7.3                   | Rastreamento em segundo plano pronto e desligado até a aprovação do Play Console                                                                                                                   |
+| 12.2                  | Staging é uma stack própria (API e hosts próprios); o app de staging aponta para ela pelo ambiente EAS `preview` (o EAS não tem ambiente `staging`; o perfil e o canal `staging` leem o `preview`) |
+| 13.1                  | Cobertura medida de verdade e publicada; piso no baseline medido (MOB-30)                                                                                                                          |
+| 13.4                  | E2E do app com Maestro no emulador                                                                                                                                                                 |
+| 13.5                  | Teste de mutação nas regras críticas, corte em 90                                                                                                                                                  |
+| 14.2                  | Pré-checagem das fotos no aparelho, só sugestão                                                                                                                                                    |
+| 14.3 / 14.4           | Comprovante é uma ocorrência da categoria entrega; pausas levam `occurrence_type_id` (contrato 3)                                                                                                  |
+| 16.700                | Validação ao vivo "recompensa cedo, pune tarde"                                                                                                                                                    |
+| 16.980–16.985         | Correções do tema achadas no emulador                                                                                                                                                              |
+| INFRA-16 / INFRA-21   | Cadeia de suprimentos (Dependabot, actions por SHA, audit-ci) e varredura de segredos (gitleaks)                                                                                                   |

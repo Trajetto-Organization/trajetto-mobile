@@ -17,13 +17,13 @@ absorveu o antigo `e2e.md`.
 
 ## Resumo das suítes
 
-| Suíte | Onde | Comando | Precisa de | Roda no CI? |
-| --- | --- | --- | --- | --- |
-| Unitários | `tests/unitaires/*.test.ts` | `npm test` | só Node 22 | sim, em todo push e PR |
-| Unitários com cobertura (com piso) | idem | `npm run test:coverage` | só Node | sim (`ci.yml`) |
-| Mutação | `stryker.config.mjs` | `npm run test:mutation` | só Node (lento) | não, manual |
-| Typecheck | todo o projeto | `npm run typecheck` | só Node | sim |
-| E2E no emulador | `.maestro/` + `scripts/e2e/` | `bash scripts/e2e/run.sh <rodada>` | emulador Android, Maestro, Docker, `../trajetto-api` | não (estação de trabalho) |
+| Suíte                              | Onde                         | Comando                            | Precisa de                                           | Roda no CI?               |
+| ---------------------------------- | ---------------------------- | ---------------------------------- | ---------------------------------------------------- | ------------------------- |
+| Unitários                          | `tests/unitaires/*.test.ts`  | `npm test`                         | só Node 22                                           | sim, em todo push e PR    |
+| Unitários com cobertura (com piso) | idem                         | `npm run test:coverage`            | só Node                                              | sim (`ci.yml`)            |
+| Mutação                            | `stryker.config.mjs`         | `npm run test:mutation`            | só Node (lento)                                      | não, manual               |
+| Typecheck                          | todo o projeto               | `npm run typecheck`                | só Node                                              | sim                       |
+| E2E no emulador                    | `.maestro/` + `scripts/e2e/` | `bash scripts/e2e/run.sh <rodada>` | emulador Android, Maestro, Docker, `../trajetto-api` | não (estação de trabalho) |
 
 `npm run validate` roda typecheck, testes, lint e `expo-doctor` em sequência.
 
@@ -41,23 +41,24 @@ absorveu o antigo `e2e.md`.
   watch: `npm run test:watch`.
 - Alias `@/` aponta para a raiz, como no app.
 
-### Famílias de teste (194 arquivos)
+### Famílias de teste (200 arquivos)
 
-| Família | Exemplos | O que prova |
-| --- | --- | --- |
-| Fila offline e rascunhos | `outbox-*.test.ts`, `submit-or-queue*.test.ts`, `queue-decision.test.ts`, `pending-*.test.ts`, `submission-*.test.ts` | o que vai para a fila, quando é reenviado, de quem é, quando é descartado; upload retomável; horário do fato |
-| Regras de domínio | `delivery-rules*.test.ts`, `occurrence-*.test.ts`, `pause-rules*.test.ts`, `on-the-way-*.test.ts`, `fuel-rules.test.ts`, `checklist-rules.test.ts` | estados de entrega, ocorrência, autorização da torre, pausas, abastecimento e checklist |
-| Formulários | `live-validation-*.test.ts`, `form-hooks.test.ts`, `draft-change-gate.test.ts`, `km-reading-locale.test.ts` | validação ao vivo, hooks compostos (com `tests/unitaires/support/hook-runtime.ts`), km |
-| Sessão e acesso | `session-modules.test.ts`, `app-access.test.ts`, `module-rules-edges.test.ts`, `logout-*.test.ts`, `remote-logout.test.ts`, `refresh-single-flight.test.ts`, `two-factor-*.test.ts` | módulos contratados, logout com pendências, refresh único, 2FA |
-| API e contrato | `api-*.test.ts`, `client-version-header.test.ts`, `upgrade-required-*.test.ts`, `app-upgrade-rules.test.ts` | classificação de erro, `Retry-After`, cabeçalho de versão, gate 426 |
-| Tempo real e push | `socket-*.test.ts`, `*-realtime*.test.ts`, `push-*.test.ts`, `notification-*.test.ts` | reconexão, ressincronização, eventos, toque na notificação |
-| Rastreamento | `tracking-*.test.ts`, `position-rules.test.ts`, `location-capture-bounded.test.ts` | modo de rastreio, envio, privacidade do log |
-| Pré-checagem | `ai-precheck-*.test.ts` (com `tests/fixtures/ai-precheck-ocr-2026-10.json`) | regras de NF, data e km sobre textos reais do benchmark de 05/10 |
-| Tema e contraste | `theme-*.test.ts`, `shared-ui-tokens.test.ts`, `driver-screens-tokens.test.ts`, `screen-tokens-fleet-chat.test.ts`, `ui-contrast.test.ts`, `app-theme.test.ts` | contraste AA dos pares nos dois temas, compilação real pelo NativeWind, telas só com tokens, plugin de `uiMode` |
-| Configuração e build | `app-config-release.test.ts`, `eas-build-config.test.ts`, `android-manifest.test.ts`, `api-url-rules.test.ts`, `permissions.test.ts`, `app-dependencies.test.ts` | URL segura em release, perfis do EAS, `.easignore` = `.gitignore` menos o `google-services.json`, manifesto gerado, OTA assinada |
-| Pipeline, higiene e docs | `ci-workflows.test.ts`, `secrets-hygiene.test.ts`, `supply-chain.test.ts`, `coverage-measured.test.ts`, `mutation-threshold.test.ts`, `vitest-config.test.ts`, `docs-index.test.ts` | o fluxo staging → main, CI antes de qualquer EAS, OTA de produção sempre assinada, actions por SHA, gitleaks, piso de cobertura; os quatro docs existem, links locais resolvem, nenhum caminho de doc antigo sobrou, `CLAUDE.md` = `AGENTS.md` nas regras |
-| Textos | `ptbr-accents.test.ts`, `legal-links.test.ts` | pt-BR com acento em tudo que o motorista lê; links de Privacidade e Termos |
-| E2E (fiação) | `maestro-suite-wiring.test.ts`, `maestro-checklist-flow.test.ts` | ordem dos fluxos em `config.yaml` e todo `testID` tocado existe no app |
+| Família                  | Exemplos                                                                                                                                                                                  | O que prova                                                                                                                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fila offline e rascunhos | `outbox-*.test.ts`, `submit-or-queue*.test.ts`, `queue-decision.test.ts`, `pending-*.test.ts`, `submission-*.test.ts`                                                                     | o que vai para a fila, quando é reenviado, de quem é, quando é descartado; upload retomável; horário do fato                                                                                                                                              |
+| Regras de domínio        | `delivery-rules*.test.ts`, `delivery-identity.test.ts`, `occurrence-*.test.ts`, `pause-rules*.test.ts`, `on-the-way-*.test.ts`, `fuel-rules.test.ts`, `checklist-rules.test.ts`           | estados de entrega, ocorrência, autorização da torre, pausas, abastecimento e checklist                                                                                                                                                                   |
+| Formulários              | `live-validation-*.test.ts`, `form-hooks.test.ts`, `draft-change-gate.test.ts`, `km-reading-locale.test.ts`                                                                               | validação ao vivo, hooks compostos (com `tests/unitaires/support/hook-runtime.ts`), km                                                                                                                                                                    |
+| Sessão e acesso          | `session-modules.test.ts`, `app-access.test.ts`, `module-rules-edges.test.ts`, `logout-*.test.ts`, `remote-logout.test.ts`, `refresh-single-flight.test.ts`, `two-factor-*.test.ts`       | módulos contratados, logout com pendências, refresh único, 2FA                                                                                                                                                                                            |
+| API e contrato           | `api-*.test.ts`, `client-version-header.test.ts`, `upgrade-required-*.test.ts`, `app-upgrade-rules.test.ts`                                                                               | classificação de erro, `Retry-After`, cabeçalho de versão, gate 426                                                                                                                                                                                       |
+| Tempo real e push        | `socket-*.test.ts`, `*-realtime*.test.ts`, `push-*.test.ts`, `notification-*.test.ts`                                                                                                     | reconexão, ressincronização, eventos, toque na notificação                                                                                                                                                                                                |
+| Rastreamento             | `tracking-*.test.ts`, `position-rules.test.ts`, `location-capture-bounded.test.ts`                                                                                                        | modo de rastreio, envio, privacidade do log; lote guardado até a API responder (`tracking-flush-durability.test.ts`: processo morto no meio da requisição)                                                                                                |
+| Pré-checagem             | `ai-precheck-*.test.ts` (com `tests/fixtures/ai-precheck-ocr-2026-10.json`)                                                                                                               | regras de NF, data e km sobre textos reais do benchmark de 05/10                                                                                                                                                                                          |
+| Tema e contraste         | `theme-*.test.ts`, `shared-ui-tokens.test.ts`, `driver-screens-tokens.test.ts`, `screen-tokens-fleet-chat.test.ts`, `app-wide-tokens.test.ts`, `ui-contrast.test.ts`, `app-theme.test.ts` | contraste AA dos pares nos dois temas, compilação real pelo NativeWind, telas só com tokens (a varredura do app inteiro pega o arquivo que nenhuma lista nomeia), plugin de `uiMode`                                                                      |
+| Sobreposições            | `sheet-safe-area.test.ts`, `sheet-back-button.test.ts`, `toast-layout.test.ts`                                                                                                            | todo bottom sheet passa pelo `Sheet` (área segura no topo e na base, voltar fecha), toast que cresce com o texto e fica abaixo da barra de status                                                                                                         |
+| Configuração e build     | `app-config-release.test.ts`, `eas-build-config.test.ts`, `android-manifest.test.ts`, `api-url-rules.test.ts`, `permissions.test.ts`, `app-dependencies.test.ts`                          | URL segura em release, perfis do EAS, `.easignore` = `.gitignore` menos o `google-services.json`, manifesto gerado, OTA assinada                                                                                                                          |
+| Pipeline, higiene e docs | `ci-workflows.test.ts`, `secrets-hygiene.test.ts`, `supply-chain.test.ts`, `coverage-measured.test.ts`, `mutation-threshold.test.ts`, `vitest-config.test.ts`, `docs-index.test.ts`       | o fluxo staging → main, CI antes de qualquer EAS, OTA de produção sempre assinada, actions por SHA, gitleaks, piso de cobertura; os quatro docs existem, links locais resolvem, nenhum caminho de doc antigo sobrou, `CLAUDE.md` = `AGENTS.md` nas regras |
+| Textos                   | `ptbr-accents.test.ts`, `legal-links.test.ts`                                                                                                                                             | pt-BR com acento em tudo que o motorista lê; links de Privacidade e Termos                                                                                                                                                                                |
+| E2E (fiação)             | `maestro-suite-wiring.test.ts`, `maestro-checklist-flow.test.ts`                                                                                                                          | ordem dos fluxos em `config.yaml` e todo `testID` tocado existe no app                                                                                                                                                                                    |
 
 ### Paridade com a API
 
@@ -113,14 +114,14 @@ com pendências → chat → login com duas etapas.
 
 ### O que roda onde
 
-| Peça | Onde | Observação |
-| --- | --- | --- |
-| Postgres | container `trajetto-itest-pg`, porta 54321 | o descartável dos testes da API; banco próprio `mobile_e2e` |
-| Redis | container `trajetto-test-redis`, porta 63790 | database 5, separado do E2E web |
-| API | `node` na porta **3335** | o E2E web usa `load_test` na 3334 ao mesmo tempo |
-| Metro | porta 8081 | chega ao emulador por `adb reverse` |
-| Emulador | AVD `Medium_Phone_API_36.1`, headless | câmera traseira = cena virtual |
-| Maestro | `~/.maestro/bin/maestro` | instalador oficial, no perfil do usuário |
+| Peça     | Onde                                         | Observação                                                  |
+| -------- | -------------------------------------------- | ----------------------------------------------------------- |
+| Postgres | container `trajetto-itest-pg`, porta 54321   | o descartável dos testes da API; banco próprio `mobile_e2e` |
+| Redis    | container `trajetto-test-redis`, porta 63790 | database 5, separado do E2E web                             |
+| API      | `node` na porta **3335**                     | o E2E web usa `load_test` na 3334 ao mesmo tempo            |
+| Metro    | porta 8081                                   | chega ao emulador por `adb reverse`                         |
+| Emulador | AVD `Medium_Phone_API_36.1`, headless        | câmera traseira = cena virtual                              |
+| Maestro  | `~/.maestro/bin/maestro`                     | instalador oficial, no perfil do usuário                    |
 
 Nada sobe nas portas do ambiente de desenvolvimento (3333, 5432). O `api.sh`
 recusa apontar para outro banco. Os scripts rodam no **Git Bash** (Windows) e
@@ -199,20 +200,20 @@ A senha das três contas é a de teste documentada em `scripts/e2e/env.sh`
 
 ### Fluxos (`.maestro/`)
 
-| Arquivo | O que prova |
-| --- | --- |
-| `00-login` | instalação limpa, login pelo formulário, abas de quem tem Frotas |
-| `01-rota-chegada-comprovante` | iniciar a rota, chegada, comprovante com foto da câmera, assinatura e recebedor; a entrega sai da lista |
-| `02-ocorrencia-com-formulario` | sem o campo obrigatório o envio é recusado no aparelho; preenchido, a ocorrência é registrada com as respostas |
-| `03-offline-fila-sincronizacao` | modo avião; chegada e comprovante na fila ("2 envios pendentes"); com a rede de volta a fila esvazia sozinha |
-| `04-frota-abastecimento` | abastecimento com foto do hodômetro e GPS do emulador |
-| `04b-frota-checklist` | checklist com todos os itens OK: só as 3 fotos que todo checklist exige |
-| `05-logout-e-novo-login` | logout pelo menu e novo login; as paradas resolvidas não voltam |
-| `06-modulo-frota-desligado` | motorista sem Frotas: abre nas entregas; "Início" só tem a conta |
+| Arquivo                              | O que prova                                                                                                           |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `00-login`                           | instalação limpa, login pelo formulário, abas de quem tem Frotas                                                      |
+| `01-rota-chegada-comprovante`        | iniciar a rota, chegada, comprovante com foto da câmera, assinatura e recebedor; a entrega sai da lista               |
+| `02-ocorrencia-com-formulario`       | sem o campo obrigatório o envio é recusado no aparelho; preenchido, a ocorrência é registrada com as respostas        |
+| `03-offline-fila-sincronizacao`      | modo avião; chegada e comprovante na fila ("2 envios pendentes"); com a rede de volta a fila esvazia sozinha          |
+| `04-frota-abastecimento`             | abastecimento com foto do hodômetro e GPS do emulador                                                                 |
+| `04b-frota-checklist`                | checklist com todos os itens OK: só as 3 fotos que todo checklist exige                                               |
+| `05-logout-e-novo-login`             | logout pelo menu e novo login; as paradas resolvidas não voltam                                                       |
+| `06-modulo-frota-desligado`          | motorista sem Frotas: abre nas entregas; "Início" só tem a conta                                                      |
 | `07-troca-de-usuario-com-pendencias` | aparelho compartilhado: a chegada pendente de um motorista nunca é enviada pelo outro; volta e sai sozinha com o dono |
-| `08-chat-mensagem-de-texto` | mensagem de texto: aparece na conversa e o relógio vira o visto |
-| `09-dois-fatores-login` | conta com duas etapas: a senha leva à tela do código |
-| `09b-dois-fatores-codigo` | código errado é recusado; o certo abre as entregas |
+| `08-chat-mensagem-de-texto`          | mensagem de texto: aparece na conversa e o relógio vira o visto                                                       |
+| `09-dois-fatores-login`              | conta com duas etapas: a senha leva à tela do código                                                                  |
+| `09b-dois-fatores-codigo`            | código errado é recusado; o certo abre as entregas                                                                    |
 
 `subflows/` guarda o que se repete: `launch`, `login`, `logout`,
 `take-photo`, `signature`, `checklist-answer`, `checklist-photo`, `gps` e
@@ -289,7 +290,7 @@ rm -rf android   # se sobrou de um build manual; deixado no disco, quebra o andr
 ## Regras para escrever testes
 
 1. **Títulos em inglês**, descrevendo o comportamento (`it("keeps the item
-   when the API refuses it for a business rule")`). Comentários do teste
+when the API refuses it for a business rule")`). Comentários do teste
    também em inglês; textos de tela citados ficam em pt-BR.
 2. **Vermelho antes de verde.** Ao corrigir um defeito, escreva o teste que
    falha com o código antigo, veja-o falhar, e só então corrija.
@@ -317,10 +318,10 @@ rm -rf android   # se sobrou de um build manual; deixado no disco, quebra o andr
 
 ## Problemas comuns
 
-| Sintoma | Causa | O que fazer |
-| --- | --- | --- |
-| `android-manifest.test.ts` falha depois do E2E | pasta `android/` do prebuild ficou no disco | apague `android/` |
-| Testes de paridade "skipped" | `../trajetto-api` ausente | clone a API ao lado, ou aceite o pulo localmente |
-| Cobertura falha com todos os testes verdes | número abaixo do piso | escreva os testes que faltam; não baixe o piso |
-| `secrets-hygiene.test.ts` falha fora de um repositório git | ele usa `git check-ignore` | rode dentro do clone |
-| Stryker reclama de versão do Vitest | Stryker 9 exige Vitest 2 | mantenha 8.7.1 enquanto o Vitest for 1.6 |
+| Sintoma                                                    | Causa                                       | O que fazer                                      |
+| ---------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------ |
+| `android-manifest.test.ts` falha depois do E2E             | pasta `android/` do prebuild ficou no disco | apague `android/`                                |
+| Testes de paridade "skipped"                               | `../trajetto-api` ausente                   | clone a API ao lado, ou aceite o pulo localmente |
+| Cobertura falha com todos os testes verdes                 | número abaixo do piso                       | escreva os testes que faltam; não baixe o piso   |
+| `secrets-hygiene.test.ts` falha fora de um repositório git | ele usa `git check-ignore`                  | rode dentro do clone                             |
+| Stryker reclama de versão do Vitest                        | Stryker 9 exige Vitest 2                    | mantenha 8.7.1 enquanto o Vitest for 1.6         |

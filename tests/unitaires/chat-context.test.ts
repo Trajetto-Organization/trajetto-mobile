@@ -9,6 +9,7 @@ import {
   chatContextOfRoute,
   chatContextParams,
   chatContextParamsKey,
+  chatDeliveryLabel,
   chatRouteLabel,
   composeImageBatch,
   citesRefusedContext,
@@ -38,7 +39,9 @@ const deliveryWithStop = {
   stops: [{ route: { id: ROUTE, code: 42, name: "Zona Sul" } }],
 };
 
-function message(overrides: Partial<ClientChatMessage> = {}): ClientChatMessage {
+function message(
+  overrides: Partial<ClientChatMessage> = {},
+): ClientChatMessage {
   return {
     id: "local-sub-1",
     kind: "TEXT",
@@ -83,7 +86,9 @@ describe("opening the chat from a screen", () => {
   it("round-trips through the router params", () => {
     const context = chatContextOfDelivery(deliveryWithStop);
 
-    expect(chatContextFromParams(chatContextParams(context, 1))).toEqual(context);
+    expect(chatContextFromParams(chatContextParams(context, 1))).toEqual(
+      context,
+    );
 
     const routeOnly = chatContextOfRoute({ id: ROUTE, code: 7, name: null });
 
@@ -96,13 +101,18 @@ describe("opening the chat from a screen", () => {
     // The tab is already mounted: params a route chip left behind must be
     // overwritten by a delivery chip without a route, not merged into it.
     const params = chatContextParams(
-      chatContextOfDelivery({ id: DELIVERY, recipient_name: "Mercado Central" }),
+      chatContextOfDelivery({
+        id: DELIVERY,
+        recipient_name: "Mercado Central",
+      }),
       3,
     );
 
     expect(params).toEqual({
       deliveryId: DELIVERY,
       recipient: "Mercado Central",
+      // A code left behind by the previous delivery's chip is cleared too.
+      deliveryCode: "",
       routeId: "",
       routeCode: "",
       routeName: "",
@@ -119,7 +129,9 @@ describe("opening the chat from a screen", () => {
   it("ignores half-filled params instead of showing a broken chip", () => {
     expect(chatContextFromParams({})).toBeNull();
     expect(chatContextFromParams({ deliveryId: DELIVERY })).toBeNull();
-    expect(chatContextFromParams({ routeId: ROUTE, routeCode: "abc" })).toBeNull();
+    expect(
+      chatContextFromParams({ routeId: ROUTE, routeCode: "abc" }),
+    ).toBeNull();
     expect(chatContextFromParams({ routeId: ROUTE, routeCode: "" })).toBeNull();
 
     // A repeated param arrives as an array; the first value counts.
@@ -127,6 +139,42 @@ describe("opening the chat from a screen", () => {
       chatContextFromParams({
         deliveryId: [DELIVERY, "other"],
         recipient: ["Mercado Central"],
+      })?.delivery,
+    ).toEqual({ id: DELIVERY, recipient: "Mercado Central" });
+  });
+
+  it("carries the delivery's order code, through the params and back", () => {
+    const context = chatContextOfDelivery({
+      ...deliveryWithStop,
+      code: " 4815 ",
+    });
+
+    expect(context.delivery).toEqual({
+      id: DELIVERY,
+      recipient: "Mercado Central",
+      code: "4815",
+    });
+    expect(chatContextParams(context, 4).deliveryCode).toBe("4815");
+    expect(chatContextFromParams(chatContextParams(context, 4))).toEqual(
+      context,
+    );
+  });
+
+  it("keeps a chip without a code exactly as before codes were shown", () => {
+    for (const code of [undefined, null, "", "   "]) {
+      expect(
+        chatContextOfDelivery({ ...deliveryWithStop, code }).delivery,
+      ).toEqual({
+        id: DELIVERY,
+        recipient: "Mercado Central",
+      });
+    }
+
+    expect(
+      chatContextFromParams({
+        deliveryId: DELIVERY,
+        recipient: "Mercado Central",
+        deliveryCode: "",
       })?.delivery,
     ).toEqual({ id: DELIVERY, recipient: "Mercado Central" });
   });
@@ -149,10 +197,33 @@ describe("what the chip and the bubble read", () => {
     );
 
     expect(
-      chatContextLabel(chatContextOfRoute({ id: ROUTE, code: 42, name: "Zona Sul" })),
+      chatContextLabel(
+        chatContextOfRoute({ id: ROUTE, code: 42, name: "Zona Sul" }),
+      ),
     ).toBe("Sobre a Rota 42 · Zona Sul");
 
     expect(chatRouteLabel({ code: 9, name: null })).toBe("Rota 9");
+  });
+
+  it("puts the order code first, so a chip cut short on a narrow phone still shows it", () => {
+    expect(
+      chatContextLabel(
+        chatContextOfDelivery({ ...deliveryWithStop, code: "4815" }),
+      ),
+    ).toBe("Sobre a entrega: Pedido 4815 · Mercado Central · Rota 42");
+
+    expect(
+      chatDeliveryLabel({ recipient: "Mercado Central", code: "4815" }),
+    ).toBe("Pedido 4815 · Mercado Central");
+    expect(
+      chatDeliveryLabel({ recipient: "Mercado Central", code: null }),
+    ).toBe("Mercado Central");
+    expect(
+      chatDeliveryLabel({ recipient: "Mercado Central", code: "  " }),
+    ).toBe("Mercado Central");
+    expect(chatDeliveryLabel({ recipient: "Mercado Central" })).toBe(
+      "Mercado Central",
+    );
   });
 });
 
@@ -188,7 +259,9 @@ describe("what the message carries", () => {
   it("tells the API the route when the message is about the route", () => {
     expect(
       chatContextBody(
-        chatContextFields(chatContextOfRoute({ id: ROUTE, code: 42, name: null })),
+        chatContextFields(
+          chatContextOfRoute({ id: ROUTE, code: 42, name: null }),
+        ),
       ),
     ).toEqual({ routeId: ROUTE });
 
@@ -199,12 +272,20 @@ describe("what the message carries", () => {
     const context = chatContextOfDelivery(deliveryWithStop);
 
     const batch = composeImageBatch(
-      [{ uri: "file:///a.jpg" }, { uri: "file:///b.jpg" }, { uri: "file:///c.jpg" }],
+      [
+        { uri: "file:///a.jpg" },
+        { uri: "file:///b.jpg" },
+        { uri: "file:///c.jpg" },
+      ],
       "Avaria na caixa",
       context,
     );
 
-    expect(batch.map((item) => item.context)).toEqual([context, context, context]);
+    expect(batch.map((item) => item.context)).toEqual([
+      context,
+      context,
+      context,
+    ]);
     expect(batch.map((item) => item.body)).toEqual([
       undefined,
       undefined,
@@ -216,7 +297,9 @@ describe("what the message carries", () => {
       "file:///c.jpg",
     ]);
 
-    expect(composeImageBatch([{ uri: "file:///a.jpg" }], "", null)[0]).toMatchObject({
+    expect(
+      composeImageBatch([{ uri: "file:///a.jpg" }], "", null)[0],
+    ).toMatchObject({
       body: undefined,
       context: null,
     });
@@ -227,18 +310,33 @@ describe("a reference the API no longer accepts", () => {
   const withDelivery = { deliveryId: DELIVERY, routeId: null };
 
   it("is recognised by the chat's own codes, only for a message that cites one", () => {
-    expect(isStaleContextRejection({ code: "CHAT_DELIVERY_NOT_FOUND" }, withDelivery)).toBe(true);
     expect(
-      isStaleContextRejection({ code: "CHAT_ROUTE_NOT_FOUND" }, { deliveryId: null, routeId: ROUTE }),
+      isStaleContextRejection(
+        { code: "CHAT_DELIVERY_NOT_FOUND" },
+        withDelivery,
+      ),
     ).toBe(true);
     expect(
-      isStaleContextRejection({ code: "CHAT_ROUTE_OTHER_DRIVER" }, { deliveryId: null, routeId: ROUTE }),
+      isStaleContextRejection(
+        { code: "CHAT_ROUTE_NOT_FOUND" },
+        { deliveryId: null, routeId: ROUTE },
+      ),
+    ).toBe(true);
+    expect(
+      isStaleContextRejection(
+        { code: "CHAT_ROUTE_OTHER_DRIVER" },
+        { deliveryId: null, routeId: ROUTE },
+      ),
     ).toBe(true);
 
     // Any other refusal is not fixed by dropping the chip.
-    expect(isStaleContextRejection({ code: "CHAT_DRIVER_NOT_FOUND" }, withDelivery)).toBe(false);
+    expect(
+      isStaleContextRejection({ code: "CHAT_DRIVER_NOT_FOUND" }, withDelivery),
+    ).toBe(false);
     expect(isStaleContextRejection({ status: 404 }, withDelivery)).toBe(false);
-    expect(isStaleContextRejection(new Error("offline"), withDelivery)).toBe(false);
+    expect(isStaleContextRejection(new Error("offline"), withDelivery)).toBe(
+      false,
+    );
 
     // A message without context cannot be refused for it.
     expect(
@@ -287,18 +385,25 @@ describe("a reference the API no longer accepts", () => {
     expect([...refused]).toEqual([DELIVERY]);
 
     expect(
-      citesRefusedContext(chatContextFields(chatContextOfDelivery(deliveryWithStop)), refused),
+      citesRefusedContext(
+        chatContextFields(chatContextOfDelivery(deliveryWithStop)),
+        refused,
+      ),
     ).toBe(true);
 
     // The route itself was never refused: a message about it still goes.
     expect(
       citesRefusedContext(
-        chatContextFields(chatContextOfRoute({ id: ROUTE, code: 42, name: null })),
+        chatContextFields(
+          chatContextOfRoute({ id: ROUTE, code: 42, name: null }),
+        ),
         refused,
       ),
     ).toBe(false);
 
-    expect(citesRefusedContext({ deliveryId: null, routeId: null }, refused)).toBe(false);
+    expect(
+      citesRefusedContext({ deliveryId: null, routeId: null }, refused),
+    ).toBe(false);
   });
 });
 

@@ -14,8 +14,8 @@ import { releaseApiUrlProblem } from "@/utils/api-url-rules";
 
 describe("the API URL a release bundle accepts", () => {
   it.each([
-    "https://trajettoapi.thorsolucoes.com.br",
-    "https://trajettoapi.thorsolucoes.com.br/",
+    "https://api-staging.intrajetto.com",
+    "https://api-staging.intrajetto.com/",
     "https://api.trajetto.com.br:8443",
   ])("accepts %s", (url) => {
     expect(releaseApiUrlProblem(url)).toBeNull();
@@ -121,7 +121,10 @@ describe("a published bundle built with a LAN API URL", () => {
       .request("/health", { requiresAuth: false })
       .catch((thrown: unknown) => thrown);
 
-    expect(error).toMatchObject({ isTransient: true, isAuthenticationError: false });
+    expect(error).toMatchObject({
+      isTransient: true,
+      isAuthenticationError: false,
+    });
   });
 
   it("does not open the socket to it", async () => {
@@ -143,12 +146,15 @@ describe("a published bundle built with a LAN API URL", () => {
   });
 
   it("talks to a public HTTPS API as before", async () => {
-    const { apiClient } = await launch(false, "https://trajettoapi.thorsolucoes.com.br/");
+    const { apiClient } = await launch(
+      false,
+      "https://api-staging.intrajetto.com/",
+    );
 
     await apiClient.request("/health", { requiresAuth: false });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://trajettoapi.thorsolucoes.com.br/health",
+      "https://api-staging.intrajetto.com/health",
       expect.anything(),
     );
   });

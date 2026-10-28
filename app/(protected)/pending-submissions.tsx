@@ -31,6 +31,7 @@ import {
 } from "@/features/submissions/pending-item-rules";
 import { useSendPendingNow } from "@/features/submissions/use-send-pending-now";
 import { reviewRouteOf } from "@/features/occurrences/occurrence-queue-rules";
+import { useQueuedStepIdentifiers } from "@/features/deliveries/hooks/use-queued-step-identifiers";
 import { useThemeColors } from "@/hooks/use-theme";
 
 const KIND_LABEL: Record<OutboxItem["kind"], string> = {
@@ -68,7 +69,11 @@ const TONE_STYLE: Record<
 > = {
   neutral: { badge: "bg-primary-soft", icon: "primary", text: "text-muted" },
   warning: { badge: "bg-warning-soft", icon: "warning", text: "text-warning" },
-  danger: { badge: "bg-destructive-soft", icon: "destructive", text: "text-destructive" },
+  danger: {
+    badge: "bg-destructive-soft",
+    icon: "destructive",
+    text: "text-destructive",
+  },
 };
 
 const formatCreatedAt = (isoDate: string): string => {
@@ -106,6 +111,10 @@ const PendingSubmissionsScreen = () => {
   const pendingCount = useOutboxStore(selectPendingCount);
 
   const activeProgress = useOutboxStore((state) => state.activeProgress);
+
+  // A delivery step's order code and NF-e, from the cached delivery: the
+  // recipient alone repeats across a day of stops.
+  const identifiersOf = useQueuedStepIdentifiers();
 
   // The logout warning's "Enviar agora" too: items waiting on their backoff
   // go now. A plain pass skipped them, so the button spun and sent nothing
@@ -175,6 +184,8 @@ const PendingSubmissionsScreen = () => {
     // the delivery comes from the item's own URL.
     const reviewRoute = view.reviewLabel ? reviewRouteOf(item) : null;
 
+    const identifiers = identifiersOf(item);
+
     return (
       <View
         testID={`pending-item-${item.kind}`}
@@ -184,7 +195,11 @@ const PendingSubmissionsScreen = () => {
           <View
             className={`h-9 w-9 items-center justify-center rounded-full ${tone.badge}`}
           >
-            <Ionicons name={KIND_ICON[item.kind]} size={18} color={colors[tone.icon]} />
+            <Ionicons
+              name={KIND_ICON[item.kind]}
+              size={18}
+              color={colors[tone.icon]}
+            />
           </View>
 
           <View className="flex-1">
@@ -196,6 +211,12 @@ const PendingSubmissionsScreen = () => {
               {item.vehicleLabel ? `${item.vehicleLabel} · ` : ""}
               {formatCreatedAt(item.createdAt)}
             </Text>
+
+            {identifiers ? (
+              <Text className="text-xs text-muted" numberOfLines={1}>
+                {identifiers}
+              </Text>
+            ) : null}
 
             {ageWarning && (
               <Text
@@ -215,7 +236,9 @@ const PendingSubmissionsScreen = () => {
                 {activeProgress.total === 1 ? "foto" : "fotos"}
               </Text>
             ) : (
-              <Text className={`mt-2 text-xs ${tone.text}`}>{view.message}</Text>
+              <Text className={`mt-2 text-xs ${tone.text}`}>
+                {view.message}
+              </Text>
             )}
           </View>
         </View>
@@ -313,10 +336,7 @@ const PendingSubmissionsScreen = () => {
         {pendingCount > 0 && (
           <View className="border-t border-border bg-surface px-6 py-4">
             {sendIncomplete && !isSending && (
-              <View
-                className="mb-3 flex-row gap-2"
-                accessibilityRole="alert"
-              >
+              <View className="mb-3 flex-row gap-2" accessibilityRole="alert">
                 <Ionicons
                   name="alert-circle-outline"
                   size={16}

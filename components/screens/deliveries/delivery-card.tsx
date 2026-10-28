@@ -6,13 +6,18 @@ import {
   formatClock,
   formatDeliveryAddress,
 } from "@/features/deliveries/delivery-rules";
-import { onTheWayLabel, type OnTheWayView } from "@/features/deliveries/on-the-way-rules";
+import { deliveryIdentifiersLabel } from "@/features/deliveries/delivery-identity-rules";
+import {
+  onTheWayLabel,
+  type OnTheWayView,
+} from "@/features/deliveries/on-the-way-rules";
 
 import type { DriverDelivery } from "@/features/deliveries/types";
 import { formatDateOnly } from "@/utils/formatters";
 import { useThemeColors } from "@/hooks/use-theme";
 
 import { OccurrenceAuthorizationBadge } from "../occurrences/occurrence-authorization-card";
+import { DeliveryKindBadge } from "./delivery-kind-badge";
 
 // Token pairs (docs/arquitetura.md, theme section): each reads at 4.5:1 in both themes. Designated
 // is neutral on purpose: pink and violet identify modules, not states.
@@ -21,7 +26,10 @@ const STATUS_CHIP: Record<string, { box: string; text: string }> = {
   IN_TRANSIT: { box: "bg-primary-soft", text: "text-primary" },
 };
 
-const DEFAULT_CHIP = { box: "border border-border bg-subtle", text: "text-ink-soft" };
+const DEFAULT_CHIP = {
+  box: "border border-border bg-subtle",
+  text: "text-ink-soft",
+};
 
 interface DeliveryCardProps {
   delivery: DriverDelivery;
@@ -44,11 +52,17 @@ interface DeliveryCardProps {
 }
 
 /** One stop of the day: who receives, where, and when it is expected. */
-const DeliveryCard = ({ delivery, onPress, position, onTheWay }: DeliveryCardProps) => {
+const DeliveryCard = ({
+  delivery,
+  onPress,
+  position,
+  onTheWay,
+}: DeliveryCardProps) => {
   // A day, not an instant (decision 1.3): read in UTC, or the phone's zone
   // showed the 16th for a delivery expected on the 17th.
   const scheduled = formatDateOnly(delivery.scheduled_date);
   const chip = STATUS_CHIP[delivery.status] ?? DEFAULT_CHIP;
+  const identifiers = deliveryIdentifiersLabel(delivery);
   const colors = useThemeColors();
 
   return (
@@ -75,17 +89,24 @@ const DeliveryCard = ({ delivery, onPress, position, onTheWay }: DeliveryCardPro
             {delivery.recipient_name}
           </Text>
 
-          {delivery.code ? (
+          {/* Order code and NF-e: what the driver matches the load with
+              (one line, cut short on a narrow phone rather than wrapped). */}
+          {identifiers ? (
             <Text className="text-xs text-muted" numberOfLines={1}>
-              Pedido: {delivery.code}
+              {identifiers}
             </Text>
           ) : null}
         </View>
 
-        <View className={`rounded-full px-3 py-1 ${chip.box}`}>
-          <Text className={`text-xs font-medium ${chip.text}`}>
-            {DRIVER_DELIVERY_STATUS_LABELS[delivery.status]}
-          </Text>
+        {/* The kind under the status: the right column is free below the
+            chip, and the identifiers keep the middle one's width. */}
+        <View className="items-end gap-1">
+          <View className={`rounded-full px-3 py-1 ${chip.box}`}>
+            <Text className={`text-xs font-medium ${chip.text}`}>
+              {DRIVER_DELIVERY_STATUS_LABELS[delivery.status]}
+            </Text>
+          </View>
+          <DeliveryKindBadge kind={delivery.kind} />
         </View>
       </View>
 
@@ -119,7 +140,10 @@ const DeliveryCard = ({ delivery, onPress, position, onTheWay }: DeliveryCardPro
             size={13}
             color={colors.primary}
           />
-          <Text className="ml-1 text-xs font-medium text-primary" numberOfLines={1}>
+          <Text
+            className="ml-1 text-xs font-medium text-primary"
+            numberOfLines={1}
+          >
             {onTheWayLabel(onTheWay, formatClock)}
           </Text>
         </View>

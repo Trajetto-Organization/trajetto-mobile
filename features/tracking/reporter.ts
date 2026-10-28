@@ -6,7 +6,7 @@ import { asyncStorage } from "@/utils/storage";
 import type { TrackablePing } from "./position-rules";
 
 import {
-  afterFlushFailure,
+  afterFlushAttempt,
   afterFlushForbidden,
   afterFlushSuccess,
   afterSignedOut,
@@ -114,6 +114,13 @@ const postWithSession: PostPings = (pings) =>
 interface BatchOutcome {
   delivered: number;
   unsent: TrackablePing[];
+
+  /**
+   * What leaves the buffer: the points the API took (2xx) and the lone
+   * points it refused as invalid. Everything else stays stored.
+   */
+  settled: TrackablePing[];
+
   tracking: boolean | null;
 
   /** Why the batch stopped short, when it did. */
@@ -133,6 +140,7 @@ async function sendBatch(
   post: PostPings,
 ): Promise<BatchOutcome> {
   const pending = [batch];
+  const settled: TrackablePing[] = [];
 
   let delivered = 0;
   let tracking: boolean | null = null;
@@ -144,6 +152,7 @@ async function sendBatch(
       const response = await post(piece);
 
       delivered += piece.length;
+      settled.push(...piece);
       tracking = response.data.tracking;
     } catch (error) {
       const failure = classifyBatchFailure(error);
@@ -152,6 +161,9 @@ async function sendBatch(
         const halves = splitRefused(piece);
 
         if (halves.length === 0) {
+          // Settled too: sent again, it gets the same 400 forever.
+          settled.push(...piece);
+
           // Only when it was taken: the point itself is where the driver was
           // (personal data), and these lines reach logcat in production.
           logger.warn(
@@ -167,22 +179,29 @@ async function sendBatch(
       return {
         delivered,
         unsent: [piece, ...pending].flat(),
+        settled,
         tracking,
         failure,
       };
     }
   }
 
-  return { delivered, unsent: [], tracking, failure: null };
+  return { delivered, unsent: [], settled, tracking, failure: null };
 }
 
 /**
  * The flush loop, for one known user and one way of posting.
  *
  * In pieces of at most MAX_FLUSH_BATCH: the buffer can hold more than one
- * request may carry. Each piece leaves the buffer BEFORE its request and goes
- * back at the front on failure, so nothing is sent twice or lost, and a
- * failure mid-way keeps everything after it for the next flush.
+ * request may carry. Each piece STAYS in the stored buffer while its request
+ * is in flight and leaves only once the API has settled it: the background
+ * task is the context Android kills most, often mid-request, and a piece
+ * taken out before its POST was up to two hundred points of the trail gone.
+ * A piece that did reach the API before the kill goes out again on the next
+ * flush, and the API keeps only one copy of a resent point. Points appended
+ * meanwhile (by the other JavaScript context) are newer and stay
+ * (`afterFlushAttempt`); a failure mid-way keeps everything not settled for
+ * the next flush, in order.
  *
  * Must run inside `serialise`.
  */
@@ -199,9 +218,7 @@ async function flushAs(
   let sent = 0;
 
   while (state.buffer.length > 0) {
-    const { sending, rest } = takeFlushBatch(state.buffer);
-
-    await writeState({ ...state, buffer: rest });
+    const sending = takeFlushBatch(state.buffer);
 
     const outcome = await sendBatch(sending, post);
     const after = await readState();
@@ -211,19 +228,21 @@ async function flushAs(
     if (outcome.failure === "forbidden") {
       await writeState(afterFlushForbidden(after));
 
-      logger.warn("[Tracking] API recusou as posições deste aparelho; rastreamento parado");
+      logger.warn(
+        "[Tracking] API recusou as posições deste aparelho; rastreamento parado",
+      );
 
       return { sent, stopped: true };
     }
 
     if (outcome.failure === "signed-out") {
-      await writeState(afterSignedOut(after, outcome.unsent));
+      await writeState(afterSignedOut(after, outcome.settled));
 
       return { sent, stopped: true };
     }
 
     if (outcome.unsent.length > 0) {
-      await writeState(afterFlushFailure(after, outcome.unsent));
+      await writeState(afterFlushAttempt(after, outcome.settled));
 
       logger.warn("[Tracking] Falha ao enviar posições");
 
@@ -231,7 +250,7 @@ async function flushAs(
     }
 
     state = afterFlushSuccess(
-      after,
+      afterFlushAttempt(after, outcome.settled),
       outcome.tracking ?? !after.stopped,
       Date.now(),
     );
@@ -343,9 +362,7 @@ async function ingest(
     };
   });
 
-  const stopped = outcome.flushNow
-    ? (await flush()).stopped
-    : outcome.stopped;
+  const stopped = outcome.flushNow ? (await flush()).stopped : outcome.stopped;
 
   return {
     kept: outcome.kept,

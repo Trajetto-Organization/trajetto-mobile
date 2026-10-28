@@ -14,29 +14,24 @@ export const BusinessErrorState: React.FC<BusinessErrorStateProps> = ({
 }) => {
   return (
     <View
-      className="mx-6 mt-4 bg-white rounded-2xl border
-      border-danger-100 shadow-sm overflow-hidden"
+      className="mx-6 mt-4 bg-card rounded-2xl
+      border border-destructive/40 shadow-sm overflow-hidden"
     >
-      <View
-        className="bg-gradient-to-r
-        from-danger-500 to-danger-600
-        px-4 py-3"
-      >
+      <View className="bg-destructive px-4 py-3">
         <View className="flex-row items-center">
           <View
-            className="w-8 h-8 bg-white/20
-            rounded-full items-center
-            justify-center mr-3"
+            className="w-8 h-8 bg-destructive-foreground/20
+            rounded-full items-center justify-center mr-3"
           >
-            <Text className="text-white font-bold">⚠️</Text>
+            <Text className="text-destructive-foreground font-bold">⚠️</Text>
           </View>
-          <Text className="text-white font-bold text-base">
+          <Text className="text-destructive-foreground font-bold text-base">
             Oops! Algo deu errado
           </Text>
         </View>
       </View>
       <View className="p-4">
-        <Text className="text-gray-600 text-sm mb-4 leading-5">
+        <Text className="text-muted text-sm mb-4 leading-5">
           {error ||
             "Não foi possível carregar as empresas. Verifique sua conexão e tente novamente."}
         </Text>

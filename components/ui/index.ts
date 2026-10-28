@@ -20,6 +20,7 @@ export { VehicleActionModal } from "./vehicle-action-modal";
 export { Avatar } from "./avatar";
 export { UserSettingsDrawer } from "./user-settings-drawer";
 
+export { Sheet } from "./sheet";
 export { ImagePickerBottomSheet } from "./image-picker-bottom-sheet";
 export { UploadProgressBar } from "./upload-progress-bar";
 export { TotalAmountDisplay } from "./total-amount-display";

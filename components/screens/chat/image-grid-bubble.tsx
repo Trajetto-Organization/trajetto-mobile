@@ -44,6 +44,9 @@ interface ChatImageGridProps {
    */
   onPressImage: (message: ClientChatMessage) => void;
   onPressDelivery: (deliveryId: string) => void;
+
+  /** Delivery id → order code, from the cached day (`deliveryCodeIndex`). */
+  deliveryCodes?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -65,6 +68,7 @@ const ChatImageGrid = ({
   counterpartDeliveredAt,
   onPressImage,
   onPressDelivery,
+  deliveryCodes,
 }: ChatImageGridProps) => {
   const colors = useThemeColors();
   const tones = bubbleTones(colors, isMine);
@@ -152,6 +156,7 @@ const ChatImageGrid = ({
           <ChatMessageContextTags
             delivery={linked}
             route={linkedRoute}
+            deliveryCodes={deliveryCodes}
             isMine={isMine}
             onPressDelivery={onPressDelivery}
           />
@@ -190,7 +195,10 @@ const ChatImageGrid = ({
                   {/* Same cache identity as the single bubble and the
                   viewer: the message, never the signed url (MOB-08). */}
                   <Image
-                    source={chatImageSource(message.attachment_url!, message.id)}
+                    source={chatImageSource(
+                      message.attachment_url!,
+                      message.id,
+                    )}
                     recyclingKey={message.id}
                     cachePolicy="memory-disk"
                     contentFit="cover"

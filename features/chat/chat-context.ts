@@ -9,7 +9,7 @@ import type { ChatRouteTag, ClientChatMessage } from "./types";
  * device.
  */
 interface ChatContext {
-  delivery: { id: string; recipient: string } | null;
+  delivery: ChatDeliveryRef | null;
   route: ChatRouteTag | null;
 
   /**
@@ -19,6 +19,17 @@ interface ChatContext {
    * delivery's or route's ticket by itself.
    */
   ticket?: ChatTicketRef | null;
+}
+
+/**
+ * The delivery a chip is about. `code` is the order code, the delivery's
+ * canonical identifier: the recipient alone repeats across a day of stops.
+ * Present only when the screen that opened the chat knew it.
+ */
+interface ChatDeliveryRef {
+  id: string;
+  recipient: string;
+  code?: string;
 }
 
 /** "#128 · Cliente ausente — Mercado Sol": what the composer says. */
@@ -35,6 +46,7 @@ type RouteParam = string | string[] | undefined;
 interface ChatContextParams {
   deliveryId?: RouteParam;
   recipient?: RouteParam;
+  deliveryCode?: RouteParam;
   routeId?: RouteParam;
   routeCode?: RouteParam;
   routeName?: RouteParam;
@@ -85,6 +97,20 @@ function firstParam(value: RouteParam): string {
 }
 
 /**
+ * A chip's delivery, with its code only when there is one: a chip opened
+ * without it reads exactly as it did before codes were shown.
+ */
+function deliveryRef(
+  id: string,
+  recipient: string,
+  code: RouteParam | null,
+): ChatDeliveryRef {
+  const trimmed = firstParam(code ?? undefined);
+
+  return trimmed ? { id, recipient, code: trimmed } : { id, recipient };
+}
+
+/**
  * The chip a screen asked for, or `null` when it asked for none.
  *
  * A delivery needs its recipient (the chip shows it) and a route needs its
@@ -97,7 +123,10 @@ function chatContextFromParams(params: ChatContextParams): ChatContext | null {
   const routeId = firstParam(params.routeId);
   const routeCode = firstParam(params.routeCode);
 
-  const delivery = deliveryId && recipient ? { id: deliveryId, recipient } : null;
+  const delivery =
+    deliveryId && recipient
+      ? deliveryRef(deliveryId, recipient, params.deliveryCode)
+      : null;
 
   const route =
     routeId && ROUTE_CODE.test(routeCode)
@@ -140,11 +169,13 @@ function chatContextParams(
   return {
     deliveryId: context.delivery?.id ?? "",
     recipient: context.delivery?.recipient ?? "",
+    deliveryCode: context.delivery?.code ?? "",
     routeId: context.route?.id ?? "",
     routeCode: context.route ? String(context.route.code) : "",
     routeName: context.route?.name ?? "",
     ticketId: context.ticket?.id ?? "",
-    ticketNumber: context.ticket?.number != null ? String(context.ticket.number) : "",
+    ticketNumber:
+      context.ticket?.number != null ? String(context.ticket.number) : "",
     ticketSubject: context.ticket?.subject ?? "",
     contextAt: String(at),
   };
@@ -160,12 +191,17 @@ type RouteLike = Pick<ChatRouteTag, "id" | "code" | "name">;
 function chatContextOfDelivery(delivery: {
   id: string;
   recipient_name: string;
+  code?: string | null;
   stops?: ReadonlyArray<{ route: RouteLike }> | null;
 }): ChatContext {
   const route = delivery.stops?.[0]?.route ?? null;
 
   return {
-    delivery: { id: delivery.id, recipient: delivery.recipient_name },
+    delivery: deliveryRef(
+      delivery.id,
+      delivery.recipient_name,
+      delivery.code ?? null,
+    ),
     route: route ? { id: route.id, code: route.code, name: route.name } : null,
   };
 }
@@ -190,13 +226,31 @@ function chatContextParamsKey(params: ChatContextParams): string {
 
 /** "Rota 42 · Zona Sul", or "Rota 42" for a route with no name. */
 function chatRouteLabel(route: Pick<ChatRouteTag, "code" | "name">): string {
-  return route.name ? `Rota ${route.code} · ${route.name}` : `Rota ${route.code}`;
+  return route.name
+    ? `Rota ${route.code} · ${route.name}`
+    : `Rota ${route.code}`;
+}
+
+/**
+ * "Pedido 4815 · Mercado Sol", or the recipient alone when the code is not
+ * known. The code first: a chip cut short on a narrow phone still shows it.
+ */
+function chatDeliveryLabel(delivery: {
+  recipient: string;
+  code?: string | null;
+}): string {
+  const code = delivery.code?.trim();
+
+  return code ? `Pedido ${code} · ${delivery.recipient}` : delivery.recipient;
 }
 
 /** What the composer's chip reads. */
 function chatContextLabel(context: ChatContext): string {
   if (context.ticket) {
-    const number = context.ticket.number != null ? `#${context.ticket.number}` : "Atendimento";
+    const number =
+      context.ticket.number != null
+        ? `#${context.ticket.number}`
+        : "Atendimento";
 
     return context.ticket.subject
       ? `Assunto: ${number} · ${context.ticket.subject}`
@@ -206,7 +260,7 @@ function chatContextLabel(context: ChatContext): string {
   if (context.delivery) {
     const route = context.route ? ` · Rota ${context.route.code}` : "";
 
-    return `Sobre a entrega: ${context.delivery.recipient}${route}`;
+    return `Sobre a entrega: ${chatDeliveryLabel(context.delivery)}${route}`;
   }
 
   return context.route ? `Sobre a ${chatRouteLabel(context.route)}` : "";
@@ -219,7 +273,9 @@ function chatContextLabel(context: ChatContext): string {
  * lands. The delivery's status is the server's to say: the confirmed message
  * replaces this one whole.
  */
-function chatContextFields(context: ChatContext | null | undefined): ChatContextFields {
+function chatContextFields(
+  context: ChatContext | null | undefined,
+): ChatContextFields {
   return {
     deliveryId: context?.delivery?.id ?? null,
     delivery: context?.delivery
@@ -280,11 +336,13 @@ function composeImageBatch(
   images: readonly StagedChatImage[],
   caption: string,
   context: ChatContext | null,
-): Array<StagedChatImage & {
-  kind: "IMAGE";
-  body: string | undefined;
-  context: ChatContext | null;
-}> {
+): Array<
+  StagedChatImage & {
+    kind: "IMAGE";
+    body: string | undefined;
+    context: ChatContext | null;
+  }
+> {
   const lastIndex = images.length - 1;
 
   return images.map((image, index) => ({
@@ -313,7 +371,10 @@ interface LinkedMessagePreview {
  */
 function linkedMessagesPreview(
   page: ReadonlyArray<
-    Pick<ClientChatMessage, "id" | "kind" | "body" | "senderId" | "sender" | "created_at">
+    Pick<
+      ClientChatMessage,
+      "id" | "kind" | "body" | "senderId" | "sender" | "created_at"
+    >
   >,
   myUserId: string,
 ): LinkedMessagePreview[] {
@@ -344,7 +405,10 @@ function linkedMessageMoment(iso: string, now: Date = new Date()): string {
 
   if (Number.isNaN(date.getTime())) return "";
 
-  const time = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const time = date.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   const today =
     date.getFullYear() === now.getFullYear() &&
@@ -353,7 +417,10 @@ function linkedMessageMoment(iso: string, now: Date = new Date()): string {
 
   if (today) return time;
 
-  const day = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const day = date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 
   return `${day} às ${time}`;
 }
@@ -468,6 +535,7 @@ export {
   chatContextOfRoute,
   chatContextParams,
   chatContextParamsKey,
+  chatDeliveryLabel,
   chatRouteLabel,
   chipCitesRefused,
   citesRefusedContext,
@@ -481,6 +549,7 @@ export {
   stripChatContext,
 };
 export type {
+  ChatDeliveryRef,
   ChatTicketRef,
   ChatContext,
   ChatContextParams,

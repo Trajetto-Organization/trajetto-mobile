@@ -1,6 +1,7 @@
 import type { DeliveryStatus } from "./delivery-rules";
 
 import type { DriverRouteStop } from "./delivery-rules";
+import type { DeliveryKind } from "./delivery-identity-rules";
 import type { RoutePlanVersion } from "./plan-change-rules";
 
 interface DriverDeliveryItem {
@@ -16,6 +17,15 @@ interface DriverDelivery {
   id: string;
   code?: string | null;
   invoice_number?: string | null;
+
+  /**
+   * Delivery, pickup or service order. Optional: an API before the field,
+   * and the cached lists it wrote (up to seven days), have no key, and read
+   * as a delivery (`deliveryKindBadge`). Read through that rule, never
+   * compared by hand: a value a newer API adds must not reach the screen raw.
+   */
+  kind?: DeliveryKind | null;
+
   status: DeliveryStatus;
   recipient_name: string;
   recipient_telephone?: string | null;
@@ -54,7 +64,8 @@ interface DriverDelivery {
   authorization_request?: DriverAuthorizationRequest | null;
 }
 
-type AuthorizationRequestStatus = "PENDING" | "APPROVED" | "DENIED" | "SUPERSEDED";
+type AuthorizationRequestStatus =
+  "PENDING" | "APPROVED" | "DENIED" | "SUPERSEDED";
 
 /** `authorization_request` of `/delivery/my-deliveries` (docs/contratos-app/occurrences.md §4). */
 interface DriverAuthorizationRequest {

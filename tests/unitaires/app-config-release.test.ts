@@ -18,14 +18,20 @@ import { releaseApiUrlProblem } from "@/utils/api-url-rules";
  */
 const ROOT = resolve(__dirname, "..", "..");
 
-const configure = createRequire(__filename)(resolve(ROOT, "app.config.js")) as (
-  context: { config: Record<string, any> },
-) => Record<string, any>;
+const configure = createRequire(__filename)(
+  resolve(ROOT, "app.config.js"),
+) as (context: { config: Record<string, any> }) => Record<string, any>;
 
 const appJson = JSON.parse(fs.readFileSync(resolve(ROOT, "app.json"), "utf8"));
 
-const ENV_KEYS = ["EAS_BUILD_PROFILE", "APP_ENV", "EXPO_PUBLIC_API_URL"] as const;
-const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+const ENV_KEYS = [
+  "EAS_BUILD_PROFILE",
+  "APP_ENV",
+  "EXPO_PUBLIC_API_URL",
+] as const;
+const savedEnv = Object.fromEntries(
+  ENV_KEYS.map((key) => [key, process.env[key]]),
+);
 
 const evaluate = (env: Partial<Record<(typeof ENV_KEYS)[number], string>>) => {
   for (const key of ENV_KEYS) delete process.env[key];
@@ -59,7 +65,7 @@ describe("the API URL check at publish time", () => {
     expect(() =>
       evaluate({
         APP_ENV: "preview",
-        EXPO_PUBLIC_API_URL: "https://trajettoapi.thorsolucoes.com.br",
+        EXPO_PUBLIC_API_URL: "https://api-staging.intrajetto.com",
       }),
     ).not.toThrow();
   });
@@ -78,7 +84,7 @@ describe("the API URL check at publish time", () => {
   });
 
   it.each([
-    "https://trajettoapi.thorsolucoes.com.br",
+    "https://api-staging.intrajetto.com",
     "http://api.trajetto.com.br",
     "https://user:senha@api.trajetto.com.br",
     "https://api.trajetto.com.br/?x=1",

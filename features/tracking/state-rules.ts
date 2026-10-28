@@ -134,24 +134,56 @@ function afterFlushSuccess(
 }
 
 /**
- * After the API did not.
- *
- * The batch goes back at the FRONT: it is older than whatever arrived while
- * the request was in flight, and a trail is only readable in order. The cap is
- * re-applied, because a phone that spent an hour in a dead zone can otherwise
- * grow the buffer past what any request may carry.
+ * A point's identity across a storage round trip. The stored buffer is a
+ * JSON copy, never the objects that were sent, so points are matched by
+ * value: two fixes with the same instant and place are the same fix.
  */
-function afterFlushFailure(
-  state: TrackingState,
-  sending: TrackablePing[],
-): TrackingState {
-  let buffer = state.buffer;
+function pingKey(ping: TrackablePing): string {
+  return `${ping.recorded_at}|${ping.latitude}|${ping.longitude}`;
+}
 
-  for (let index = sending.length - 1; index >= 0; index -= 1) {
-    buffer = [sending[index], ...buffer];
+/**
+ * The buffer without the points a flush attempt settled — each one once.
+ *
+ * Only those: points a second JavaScript context (the background task)
+ * appended while the request was in flight are newer and stay, and the
+ * unsent part of the batch stays exactly where it was, in front of them.
+ */
+function withoutSettled(
+  buffer: TrackablePing[],
+  settled: TrackablePing[],
+): TrackablePing[] {
+  const remaining = new Map<string, number>();
+
+  for (const ping of settled) {
+    const key = pingKey(ping);
+    remaining.set(key, (remaining.get(key) ?? 0) + 1);
   }
 
-  return { ...state, buffer: capBuffer(buffer) };
+  return buffer.filter((ping) => {
+    const key = pingKey(ping);
+    const count = remaining.get(key) ?? 0;
+
+    if (count === 0) return true;
+
+    remaining.set(key, count - 1);
+    return false;
+  });
+}
+
+/**
+ * After a flush attempt, whatever the answer: the batch never left storage
+ * before its request (a background task killed mid-request used to lose up
+ * to a whole batch), so only what the API settled leaves now — the points it
+ * took (2xx) and the lone points it refused as invalid. The rest stays in
+ * order, at the front, for the next flush; the API discards a point sent
+ * twice. The cap is re-applied for a buffer restored above it.
+ */
+function afterFlushAttempt(
+  state: TrackingState,
+  settled: TrackablePing[],
+): TrackingState {
+  return { ...state, buffer: capBuffer(withoutSettled(state.buffer, settled)) };
 }
 
 /**
@@ -210,14 +242,14 @@ function afterFlushForbidden(state: TrackingState): TrackingState {
 
 /**
  * After the session ended mid-flush: stop collecting, keep what was
- * collected. It is this driver's trail, and it goes out when they sign in
- * again (`claimFor` keeps an owner's own points).
+ * collected but not settled. It is this driver's trail, and it goes out when
+ * they sign in again (`claimFor` keeps an owner's own points).
  */
 function afterSignedOut(
   state: TrackingState,
-  unsent: TrackablePing[],
+  settled: TrackablePing[],
 ): TrackingState {
-  return { ...afterFlushFailure(state, unsent), stopped: true };
+  return { ...afterFlushAttempt(state, settled), stopped: true };
 }
 
 /**
@@ -246,20 +278,15 @@ function shouldHaltTracking(input: {
  * a trail that already ended beats writing it into the wrong one.
  */
 function claimFor(state: TrackingState, userId: string): TrackingState {
-  return state.ownerId === userId
-    ? state
-    : { ...EMPTY_STATE, ownerId: userId };
+  return state.ownerId === userId ? state : { ...EMPTY_STATE, ownerId: userId };
 }
 
-/** The oldest points first, at most one request's worth. */
-function takeFlushBatch(buffer: TrackablePing[]): {
-  sending: TrackablePing[];
-  rest: TrackablePing[];
-} {
-  return {
-    sending: buffer.slice(0, MAX_FLUSH_BATCH),
-    rest: buffer.slice(MAX_FLUSH_BATCH),
-  };
+/**
+ * The oldest points first, at most one request's worth. A copy: the batch
+ * stays in the stored buffer until the API settles it (`afterFlushAttempt`).
+ */
+function takeFlushBatch(buffer: TrackablePing[]): TrackablePing[] {
+  return buffer.slice(0, MAX_FLUSH_BATCH);
 }
 
 /**
@@ -290,7 +317,7 @@ function capBuffer(buffer: TrackablePing[]): TrackablePing[] {
 
 export {
   EMPTY_STATE,
-  afterFlushFailure,
+  afterFlushAttempt,
   afterFlushForbidden,
   afterFlushSuccess,
   afterSignedOut,
@@ -298,10 +325,12 @@ export {
   claimFor,
   classifyBatchFailure,
   ingestInto,
+  pingKey,
   restoreFrom,
   shouldHaltTracking,
   splitRefused,
   takeFlushBatch,
+  withoutSettled,
   type BatchFailure,
   type TrackingState,
 };

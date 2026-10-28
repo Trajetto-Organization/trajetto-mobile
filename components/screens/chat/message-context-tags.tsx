@@ -2,7 +2,10 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { chatRouteLabel } from "@/features/chat/chat-context";
+import {
+  chatDeliveryLabel,
+  chatRouteLabel,
+} from "@/features/chat/chat-context";
 
 import type { ClientChatMessage } from "@/features/chat/types";
 import { bubbleTones } from "@/features/chat/bubble-tones";
@@ -11,6 +14,12 @@ import { useThemeColors } from "@/hooks/use-theme";
 interface ChatMessageContextTagsProps {
   delivery: ClientChatMessage["delivery"];
   route?: ClientChatMessage["route"];
+
+  /**
+   * Delivery id → order code, from the cached day (`deliveryCodeIndex`): the
+   * API's chat payload names the delivery by recipient only.
+   */
+  deliveryCodes?: ReadonlyMap<string, string>;
 
   /** The driver's own (blue) bubble: the tags take its light-on-dark tones. */
   isMine: boolean;
@@ -28,6 +37,7 @@ interface ChatMessageContextTagsProps {
 const ChatMessageContextTags = ({
   delivery,
   route,
+  deliveryCodes,
   isMine,
   onPressDelivery,
 }: ChatMessageContextTagsProps) => {
@@ -35,29 +45,32 @@ const ChatMessageContextTags = ({
 
   if (!delivery && !route) return null;
 
+  const deliveryLabel = delivery
+    ? chatDeliveryLabel({
+        recipient: delivery.recipient_name,
+        code: deliveryCodes?.get(delivery.id),
+      })
+    : "";
+
   return (
     <View className="mb-1.5 gap-1">
       {delivery && (
         <TouchableOpacity
           onPress={() => onPressDelivery(delivery.id)}
           accessibilityRole="button"
-          accessibilityLabel={`Abrir entrega de ${delivery.recipient_name}`}
+          accessibilityLabel={`Abrir entrega de ${deliveryLabel}`}
           className={`flex-row items-center gap-1.5 rounded-lg px-2 py-1.5 ${
             // A shade darker than the blue bubble it sits on, so the chip
             // still reads as a button there.
             isMine ? "bg-black/20" : "bg-subtle"
           }`}
         >
-          <Ionicons
-            name="cube-outline"
-            size={14}
-            color={tones.tint}
-          />
+          <Ionicons name="cube-outline" size={14} color={tones.tint} />
           <Text
             numberOfLines={1}
             className={`flex-1 text-xs ${isMine ? "text-primary-foreground" : "text-ink-soft"}`}
           >
-            Entrega: {delivery.recipient_name}
+            Entrega: {deliveryLabel}
           </Text>
         </TouchableOpacity>
       )}
@@ -67,11 +80,7 @@ const ChatMessageContextTags = ({
           className="flex-row items-center gap-1 px-0.5"
           accessibilityLabel={`Mensagem da ${chatRouteLabel(route)}`}
         >
-          <Ionicons
-            name="map-outline"
-            size={12}
-            color={tones.meta}
-          />
+          <Ionicons name="map-outline" size={12} color={tones.meta} />
           <Text
             numberOfLines={1}
             className={`flex-shrink text-[11px] ${

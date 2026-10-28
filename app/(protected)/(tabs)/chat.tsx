@@ -12,11 +12,7 @@ import {
 import { KeyboardAvoidingView } from "../../../components/ui/keyboard-avoiding-view";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  useFocusEffect,
-  useLocalSearchParams,
-  useRouter,
-} from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -53,6 +49,8 @@ import {
   useChatWithContext,
 } from "@/features/chat/hooks/use-chat-with-context";
 import { useDriverTickets } from "@/features/chat/hooks/use-driver-tickets";
+import { useMyDeliveries } from "@/features/deliveries/hooks/use-my-deliveries";
+import { deliveryCodeIndex } from "@/features/deliveries/delivery-identity-rules";
 import Toast from "react-native-toast-message";
 import {
   needsTicketSeparator,
@@ -77,15 +75,26 @@ const ChatScreen = () => {
   const router = useRouter();
   const colors = useThemeColors();
 
-  const params = useLocalSearchParams<Record<keyof ChatContextParams, string>>();
+  const params =
+    useLocalSearchParams<Record<keyof ChatContextParams, string>>();
 
   // The conversation and what the driver's messages are about (decision
   // 6.7), wired where the tests can mount them.
-  const { chip, chat, composerContext, contextIsAutomatic } = useChatWithContext(params);
+  const { chip, chat, composerContext, contextIsAutomatic } =
+    useChatWithContext(params);
 
   // "Sobre o quê?" (decision 14.5, design §8.2): the driver picks the subject.
   const [isSubjectSheetOpen, setIsSubjectSheetOpen] = useState<boolean>(false);
   const driverTickets = useDriverTickets(isSubjectSheetOpen);
+
+  // The order code on each message's delivery chip: the chat payload names a
+  // delivery by recipient only, the cached day knows its code (the same
+  // query the deliveries tab reads, nothing fetched for this).
+  const { deliveries } = useMyDeliveries();
+  const deliveryCodes = useMemo(
+    () => deliveryCodeIndex(deliveries),
+    [deliveries],
+  );
 
   const handleNewSubject = async () => {
     try {
@@ -272,6 +281,7 @@ const ChatScreen = () => {
             counterpartDeliveredAt={chat.counterpartDeliveredAt}
             onPressImage={handlePressImage}
             onPressDelivery={handlePressDelivery}
+            deliveryCodes={deliveryCodes}
           />
         ) : (
           <ChatMessageBubble
@@ -283,6 +293,7 @@ const ChatScreen = () => {
             onPressImage={handlePressImage}
             onPressDelivery={handlePressDelivery}
             onRetry={chat.retry}
+            deliveryCodes={deliveryCodes}
           />
         )}
       </View>
@@ -328,7 +339,11 @@ const ChatScreen = () => {
     if (chat.loadError) {
       return (
         <View className="flex-1 items-center justify-center px-8">
-          <Ionicons name="cloud-offline-outline" size={44} color={colors.muted} />
+          <Ionicons
+            name="cloud-offline-outline"
+            size={44}
+            color={colors.muted}
+          />
           <Text className="mb-4 mt-3 text-center text-sm text-muted">
             {chat.loadError}
           </Text>
@@ -350,7 +365,11 @@ const ChatScreen = () => {
           refreshControl={refreshControl}
         >
           <View className="items-center">
-            <Ionicons name="chatbubbles-outline" size={44} color={colors.muted} />
+            <Ionicons
+              name="chatbubbles-outline"
+              size={44}
+              color={colors.muted}
+            />
             <Text className="mt-3 text-center text-base font-medium text-ink-soft">
               Fale com a operação
             </Text>
@@ -425,67 +444,70 @@ const ChatScreen = () => {
       where the status bar and the gesture bar are. */}
       <View className="flex-1 bg-background">
         <SafeAreaView className="flex-1">
-        {/* Header */}
-        <View
-          className="flex-row items-center gap-3 border-b border-border
-          bg-surface px-4 py-3"
-        >
-          <TouchableOpacity
-            onPress={handleBack}
-            accessibilityRole="button"
-            accessibilityLabel="Voltar"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={22} color={colors.ink} />
-          </TouchableOpacity>
-
+          {/* Header */}
           <View
-            className="h-10 w-10 items-center justify-center rounded-full
-            bg-primary-soft"
+            className="flex-row items-center gap-3 border-b border-border
+          bg-surface px-4 py-3"
           >
-            <Ionicons name="headset-outline" size={20} color={colors.primary} />
+            <TouchableOpacity
+              onPress={handleBack}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={22} color={colors.ink} />
+            </TouchableOpacity>
+
+            <View
+              className="h-10 w-10 items-center justify-center rounded-full
+            bg-primary-soft"
+            >
+              <Ionicons
+                name="headset-outline"
+                size={20}
+                color={colors.primary}
+              />
+            </View>
+
+            <View className="flex-1">
+              <Text className="text-lg font-semibold text-ink">
+                Chat com a operação
+              </Text>
+              {chat.staffHint ? (
+                <Text className="text-xs font-medium text-primary">
+                  {chatPresenceHintLabel(chat.staffHint)}
+                </Text>
+              ) : (
+                <Text className="text-xs text-muted">
+                  Central da sua empresa
+                </Text>
+              )}
+            </View>
           </View>
 
-          <View className="flex-1">
-            <Text className="text-lg font-semibold text-ink">
-              Chat com a operação
-            </Text>
-            {chat.staffHint ? (
-              <Text className="text-xs font-medium text-primary">
-                {chatPresenceHintLabel(chat.staffHint)}
-              </Text>
-            ) : (
-              <Text className="text-xs text-muted">
-                Central da sua empresa
-              </Text>
-            )}
-          </View>
-        </View>
+          <StatusBanners />
 
-        <StatusBanners />
-
-        {/* "padding" like every other screen with a field: with edge-to-edge
+          {/* "padding" like every other screen with a field: with edge-to-edge
             (SDK 54) Android no longer resizes the window for the keyboard,
             and `undefined` here left the composer under it (MOB-17). Not
             "height": on a flex-1 view the height it sets is ignored, and the
             Maestro chat flow found the composer still under the keyboard. */}
-        <KeyboardAvoidingView className="flex-1" behavior="padding">
-          {renderBody()}
+          <KeyboardAvoidingView className="flex-1" behavior="padding">
+            {renderBody()}
 
-          {!chat.moduleDisabled && (
-            <ChatComposer
-              onSend={chat.send}
-              onSendMany={chat.sendMany}
-              onTyping={chat.emitTyping}
-              onRecording={chat.emitRecording}
-              context={composerContext}
-              contextIsAutomatic={contextIsAutomatic}
-              onClearContext={chip.clear}
-              onPressContext={() => setIsSubjectSheetOpen(true)}
-            />
-          )}
-        </KeyboardAvoidingView>
-
+            {!chat.moduleDisabled && (
+              <ChatComposer
+                onSend={chat.send}
+                onSendMany={chat.sendMany}
+                onTyping={chat.emitTyping}
+                onRecording={chat.emitRecording}
+                context={composerContext}
+                contextIsAutomatic={contextIsAutomatic}
+                onClearContext={chip.clear}
+                onPressContext={() => setIsSubjectSheetOpen(true)}
+              />
+            )}
+          </KeyboardAvoidingView>
         </SafeAreaView>
 
         {/* Fullscreen image viewer: an absolute overlay, never an RN Modal —

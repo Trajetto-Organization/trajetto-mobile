@@ -5,6 +5,7 @@ import { LoadingSpinner, VehicleSkeletonList } from "../../ui";
 import { BusinessEmptyState } from "./business-empty-state";
 
 import { Business } from "@/hooks/use-business-infinite-scroll";
+import { useThemeColors } from "@/hooks/use-theme";
 
 interface BusinessListProps {
   businesses: Business[];
@@ -33,6 +34,7 @@ export const BusinessList: React.FC<BusinessListProps> = ({
   onLoadMore,
   onClearSearch,
 }) => {
+  const colors = useThemeColors();
   const hasSearchResults = Boolean(
     debouncedSearch && debouncedSearch.length > 0,
   );
@@ -98,8 +100,9 @@ export const BusinessList: React.FC<BusinessListProps> = ({
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={["#3b82f6"]}
-          tintColor="#3b82f6"
+          colors={[colors.primarySurface]}
+          tintColor={colors.primary}
+          progressBackgroundColor={colors.card}
           progressViewOffset={20}
         />
       }

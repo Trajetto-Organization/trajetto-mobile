@@ -1,7 +1,16 @@
 import { useMemo, useState } from "react";
-import { Linking, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  Linking,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -22,6 +31,7 @@ import {
 import { useDeliveryActions } from "@/features/deliveries/hooks/use-delivery-actions";
 import { useOnTheWay } from "@/features/deliveries/hooks/use-on-the-way";
 import { OnTheWayAction } from "../../components/screens/deliveries/on-the-way-action";
+import { DeliveryKindBadge } from "../../components/screens/deliveries/delivery-kind-badge";
 
 import {
   DRIVER_DELIVERY_STATUS_LABELS,
@@ -43,6 +53,7 @@ import {
 
 import { useProofFeedback } from "@/features/notifications/use-proof-feedback";
 import { telephoneLink } from "@/features/deliveries/telephone-link";
+import { deliveryIdentifiersLabel } from "@/features/deliveries/delivery-identity-rules";
 import { DeliveryChatHistory } from "../../components/screens/chat/delivery-chat-history";
 import { ProofFeedbackCard } from "../../components/screens/deliveries/proof-feedback-card";
 import { OccurrenceAuthorizationCard } from "../../components/screens/occurrences/occurrence-authorization-card";
@@ -54,7 +65,10 @@ const STATUS_CHIP: Record<string, { box: string; text: string }> = {
   IN_TRANSIT: { box: "bg-primary-soft", text: "text-primary" },
 };
 
-const DEFAULT_CHIP = { box: "border border-border bg-subtle", text: "text-ink-soft" };
+const DEFAULT_CHIP = {
+  box: "border border-border bg-subtle",
+  text: "text-ink-soft",
+};
 
 const DeliveryDetailScreen = () => {
   const router = useRouter();
@@ -63,11 +77,13 @@ const DeliveryDetailScreen = () => {
 
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const { businessId, deliveries, occurrenceTypes, deliveredTypes } = useMyDeliveries();
+  const { businessId, deliveries, occurrenceTypes, deliveredTypes } =
+    useMyDeliveries();
   const actions = useDeliveryActions(businessId);
   const onTheWay = useOnTheWay(businessId);
 
-  const [isArriveConfirmOpen, setIsArriveConfirmOpen] = useState<boolean>(false);
+  const [isArriveConfirmOpen, setIsArriveConfirmOpen] =
+    useState<boolean>(false);
 
   const delivery = useMemo(
     () => deliveries.find((entry) => entry.id === id) ?? null,
@@ -92,7 +108,11 @@ const DeliveryDetailScreen = () => {
     return (
       <ProtectedRoute>
         <SafeAreaView className="flex-1 items-center justify-center bg-background px-8">
-          <Ionicons name="checkmark-done-outline" size={44} color={colors.muted} />
+          <Ionicons
+            name="checkmark-done-outline"
+            size={44}
+            color={colors.muted}
+          />
           <Text className="mt-3 text-center text-base font-medium text-ink-soft">
             Esta entrega saiu da sua lista
           </Text>
@@ -114,6 +134,7 @@ const DeliveryDetailScreen = () => {
 
   const allowed = availableActions(delivery.status);
   const chip = STATUS_CHIP[delivery.status] ?? DEFAULT_CHIP;
+  const identifiers = deliveryIdentifiersLabel(delivery);
 
   const arrival = arrivalState(delivery, queuedArrival);
   const recipientTelephoneLink = telephoneLink(delivery.recipient_telephone);
@@ -146,14 +167,19 @@ const DeliveryDetailScreen = () => {
             <Text className="text-lg font-semibold text-ink" numberOfLines={1}>
               {delivery.recipient_name}
             </Text>
-            {delivery.code ? (
-              <Text className="text-xs text-muted">Pedido: {delivery.code}</Text>
+            {identifiers ? (
+              <Text className="text-xs text-muted" numberOfLines={1}>
+                {identifiers}
+              </Text>
             ) : null}
           </View>
-          <View className={`rounded-full px-3 py-1 ${chip.box}`}>
-            <Text className={`text-xs font-medium ${chip.text}`}>
-              {DRIVER_DELIVERY_STATUS_LABELS[delivery.status]}
-            </Text>
+          <View className="items-end gap-1">
+            <View className={`rounded-full px-3 py-1 ${chip.box}`}>
+              <Text className={`text-xs font-medium ${chip.text}`}>
+                {DRIVER_DELIVERY_STATUS_LABELS[delivery.status]}
+              </Text>
+            </View>
+            <DeliveryKindBadge kind={delivery.kind} />
           </View>
         </View>
 
@@ -167,7 +193,11 @@ const DeliveryDetailScreen = () => {
             className="flex-row items-center gap-3 border-b border-warning/40
             bg-warning-soft px-4 py-3"
           >
-            <Ionicons name="location-outline" size={20} color={colors.warning} />
+            <Ionicons
+              name="location-outline"
+              size={20}
+              color={colors.warning}
+            />
             <View className="flex-1">
               <Text className="text-sm font-semibold text-warning">
                 {location.warning.title}
@@ -183,7 +213,10 @@ const DeliveryDetailScreen = () => {
         ) : null}
 
         {/* Room for the whole action bar, "Estou a caminho" row included. */}
-        <ScrollView className="flex-1 px-4 py-4" contentContainerClassName="pb-56">
+        <ScrollView
+          className="flex-1 px-4 py-4"
+          contentContainerClassName="pb-56"
+        >
           {/* The reading's warning first: it may ask for a new photo. */}
           {proof ? (
             <View className="mb-3">
@@ -242,7 +275,11 @@ const DeliveryDetailScreen = () => {
                 className="flex-1 flex-row items-center justify-center gap-1
                 rounded-lg border border-input bg-card py-2"
               >
-                <Ionicons name="navigate-outline" size={16} color={colors.inkSoft} />
+                <Ionicons
+                  name="navigate-outline"
+                  size={16}
+                  color={colors.inkSoft}
+                />
                 <Text className="text-sm font-medium text-ink-soft">Waze</Text>
               </TouchableOpacity>
             </View>
@@ -294,7 +331,11 @@ const DeliveryDetailScreen = () => {
                 A mensagem já vai ligada a esta entrega
               </Text>
             </View>
-            <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
+            <Ionicons
+              name="chatbubbles-outline"
+              size={20}
+              color={colors.primary}
+            />
           </TouchableOpacity>
 
           {/* What was said about this delivery (decision 6.7). */}
@@ -303,7 +344,10 @@ const DeliveryDetailScreen = () => {
           {/* Cargo */}
           <View className="mt-3 rounded-xl border border-border bg-card p-4">
             <Text className="mb-2 text-sm font-semibold text-ink">
-              Carga{delivery.invoice_number ? ` · NF-e ${delivery.invoice_number}` : ""}
+              Carga
+              {delivery.invoice_number
+                ? ` · NF-e ${delivery.invoice_number}`
+                : ""}
             </Text>
 
             {delivery.items && delivery.items.length > 0 ? (
@@ -313,7 +357,10 @@ const DeliveryDetailScreen = () => {
                   className="flex-row items-center justify-between border-b
                   border-border py-1.5 last:border-b-0"
                 >
-                  <Text className="mr-2 flex-1 text-sm text-ink-soft" numberOfLines={1}>
+                  <Text
+                    className="mr-2 flex-1 text-sm text-ink-soft"
+                    numberOfLines={1}
+                  >
                     {item.description}
                   </Text>
                   <Text className="text-xs text-muted">
@@ -345,15 +392,17 @@ const DeliveryDetailScreen = () => {
           {delivery.status === "PENDING" ? (
             <View className="mt-3 rounded-xl border border-border bg-subtle p-4">
               <Text className="text-sm text-ink-soft">
-                Esta entrega está designada para você. Inicie a rota na lista
-                do dia para registrar chegada, comprovação e ocorrências.
+                Esta entrega está designada para você. Inicie a rota na lista do
+                dia para registrar chegada, comprovação e ocorrências.
               </Text>
             </View>
           ) : null}
         </ScrollView>
 
         {/* Actions: everything operational happens in route */}
-        {(allowed.canArrive || allowed.canProve || allowed.canReportOccurrence) && (
+        {(allowed.canArrive ||
+          allowed.canProve ||
+          allowed.canReportOccurrence) && (
           <View
             className="absolute bottom-0 left-0 right-0 border-t
             border-border bg-surface px-4 pt-3"
@@ -380,7 +429,11 @@ const DeliveryDetailScreen = () => {
                     rounded-lg border border-success/40 bg-success-soft px-2 py-2"
                   >
                     <Ionicons
-                      name={arrival.queued ? "time-outline" : "checkmark-circle-outline"}
+                      name={
+                        arrival.queued
+                          ? "time-outline"
+                          : "checkmark-circle-outline"
+                      }
                       size={16}
                       color={colors.success}
                     />
@@ -460,7 +513,6 @@ const DeliveryDetailScreen = () => {
           onConfirm={handleArrival}
           onCancel={() => setIsArriveConfirmOpen(false)}
         />
-
       </SafeAreaView>
     </ProtectedRoute>
   );

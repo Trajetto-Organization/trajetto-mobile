@@ -46,6 +46,9 @@ interface ChatMessageBubbleProps {
    */
   onPressImage: (message: ClientChatMessage) => void;
   onPressDelivery: (deliveryId: string) => void;
+
+  /** Delivery id → order code, from the cached day (`deliveryCodeIndex`). */
+  deliveryCodes?: ReadonlyMap<string, string>;
   onRetry: (message: ClientChatMessage) => void;
 }
 
@@ -63,6 +66,7 @@ const ChatMessageBubble = ({
   onPressImage,
   onPressDelivery,
   onRetry,
+  deliveryCodes,
 }: ChatMessageBubbleProps) => {
   const colors = useThemeColors();
   const tones = bubbleTones(colors, isMine);
@@ -161,11 +165,7 @@ const ChatMessageBubble = ({
         >
           {message.broadcast_id && (
             <View className="mb-1 flex-row items-center gap-1">
-              <Ionicons
-                name="megaphone-outline"
-                size={12}
-                color={tones.meta}
-              />
+              <Ionicons name="megaphone-outline" size={12} color={tones.meta} />
               <Text
                 className={`text-[11px] font-medium ${
                   isMine ? "text-primary-foreground/95" : "text-muted"
@@ -179,6 +179,7 @@ const ChatMessageBubble = ({
           <ChatMessageContextTags
             delivery={message.delivery}
             route={message.route}
+            deliveryCodes={deliveryCodes}
             isMine={isMine}
             onPressDelivery={onPressDelivery}
           />

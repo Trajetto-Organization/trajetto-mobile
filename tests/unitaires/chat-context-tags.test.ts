@@ -48,17 +48,20 @@ let ChatImageGrid: Component;
 let ChatMessageContextTags: Component;
 
 beforeAll(async () => {
-  ({ ChatMessageBubble } = (await import(
-    "@/components/screens/chat/message-bubble"
-  )) as unknown as { ChatMessageBubble: Component });
+  ({ ChatMessageBubble } =
+    (await import("@/components/screens/chat/message-bubble")) as unknown as {
+      ChatMessageBubble: Component;
+    });
 
-  ({ ChatImageGrid } = (await import(
-    "@/components/screens/chat/image-grid-bubble"
-  )) as unknown as { ChatImageGrid: Component });
+  ({ ChatImageGrid } =
+    (await import("@/components/screens/chat/image-grid-bubble")) as unknown as {
+      ChatImageGrid: Component;
+    });
 
-  ({ ChatMessageContextTags } = (await import(
-    "@/components/screens/chat/message-context-tags"
-  )) as unknown as { ChatMessageContextTags: Component });
+  ({ ChatMessageContextTags } =
+    (await import("@/components/screens/chat/message-context-tags")) as unknown as {
+      ChatMessageContextTags: Component;
+    });
 });
 
 /** Expands function components, so the tree is what the screen would draw. */
@@ -130,9 +133,15 @@ function findButton(node: unknown, label: string): Element | null {
 }
 
 const ROUTE = { id: "route-1", code: 42, name: "Zona Sul" };
-const DELIVERY = { id: "delivery-1", recipient_name: "Mercado Central", status: "IN_TRANSIT" };
+const DELIVERY = {
+  id: "delivery-1",
+  recipient_name: "Mercado Central",
+  status: "IN_TRANSIT",
+};
 
-function message(overrides: Partial<ClientChatMessage> = {}): ClientChatMessage {
+function message(
+  overrides: Partial<ClientChatMessage> = {},
+): ClientChatMessage {
   return {
     id: "m1",
     kind: "TEXT",
@@ -168,7 +177,14 @@ describe("a bubble", () => {
   it("names the route the message was said during, and the delivery it is about", () => {
     const tree = expand(
       ChatMessageBubble(
-        bubbleProps(message({ routeId: ROUTE.id, route: ROUTE, deliveryId: DELIVERY.id, delivery: DELIVERY })),
+        bubbleProps(
+          message({
+            routeId: ROUTE.id,
+            route: ROUTE,
+            deliveryId: DELIVERY.id,
+            delivery: DELIVERY,
+          }),
+        ),
       ),
     );
 
@@ -176,6 +192,37 @@ describe("a bubble", () => {
 
     expect(shown).toContain("Rota 42 · Zona Sul");
     expect(shown).toContain("Entrega: Mercado Central");
+  });
+
+  it("names the delivery by its order code too, from the cached day's index", () => {
+    // The API's chat payload names the delivery by recipient only; the code
+    // comes from the cached list (deliveryCodeIndex), first so a cut chip shows it.
+    const tree = expand(
+      ChatMessageBubble({
+        ...bubbleProps(
+          message({ deliveryId: DELIVERY.id, delivery: DELIVERY }),
+        ),
+        deliveryCodes: new Map([[DELIVERY.id, "4815"]]),
+      }),
+    );
+
+    expect(texts(tree)).toContain("Entrega: Pedido 4815 · Mercado Central");
+    expect(
+      findButton(tree, "Abrir entrega de Pedido 4815 · Mercado Central"),
+    ).not.toBeNull();
+  });
+
+  it("names it by the recipient alone when the cache does not know its code", () => {
+    const tree = expand(
+      ChatMessageBubble({
+        ...bubbleProps(
+          message({ deliveryId: DELIVERY.id, delivery: DELIVERY }),
+        ),
+        deliveryCodes: new Map([["another-delivery", "999"]]),
+      }),
+    );
+
+    expect(texts(tree)).toContain("Entrega: Mercado Central");
   });
 
   it("names a route with no name by its number", () => {
@@ -209,7 +256,12 @@ describe("a bubble", () => {
 
   it("draws nothing for a message about nothing, or from an API without the keys", () => {
     expect(
-      ChatMessageContextTags({ delivery: null, route: null, isMine: false, onPressDelivery: () => undefined }),
+      ChatMessageContextTags({
+        delivery: null,
+        route: null,
+        isMine: false,
+        onPressDelivery: () => undefined,
+      }),
     ).toBeNull();
 
     const legacy = message();
@@ -225,7 +277,11 @@ describe("a bubble", () => {
 
 describe("a photo grid", () => {
   it("names the batch's route once, whichever photo carries it", () => {
-    const photo = (id: string, minute: number, overrides: Partial<ClientChatMessage> = {}) =>
+    const photo = (
+      id: string,
+      minute: number,
+      overrides: Partial<ClientChatMessage> = {},
+    ) =>
       message({
         id,
         kind: "IMAGE",
@@ -237,7 +293,10 @@ describe("a photo grid", () => {
 
     const tree = expand(
       ChatImageGrid({
-        messages: [photo("p1", 0), photo("p2", 1, { route: ROUTE, routeId: ROUTE.id })],
+        messages: [
+          photo("p1", 0),
+          photo("p2", 1, { route: ROUTE, routeId: ROUTE.id }),
+        ],
         isMine: false,
         showSenderName: false,
         counterpartReadAt: null,
@@ -247,6 +306,8 @@ describe("a photo grid", () => {
       }),
     );
 
-    expect(texts(tree).filter((text) => text === "Rota 42 · Zona Sul")).toHaveLength(1);
+    expect(
+      texts(tree).filter((text) => text === "Rota 42 · Zona Sul"),
+    ).toHaveLength(1);
   });
 });

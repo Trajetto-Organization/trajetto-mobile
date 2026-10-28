@@ -16,14 +16,22 @@ const ROOT = resolve(__dirname, "..", "..");
 const read = (path: string) => fs.readFileSync(join(ROOT, path), "utf8");
 
 function sources(dir: string): { path: string; text: string }[] {
-  return fs.readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
-    const path = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) return sources(path);
-    return /\.tsx$/.test(entry.name) ? [{ path, text: fs.readFileSync(join(ROOT, path), "utf8") }] : [];
-  });
+  return fs
+    .readdirSync(join(ROOT, dir), { withFileTypes: true })
+    .flatMap((entry) => {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return sources(path);
+      return /\.tsx$/.test(entry.name)
+        ? [{ path, text: fs.readFileSync(join(ROOT, path), "utf8") }]
+        : [];
+    });
 }
 
-const ALL_SOURCES = () => [...sources("app"), ...sources("components"), ...sources("providers")];
+const ALL_SOURCES = () => [
+  ...sources("app"),
+  ...sources("components"),
+  ...sources("providers"),
+];
 
 describe("the app theme", () => {
   it("lets the native side follow the scheme (userInterfaceStyle automatic)", () => {
@@ -46,12 +54,18 @@ describe("the app theme", () => {
     const bars = ALL_SOURCES()
       .filter(({ text }) => /from\s+["']expo-status-bar["']/.test(text))
       .flatMap(({ path, text }) =>
-        [...text.matchAll(/<StatusBar\b[^>]*>/g)].map((match) => ({ path, tag: match[0] })),
+        [...text.matchAll(/<StatusBar\b[^>]*>/g)].map((match) => ({
+          path,
+          tag: match[0],
+        })),
       );
 
     expect(bars.length).toBeGreaterThan(0);
     expect(
-      bars.filter(({ tag }) => !/style=(["'](dark|light)["']|\{statusBarStyleFor\()/.test(tag)),
+      bars.filter(
+        ({ tag }) =>
+          !/style=(["'](dark|light)["']|\{statusBarStyleFor\()/.test(tag),
+      ),
     ).toEqual([]);
   });
 
@@ -78,8 +92,12 @@ describe("the app theme", () => {
 
     // React Navigation paints a card behind every screen; expo-system-ui
     // paints the root view Android shows while a screen lays out.
-    expect(provider).toMatch(/<NavigationThemeProvider value=\{navigationTheme\}>/);
-    expect(provider).toMatch(/SystemUI\.setBackgroundColorAsync\(themeColors\(scheme\)\.background\)/);
+    expect(provider).toMatch(
+      /<NavigationThemeProvider value=\{navigationTheme\}>/,
+    );
+    expect(provider).toMatch(
+      /SystemUI\.setBackgroundColorAsync\(themeColors\(scheme\)\.background\)/,
+    );
   });
 
   it("holds the native splash until the saved theme is read", () => {
@@ -95,19 +113,27 @@ describe("the app theme", () => {
     const drawer = read("components/ui/user-settings-drawer.tsx");
 
     expect(drawer).toMatch(/<ThemeSelector\b/);
-    expect(read("components/ui/theme-selector.tsx")).toMatch(/options=\{OPTIONS\}/);
+    expect(read("components/ui/theme-selector.tsx")).toMatch(
+      /options=\{OPTIONS\}/,
+    );
   });
 
   it("lets the settings drawer scroll, so logout is reachable on a 640dp phone", () => {
     // Profile + e-mail + theme + web + logout + legal is ~680dp; 80% of a
     // 640dp window is 512dp. A non-scrolling body clipped "Sair da Conta".
     const drawer = read("components/ui/user-settings-drawer.tsx");
+    const sheet = read("components/ui/sheet.tsx");
 
-    expect(drawer).toMatch(/<BottomSheetScrollView\b/);
-    expect(drawer).not.toMatch(/<BottomSheetView\b/);
+    // A fixed snap point handed to the shared sheet, which then scrolls the
+    // body instead of sizing the sheet to it.
+    expect(drawer).toMatch(/const SNAP_POINTS = \["80%"\];/);
+    expect(drawer).toMatch(/snapPoints=\{SNAP_POINTS\}/);
+    expect(drawer).toMatch(/scrollTestID="user-settings-scroll"/);
+    expect(sheet).toMatch(/\{scrolls \? \(\s*<BottomSheetScrollView\b/);
     // Dynamic sizing measures the scroll view, not its content: off, so the
     // fixed snap point and the scroll are the whole contract.
-    expect(drawer).toMatch(/enableDynamicSizing=\{false\}/);
+    expect(sheet).toMatch(/const scrolls = snapPoints !== undefined;/);
+    expect(sheet).toMatch(/enableDynamicSizing=\{!scrolls\}/);
   });
 
   it("decides the selector thumb's motion through the tested rule", () => {
@@ -121,7 +147,9 @@ describe("the app theme", () => {
     // thumb never showed on the drawer's first opening after a cold start.
     const control = read("components/ui/segmented-control.tsx");
 
-    expect(control).toMatch(/segmentWidth > 0 && \(\s*<SegmentedThumb index=\{index\} segmentWidth=\{segmentWidth\} \/>/);
+    expect(control).toMatch(
+      /segmentWidth > 0 && \(\s*<SegmentedThumb index=\{index\} segmentWidth=\{segmentWidth\} \/>/,
+    );
     expect(control).toMatch(/useSharedValue\(index \* segmentWidth\)/);
     expect(control).not.toMatch(/opacity:/);
   });
@@ -131,7 +159,9 @@ describe("the app theme", () => {
     // the JS runtime (and the store's once-only apply) outlives the Activity.
     const provider = read("providers/theme-provider.tsx");
 
-    expect(provider).toMatch(/useEffect\(\(\) => \{\s*useThemeStore\.getState\(\)\.reapply\(\);\s*\}, \[\]\)/);
+    expect(provider).toMatch(
+      /useEffect\(\(\) => \{\s*useThemeStore\.getState\(\)\.reapply\(\);\s*\}, \[\]\)/,
+    );
   });
 
   it("keeps uiMode in the Activity's configChanges, so a switch never recreates it", () => {
@@ -143,7 +173,9 @@ describe("the app theme", () => {
 
 describe("the uiMode config plugin", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { withUiModeConfigChange } = require("../../plugins/with-ui-mode-config-change");
+  const {
+    withUiModeConfigChange,
+  } = require("../../plugins/with-ui-mode-config-change");
 
   const manifest = (configChanges?: string) => ({
     manifest: {
@@ -154,7 +186,9 @@ describe("the uiMode config plugin", () => {
             {
               $: {
                 "android:name": ".MainActivity",
-                ...(configChanges === undefined ? {} : { "android:configChanges": configChanges }),
+                ...(configChanges === undefined
+                  ? {}
+                  : { "android:configChanges": configChanges }),
               },
             },
           ],
@@ -167,24 +201,36 @@ describe("the uiMode config plugin", () => {
     result.manifest.application[0].activity[1].$ as Record<string, string>;
 
   it("adds uiMode when the template leaves it out", () => {
-    const result = withUiModeConfigChange(manifest("keyboard|orientation|screenSize"));
+    const result = withUiModeConfigChange(
+      manifest("keyboard|orientation|screenSize"),
+    );
 
-    expect(main(result)["android:configChanges"]).toBe("keyboard|orientation|screenSize|uiMode");
+    expect(main(result)["android:configChanges"]).toBe(
+      "keyboard|orientation|screenSize|uiMode",
+    );
   });
 
   it("adds it when the attribute is missing altogether", () => {
-    expect(main(withUiModeConfigChange(manifest()))["android:configChanges"]).toBe("uiMode");
+    expect(
+      main(withUiModeConfigChange(manifest()))["android:configChanges"],
+    ).toBe("uiMode");
   });
 
   it("does not duplicate it when it is already there", () => {
-    const result = withUiModeConfigChange(manifest("keyboard|uiMode|orientation"));
+    const result = withUiModeConfigChange(
+      manifest("keyboard|uiMode|orientation"),
+    );
 
-    expect(main(result)["android:configChanges"]).toBe("keyboard|uiMode|orientation");
+    expect(main(result)["android:configChanges"]).toBe(
+      "keyboard|uiMode|orientation",
+    );
   });
 
   it("leaves other activities alone", () => {
     const result = withUiModeConfigChange(manifest("keyboard"));
 
-    expect(result.manifest.application[0].activity[0].$).toEqual({ "android:name": ".SomeOtherActivity" });
+    expect(result.manifest.application[0].activity[0].$).toEqual({
+      "android:name": ".SomeOtherActivity",
+    });
   });
 });
