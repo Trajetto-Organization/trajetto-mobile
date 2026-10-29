@@ -24,6 +24,9 @@ name: Release (EAS)
 on:
   push:
     branches: [staging, main]
+  # preview is left out on purpose: it is only the base staging extends, and
+  # nothing publishes OTA updates to its channel, so a preview APK would
+  # never update. Test builds are staging.
   workflow_dispatch:
     inputs:
       profile:
@@ -33,7 +36,6 @@ on:
         type: choice
         options:
           - development
-          - preview
           - staging
           - production
 

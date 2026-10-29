@@ -205,13 +205,17 @@ describe("the release workflow (deploy.yml)", () => {
     }
   });
 
-  it("offers every EAS build profile to a manual run, staging included", () => {
+  it("offers every EAS build profile to a manual run except preview, staging included", () => {
     const eas = JSON.parse(readFileSync(resolve(ROOT, "eas.json"), "utf8")) as { build: Record<string, unknown> };
 
     const options = deploy.match(/options:\n((?:\s+- .+\n)+)/)?.[1] ?? "";
     const offered = [...options.matchAll(/- (\S+)/g)].map((match) => match[1]);
 
-    expect(offered.sort()).toEqual(Object.keys(eas.build).sort());
+    // preview stays in eas.json as the base staging extends, but no pipeline
+    // publishes to its channel: a preview APK would never get an OTA.
+    expect(Object.keys(eas.build)).toContain("preview");
+    expect(offered).not.toContain("preview");
+    expect(offered.sort()).toEqual(Object.keys(eas.build).filter((name) => name !== "preview").sort());
   });
 });
 

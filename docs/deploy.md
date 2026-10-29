@@ -105,7 +105,7 @@ também passa, mas o push direto em `main` fica bloqueado; use merge commit.
 | Perfil        | Ambiente EAS  | Canal OTA     | Artefato                    | Distribuição | Para quê                                                          |
 | ------------- | ------------- | ------------- | --------------------------- | ------------ | ----------------------------------------------------------------- |
 | `development` | `development` | `development` | APK com dev client          | interna      | desenvolvimento local e E2E                                       |
-| `preview`     | `preview`     | `preview`     | **APK**                     | interna      | testes internos avulsos                                           |
+| `preview`     | `preview`     | `preview`     | **APK**                     | interna      | base que o `staging` herda; fora do build manual (ver abaixo)     |
 | `staging`     | `preview`     | `staging`     | **APK** (herda o `preview`) | interna      | homologação contra a stack de staging                             |
 | `production`  | `production`  | `production`  | **AAB**                     | loja         | Play Store; `versionCode` incrementado pelo EAS (`autoIncrement`) |
 
@@ -117,6 +117,9 @@ também passa, mas o push direto em `main` fica bloqueado; use merge commit.
   trilha de testes internos, nunca direto em produção.
 - Comandos (todos `--platform android`): `npm run build:development`,
   `build:preview`, `build:staging`, `build:production`.
+- O build manual do `deploy.yml` não oferece o `preview`: nenhum pipeline
+  publica OTA no canal `preview`, então um APK dele nunca se atualiza. Para
+  testar, use o `staging`, que recebe a OTA de todo push em `staging`.
 - O teste `tests/unitaires/eas-build-config.test.ts` guarda os perfis: APK nos
   internos, AAB na loja, staging com canal e ambiente próprios e sem URL
   escrita no `eas.json`.
@@ -217,7 +220,7 @@ O E2E Maestro não roda no CI (precisa de emulador e API locais; ver
 | `staging-evidence` | push em `main`                   | acha o commit de staging (2º pai do merge ou o próprio commit) e exige uma execução verde deste workflow em `staging` para ele; num merge commit, exige também que a árvore do merge seja idêntica à do commit de staging (`git diff --quiet HEAD^2 HEAD`); senão falha com a explicação                            |
 | `staging`          | push em `staging` com `app=true` | environment `staging` do GitHub: OTA no canal `staging` com as variáveis do ambiente EAS `preview`; build `staging` (APK, `--no-wait`) se `native=true`                                                                                                                                                             |
 | `production`       | push em `main` com `app=true`    | ambiente `production` (espera aprovação): OTA **assinada** no canal `production`; build `production` (AAB, `--no-wait`) se `native=true`, com auto-submit à trilha internal quando `PLAY_SUBMIT_ENABLED=true` (`--auto-submit-with-profile production`; não combinar com `--auto-submit`, as duas flags se excluem) |
-| `manual-build`     | `workflow_dispatch`              | build do perfil escolhido (development, preview, staging, production) depois do CI; produção usa o ambiente `production`                                                                                                                                                                                            |
+| `manual-build`     | `workflow_dispatch`              | build do perfil escolhido (development, staging, production) depois do CI; produção usa o ambiente `production`                                                                                                                                                                                            |
 
 Comportamento sem configuração: sem `EXPO_TOKEN`, os jobs `staging` e
 `production` terminam verdes com um aviso ("EXPO_TOKEN ausente: nada foi
