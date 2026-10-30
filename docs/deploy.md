@@ -7,7 +7,10 @@ rollback e o checklist do primeiro release. Este documento absorveu os
 antigos `DEPLOY.md` e `ota-code-signing.md`.
 
 Variáveis citadas aqui estão detalhadas em
-[variaveis-de-ambiente.md](./variaveis-de-ambiente.md).
+[variaveis-de-ambiente.md](./variaveis-de-ambiente.md). O mapa da
+infraestrutura feita à mão (as contas, os painéis da Expo, do GitHub, da
+Cloudflare e do Dokploy, os tokens e o porquê de cada configuração) fica em
+[`trajetto-api/docs/infraestrutura.md`](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/infraestrutura.md).
 
 ## Sumário
 
@@ -838,7 +841,10 @@ Primeiro ciclo:
 > e
 > [`trajetto-mobile/docs/deploy.md`](https://github.com/Trajetto-Organization/trajetto-mobile/blob/main/docs/deploy.md).
 > Mudou aqui, mude nos outros dois. O detalhe de cada passo fica no manual do
-> repositório dono dele.
+> repositório dono dele. O que foi configurado à mão nos painéis (Contabo,
+> Dokploy, Cloudflare, GitHub, Expo, Resend e R2), os tokens e o porquê de cada
+> escolha ficam em
+> [`trajetto-api/docs/infraestrutura.md`](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/infraestrutura.md).
 
 ### Quem é quem
 

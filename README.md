@@ -72,7 +72,11 @@ provedores e deploy) fica documentada na API:
 - [tour pela arquitetura](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/arquitetura-tour.md)
   (`trajetto-api/docs/arquitetura-tour.md`), que percorre a plataforma um
   assunto por vez, com os links ◀ Anterior e Próximo ▶ e o mesmo mapa aceso
-  nas peças de cada passo.
+  nas peças de cada passo;
+- [mapa da infraestrutura](https://github.com/Trajetto-Organization/trajetto-api/blob/staging/docs/infraestrutura.md)
+  (`trajetto-api/docs/infraestrutura.md`), com o que foi configurado à mão
+  fora do código (Expo, GitHub, Cloudflare, Dokploy, Contabo, Resend e R2),
+  os tokens e o porquê de cada escolha.
 
 ## O Trajetto em 1 minuto
 
