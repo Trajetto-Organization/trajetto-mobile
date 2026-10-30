@@ -238,8 +238,8 @@ formulário, de propósito). As regras completas estão no [`CLAUDE.md`](CLAUDE.
 ### Pré-requisitos
 
 - Node.js 22 e npm (o repositório usa `package-lock.json`);
-- conta no expo.dev com acesso ao projeto e `eas-cli` na versão de
-  `eas.json` (`npm install -g eas-cli@21.7.0`);
+- conta no expo.dev, membro da organização `trajetto` (papel _Viewer_ por
+  padrão: o bastante para baixar o dev client; ver o passo 3);
 - um aparelho Android ou um emulador do Android Studio;
 - a API rodando (README do `trajetto-api`); para os testes de paridade, o
   `trajetto-api` clonado ao lado deste repositório.
@@ -255,12 +255,28 @@ cp .env.example .env
 #    num aparelho físico, troque localhost pelo IP da sua máquina na rede;
 #    no emulador, http://10.0.2.2:3333 chega à API do computador
 
-# 3. Instale o dev client uma vez (o Expo Go não serve)
-npm run build:development     # gera o APK de desenvolvimento no EAS
+# 3. Instale o dev client uma vez (o Expo Go não serve): baixe o APK do
+#    build "development" mais recente em expo.dev → projeto → Builds
 
 # 4. Suba o Metro e abra o app de desenvolvimento no aparelho
 npm start
 ```
+
+**Quem gera o dev client.** Gerar build no EAS pede o papel _Developer_ na
+organização da Expo, e quem tem esse papel também consegue publicar OTA em
+produção pela própria máquina (os binários de produção aceitam update sem
+assinatura). Por isso um dev novo entra como _Viewer_, que só vê e baixa os
+builds, e o dev client é gerado por quem tem _Developer_ (hoje, o dono):
+
+```bash
+npm install -g eas-cli@21.7.0   # a versão do eas.json
+eas login
+npm run build:development       # gera o APK de desenvolvimento no EAS
+```
+
+Um dev client novo só é preciso quando o lado nativo muda (dependência
+nativa, `app.config.js`, plugin); mudança de código chega pelo Metro. Quem
+gera avisa a equipe, e cada um baixa o APK novo na página do build.
 
 Faça login com um usuário motorista criado no painel web (cadastro de
 motorista vinculado a um usuário). Gerar o APK de desenvolvimento localmente
